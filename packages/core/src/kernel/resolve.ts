@@ -1,0 +1,187 @@
+import type {
+  Claim,
+  ClaimInput,
+  ContentRef,
+  Issue,
+  OperationParsed,
+  ResolvedOperation,
+} from '@kalyth/contracts'
+import { idKindOf, isLocalRef } from '@kalyth/contracts'
+import type { z } from 'zod'
+import type { IdGenerator } from '../util.ts'
+
+type ParsedClaim = z.output<typeof ClaimInput>
+
+export interface ContentSink {
+  /** Stores an excerpt in the redactable content store and returns its reference. */
+  putExcerpt(text: string): ContentRef
+}
+
+type RefKind = 'object' | 'relation' | 'evidence'
+
+/**
+ * Turns submitted operations into resolved ones: assigns ids to created records, replaces local
+ * refs with ids, and moves evidence excerpts into the content store. Only references are kept
+ * in the proposal and, later, in events (R3).
+ */
+export function resolveOperations(
+  ops: readonly OperationParsed[],
+  ids: IdGenerator,
+  content: ContentSink,
+  collectedAt: string,
+): { ops: ResolvedOperation[]; issues: Issue[] } {
+  const issues: Issue[] = []
+  const refs = new Map<string, { id: string; kind: RefKind }>()
+
+  ops.forEach((op, index) => {
+    if (!('ref' in op) || op.ref === undefined) return
+    if (refs.has(op.ref)) {
+      issues.push({ code: 'ref.duplicate', message: `${op.ref} is defined twice`, op: index })
+      return
+    }
+    const kind: RefKind =
+      op.op === 'createObject' ? 'object' : op.op === 'createRelation' ? 'relation' : 'evidence'
+    refs.set(op.ref, { id: ids(kind), kind })
+  })
+
+  const resolve = (value: string, allowed: RefKind[], index: number, path: string[]): string => {
+    if (!isLocalRef(value)) {
+      const kind = idKindOf(value)
+      if (!kind || !(allowed as string[]).includes(kind))
+        issues.push({
+          code: 'ref.kind_mismatch',
+          message: `${value} is not a ${allowed.join(' or ')} id`,
+          op: index,
+          path,
+        })
+      return value
+    }
+    const target = refs.get(value)
+    if (!target) {
+      issues.push({
+        code: 'ref.unknown',
+        message: `${value} is not defined in this proposal`,
+        op: index,
+        path,
+      })
+      return value
+    }
+    if (!allowed.includes(target.kind)) {
+      issues.push({
+        code: 'ref.kind_mismatch',
+        message: `${value} refers to a ${target.kind}`,
+        op: index,
+        path,
+      })
+    }
+    return target.id
+  }
+
+  const resolveClaim = (c: ParsedClaim, index: number): Claim => {
+    return {
+      basis: c.basis,
+      ...(c.confidence ? { confidence: c.confidence } : {}),
+      ...(c.observation ? { observation: c.observation } : {}),
+      ...(c.method ? { method: c.method } : {}),
+      ...(c.model ? { model: c.model } : {}),
+      supports: c.supports.map((g, gi) => ({
+        allOf: g.allOf.map((e, ei) =>
+          resolve(e, ['evidence'], index, ['claim', 'supports', String(gi), String(ei)]),
+        ),
+      })),
+      contradictedBy: c.contradictedBy.map((e, ei) =>
+        resolve(e, ['evidence'], index, ['claim', 'contradictedBy', String(ei)]),
+      ),
+      derivedFrom: c.derivedFrom.map((d, di) =>
+        resolve(d, ['object', 'relation'], index, ['claim', 'derivedFrom', String(di)]),
+      ),
+    }
+  }
+
+  const resolved = ops.map((op, index): ResolvedOperation => {
+    const newId = (kind: RefKind) =>
+      ('ref' in op && op.ref ? refs.get(op.ref)?.id : undefined) ?? ids(kind)
+    switch (op.op) {
+      case 'createObject':
+        return {
+          op: 'createObject',
+          id: newId('object'),
+          type: op.type,
+          stance: op.stance,
+          attributes: op.attributes,
+          claim: resolveClaim(op.claim, index),
+        }
+      case 'updateObject':
+        return {
+          op: 'updateObject',
+          id: op.id,
+          set: op.set,
+          ...(op.claim ? { claim: resolveClaim(op.claim, index) } : {}),
+        }
+      case 'retireObject':
+      case 'retireRelation':
+      case 'setDecisionStatus':
+        return op
+      case 'createRelation':
+        return {
+          op: 'createRelation',
+          id: newId('relation'),
+          type: op.type,
+          from: resolve(op.from, ['object'], index, ['from']),
+          to: resolve(op.to, ['object'], index, ['to']),
+          stance: op.stance,
+          properties: op.properties,
+          claim: resolveClaim(op.claim, index),
+        }
+      case 'recordEvidence':
+        return {
+          op: 'recordEvidence',
+          id: newId('evidence'),
+          source: op.evidence.source,
+          excerpt:
+            op.evidence.excerpt === undefined ? null : content.putExcerpt(op.evidence.excerpt),
+          collectedBy: op.evidence.collectedBy,
+          collectedAt,
+        }
+      default:
+        return assertNever(op)
+    }
+  })
+  return { ops: resolved, issues }
+}
+
+/** Ids a proposal modifies. Overlap with changes since its base makes it stale. */
+export function writeSetOf(ops: readonly ResolvedOperation[]): string[] {
+  const ids = new Set<string>()
+  for (const op of ops) {
+    if (
+      op.op === 'updateObject' ||
+      op.op === 'retireObject' ||
+      op.op === 'retireRelation' ||
+      op.op === 'setDecisionStatus'
+    )
+      ids.add(op.id)
+  }
+  return [...ids]
+}
+
+/** Existing ids a proposal relies on without modifying them, plus any it declared explicitly. */
+export function readSetOf(
+  ops: readonly ResolvedOperation[],
+  explicit: readonly string[],
+  isExisting: (id: string) => boolean,
+): string[] {
+  const ids = new Set<string>(explicit)
+  for (const op of ops) {
+    if (op.op === 'createRelation') {
+      ids.add(op.from)
+      ids.add(op.to)
+    }
+    if ('claim' in op && op.claim) for (const d of op.claim.derivedFrom) ids.add(d)
+  }
+  return [...ids].filter(isExisting).sort()
+}
+
+function assertNever(value: never): never {
+  throw new Error(`unhandled operation ${JSON.stringify(value)}`)
+}

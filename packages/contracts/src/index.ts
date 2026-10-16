@@ -1,0 +1,14 @@
+export * from './auth.ts'
+export * from './claims.ts'
+export * from './events.ts'
+export * from './evidence.ts'
+export * from './ids.ts'
+export * from './json.ts'
+export * from './ops.ts'
+export * from './proposals.ts'
+export * from './queries.ts'
+export * from './registry.ts'
+export * from './results.ts'
+
+/** Version of the contracts package surface, exposed by the API and MCP server. */
+export const CONTRACTS_VERSION = '0.1.0'
