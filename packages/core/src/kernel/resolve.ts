@@ -118,6 +118,13 @@ export function resolveOperations(
           set: op.set,
           ...(op.claim ? { claim: resolveClaim(op.claim, index) } : {}),
         }
+      case 'updateRelation':
+        return {
+          op: 'updateRelation',
+          id: op.id,
+          set: op.set,
+          ...(op.claim ? { claim: resolveClaim(op.claim, index) } : {}),
+        }
       case 'retireObject':
       case 'retireRelation':
       case 'setDecisionStatus':
@@ -157,6 +164,7 @@ export function writeSetOf(ops: readonly ResolvedOperation[]): string[] {
     if (
       op.op === 'updateObject' ||
       op.op === 'retireObject' ||
+      op.op === 'updateRelation' ||
       op.op === 'retireRelation' ||
       op.op === 'setDecisionStatus'
     )

@@ -25,7 +25,8 @@ refs let operations refer to records the same proposal creates.
 ## Operations
 
 `createObject`, `updateObject` (shallow merge, `null` removes a key), `retireObject`,
-`createRelation`, `retireRelation`, `recordEvidence`, `setDecisionStatus`. Evidence operations apply
+`createRelation`, `updateRelation` (properties merge and/or a replacement claim), `retireRelation`,
+`recordEvidence`, `setDecisionStatus`. Evidence operations apply
 first, the rest in the order given.
 
 Example proposal:
@@ -49,6 +50,13 @@ Example proposal:
   "idempotencyKey": "analyzer-run-12-batch-1"
 }
 ```
+
+## Source snapshots and freshness
+
+`core.SourceSnapshot` objects record, per repository, the commit a project reflects and the git blob
+of each analysed file. `assessFreshness` (HTTP `GET /projects/:id/freshness`, MCP
+`assess_freshness`) reports each claim as `current`, `weakened`, `stale`, `derived-stale`,
+`unknown` or `not-applicable`. It is computed on read and never changes state (ADR 0009).
 
 ## Proposal lifecycle
 

@@ -3,6 +3,7 @@ import {
   CommitProposalInput,
   canonicalJson,
   EvidenceQuery,
+  FreshnessQuery,
   HistoryQuery,
   ObjectQuery,
   ProjectRef,
@@ -90,6 +91,15 @@ export const TOOLS: readonly ToolSpec[] = [
     input: HistoryQuery,
     readOnly: true,
     run: (s, c, i) => s.getHistory(c, i),
+  },
+  {
+    name: 'assess_freshness',
+    title: 'Assess freshness',
+    description:
+      'Freshness of every claim at a revision against the recorded source snapshots: current, weakened (some evidence stale but still supported), stale (needs review), derived-stale, unknown or not-applicable. Check this before relying on observed facts.',
+    input: FreshnessQuery,
+    readOnly: true,
+    run: (s, c, i) => s.assessFreshness(c, i),
   },
   {
     name: 'propose_change',

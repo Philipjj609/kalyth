@@ -7,6 +7,7 @@ export {
 } from './bootstrap.ts'
 export { type ApplyOutcome, applyOperations } from './kernel/apply.ts'
 export { isClaimSupported, validateClaim } from './kernel/claims.ts'
+export { assessFreshness, type SnapshotState } from './kernel/freshness.ts'
 export { predicateFingerprint } from './kernel/predicates.ts'
 export { findSecretRule } from './kernel/secrets.ts'
 export { OverlayState, type StateView } from './kernel/state.ts'

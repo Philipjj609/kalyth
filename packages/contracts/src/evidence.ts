@@ -16,6 +16,11 @@ export const EvidenceSource = z.discriminatedUnion('kind', [
     path: z.string().min(1).max(1000),
     blobSha: gitSha,
     span: LineSpan,
+    /** SHA-256 of the exact text of the span, so a moved span can be recognised. */
+    spanSha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
     symbol: z.string().min(1).max(500).optional(),
   }),
   z.object({

@@ -91,6 +91,20 @@ export const corePack: ObjectTypeDef[] = [
       summary: optionalText,
     }),
   },
+  {
+    type: 'core.SourceSnapshot',
+    version: 1,
+    pack: 'core',
+    description:
+      'The source revision a project currently reflects for one repository, with the git blob of every analysed file. Evidence is fresh while its path still has the same blob here.',
+    attributes: z.strictObject({
+      repo: z.string().min(1).max(500),
+      commit: z.string().regex(/^[0-9a-f]{40}$/),
+      ref: z.string().max(200).optional(),
+      coverage: z.string().min(1).max(4000),
+      files: z.record(z.string().min(1).max(1000), z.string().regex(/^[0-9a-f]{40}$/)),
+    }),
+  },
 ]
 
 // ---------- software pack ----------

@@ -86,6 +86,7 @@ function isObservedIngest(op: ResolvedOperation): boolean {
     case 'createRelation':
       return op.claim.basis === 'observed'
     case 'updateObject':
+    case 'updateRelation':
       return op.claim?.basis === 'observed'
     default:
       return false

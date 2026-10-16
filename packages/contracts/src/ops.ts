@@ -51,6 +51,14 @@ export const CreateRelationOp = z.object({
   claim: ClaimInput,
 })
 
+/** Shallow merge of properties and/or a replacement claim, for example to refresh evidence. */
+export const UpdateRelationOp = z.object({
+  op: z.literal('updateRelation'),
+  id: RelationId,
+  set: JsonRecord.default({}),
+  claim: ClaimInput.optional(),
+})
+
 export const RetireRelationOp = z.object({
   op: z.literal('retireRelation'),
   id: RelationId,
@@ -76,6 +84,7 @@ export const OperationInput = z.discriminatedUnion('op', [
   UpdateObjectOp,
   RetireObjectOp,
   CreateRelationOp,
+  UpdateRelationOp,
   RetireRelationOp,
   RecordEvidenceOp,
   SetDecisionStatusOp,
@@ -110,6 +119,12 @@ export const ResolvedOperation = z.discriminatedUnion('op', [
     stance: Stance,
     properties: JsonRecord,
     claim: Claim,
+  }),
+  z.object({
+    op: z.literal('updateRelation'),
+    id: RelationId,
+    set: JsonRecord,
+    claim: Claim.optional(),
   }),
   z.object({ op: z.literal('retireRelation'), id: RelationId, reason }),
   z.object({

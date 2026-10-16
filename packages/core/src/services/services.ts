@@ -5,6 +5,8 @@ import {
   CreateProjectInput,
   EvidenceQuery,
   type EvidenceQueryResult,
+  FreshnessQuery,
+  type FreshnessResult,
   fail,
   type Grant,
   HistoryQuery,
@@ -32,6 +34,7 @@ import {
 } from '@kalyth/contracts'
 import type { z } from 'zod'
 import { applyOperations } from '../kernel/apply.ts'
+import { assessFreshness } from '../kernel/freshness.ts'
 import { predicateFingerprint } from '../kernel/predicates.ts'
 import { readSetOf, resolveOperations, writeSetOf } from '../kernel/resolve.ts'
 import { findSecretRule } from '../kernel/secrets.ts'
@@ -223,6 +226,29 @@ export class KalythServices {
       projectId: project.id,
       headRevision: project.headRevision,
       changeSets: this.store.history(project.id, q.limit),
+    })
+  }
+
+  /** Freshness of every active claim at a revision; a read model, nothing is written (ADR 0009). */
+  assessFreshness(caller: unknown, input: unknown): Result<FreshnessResult> {
+    const r = this.#readable(caller, FreshnessQuery, input)
+    if (!r.ok) return r
+    const { project, revision } = r.value
+    const objects = this.store.objectsAt(project.id, revision, {})
+    const relations = this.store.relationsAt(project.id, revision, {})
+    const { snapshots, claims } = assessFreshness(
+      objects,
+      relations,
+      this.store.evidenceMapAt(project.id, revision),
+    )
+    const summary: Record<string, number> = {}
+    for (const c of claims) summary[c.status] = (summary[c.status] ?? 0) + 1
+    return ok({
+      projectId: project.id,
+      revision,
+      snapshots: snapshots.map(({ files: _files, ...s }) => s),
+      claims,
+      summary,
     })
   }
 

@@ -442,6 +442,15 @@ export class SqliteStore {
     return info.changes === 1
   }
 
+  /** Every evidence record recorded at or before a revision, keyed by id. */
+  evidenceMapAt(projectId: string, rev: number): Map<string, EvidenceRecord> {
+    const rows = this.#stmt('SELECT * FROM evidence WHERE project_id = ? AND revision <= ?').all(
+      projectId,
+      rev,
+    ) as Row[]
+    return new Map(rows.map((r) => [str(r.id), toEvidence(r)]))
+  }
+
   evidenceViews(projectId: string, ids: readonly string[]): EvidenceView[] {
     const params: Record<string, unknown> = { p: projectId }
     const sql = `SELECT e.*, c.body AS excerpt_body, c.redacted_at AS excerpt_redacted_at

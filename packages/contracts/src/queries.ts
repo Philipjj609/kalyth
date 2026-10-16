@@ -113,3 +113,52 @@ export const HistoryResult = z.object({
   changeSets: z.array(ChangeSetSummary),
 })
 export type HistoryResult = z.infer<typeof HistoryResult>
+
+/**
+ * Freshness of every claim at a revision (ADR 0009). Source-span evidence is fresh while the
+ * project's current source snapshot for that repository still has the same git blob at the same
+ * path. Claim status follows the support groups (R2):
+ * - current: every support group is fresh
+ * - weakened: some groups went stale but at least one is entirely fresh (still supported)
+ * - stale: no group is entirely fresh (needs review)
+ * - derived-stale: its own support is fine or absent, but a claim it derives from is stale
+ * - unknown: its evidence points at a repository with no recorded snapshot
+ * - not-applicable: no evidence and no derivation (for example stated intentions)
+ */
+export const FreshnessStatus = z.enum([
+  'current',
+  'weakened',
+  'stale',
+  'derived-stale',
+  'unknown',
+  'not-applicable',
+])
+export type FreshnessStatus = z.infer<typeof FreshnessStatus>
+
+export const ClaimFreshness = z.object({
+  id: z.union([ObjectId, RelationId]),
+  kind: z.enum(['object', 'relation']),
+  type: z.string(),
+  basis: z.string(),
+  status: FreshnessStatus,
+  staleEvidence: z.array(EvidenceId),
+  reason: z.string(),
+})
+export type ClaimFreshness = z.infer<typeof ClaimFreshness>
+
+export const SnapshotSummary = z.object({
+  objectId: ObjectId,
+  repo: z.string(),
+  commit: z.string(),
+  ref: z.string().optional(),
+})
+
+export const FreshnessQuery = z.object({ projectId: ProjectId, revision })
+export const FreshnessResult = z.object({
+  projectId: ProjectId,
+  revision: z.int().min(0),
+  snapshots: z.array(SnapshotSummary),
+  claims: z.array(ClaimFreshness),
+  summary: z.record(z.string(), z.int()),
+})
+export type FreshnessResult = z.infer<typeof FreshnessResult>

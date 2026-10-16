@@ -34,7 +34,7 @@ export const ReadPredicate = z.object({
 export const ProposeChangeInput = z.object({
   projectId: ProjectId,
   baseRevision: z.int().min(0),
-  ops: z.array(OperationInput).min(1).max(500),
+  ops: z.array(OperationInput).min(1).max(5000),
   rationale: z.string().min(1).max(4000),
   /** Extra ids whose state the proposal relies on, beyond those derived from its operations. */
   readSet: z

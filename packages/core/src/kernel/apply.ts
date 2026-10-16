@@ -212,6 +212,29 @@ export function applyOperations(
         break
       }
 
+      case 'updateRelation': {
+        const current = overlay.getRelation(op.id)
+        if (!current) {
+          add('relation.not_found', `relation ${op.id} does not exist`)
+          break
+        }
+        if (current.lifecycle !== 'active') {
+          add('relation.retired', `relation ${op.id} is retired`)
+          break
+        }
+        const properties: Record<string, JsonValue> = { ...current.properties }
+        for (const [key, value] of Object.entries(op.set)) {
+          if (value === null) delete properties[key]
+          else properties[key] = value
+        }
+        if (op.claim) issues.push(...validateClaim(op.claim, current.stance, op.id, overlay, index))
+        write({
+          kind: 'relation',
+          version: { ...current, properties, claim: op.claim ?? current.claim, revision },
+        })
+        break
+      }
+
       case 'retireRelation': {
         const current = overlay.getRelation(op.id)
         if (!current) {

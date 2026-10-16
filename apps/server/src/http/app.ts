@@ -117,6 +117,15 @@ export function buildHttpApp(services: KalythServices, auth: HttpAuth): FastifyI
       services.getHistory(caller, { projectId: params(req).projectId, ...limitOf(query(req)) }),
     ),
   )
+  app.get('/api/v1/projects/:projectId/freshness', async (req, reply) =>
+    send(
+      reply,
+      services.assessFreshness(caller, {
+        projectId: params(req).projectId,
+        ...revisionOf(query(req)),
+      }),
+    ),
+  )
   app.get('/api/v1/projects/:projectId/proposals', async (req, reply) => {
     const q = query(req)
     return send(
