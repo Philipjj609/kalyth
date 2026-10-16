@@ -5,6 +5,8 @@
     "packages/*/test/**/*.ts",
     "apps/*/src/**/*.ts",
     "apps/*/test/**/*.ts",
+    "apps/web/*.config.ts",
     "vitest.config.ts"
-  ]
+  ],
+  "exclude": ["apps/web/src/**", "**/node_modules", "**/dist"]
 }

@@ -11,13 +11,16 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p apps/web/tsconfig.json",
     "lint": "biome check .",
     "format": "biome check --write .",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "build": "pnpm --filter @kalyth/web build",
     "mcp:stdio": "pnpm --filter @kalyth/server mcp:stdio",
     "dev:server": "pnpm --filter @kalyth/server dev",
-    "ingest": "node apps/server/src/cli/ingest.ts"
+    "ingest": "node apps/server/src/cli/ingest.ts",
+    "dev:web": "pnpm --filter @kalyth/web dev",
+    "dev:seed": "pnpm --filter @kalyth/server exec node src/dev/seed.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
