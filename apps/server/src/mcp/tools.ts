@@ -12,6 +12,7 @@ import {
   ProposeChangeInput,
   RelationQuery,
   type Result,
+  SituationQuery,
 } from '@kalyth/contracts'
 import type { KalythServices } from '@kalyth/core'
 import { z } from 'zod'
@@ -101,6 +102,15 @@ export const TOOLS: readonly ToolSpec[] = [
     input: FreshnessQuery,
     readOnly: true,
     run: (s, c, i) => s.assessFreshness(c, i),
+  },
+  {
+    name: 'get_situation',
+    title: 'Project situation',
+    description:
+      'What needs attention: open decisions with their alternatives, open questions, pending proposals and stale claims. Read this first to see what people are deciding before proposing changes.',
+    input: SituationQuery,
+    readOnly: true,
+    run: (s, c, i) => s.getSituation(c, i),
   },
   {
     name: 'analyze_impact',

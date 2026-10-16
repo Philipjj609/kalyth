@@ -148,6 +148,26 @@ describe('Navigator over HTTP', () => {
 
     const runs = await h.http('GET', `/api/v1/projects/${pid}/navigator/runs`)
     expect((runs.body.runs as { id: string }[]).map((r) => r.id)).toEqual([runId])
+
+    // The situation shows the pending proposal, then the open decision once a person commits it.
+    const before = await h.http('GET', `/api/v1/projects/${pid}/situation`)
+    expect(before.body).toMatchObject({
+      openDecisions: [],
+      pendingProposals: [{ id: run.proposalId, origin: 'model' }],
+    })
+    expect((await h.http('POST', `/api/v1/proposals/${run.proposalId}/commit`)).status).toBe(200)
+    const after = await h.http('GET', `/api/v1/projects/${pid}/situation`)
+    expect(after.body.pendingProposals).toEqual([])
+    expect(after.body.openDecisions).toHaveLength(1)
+    expect(after.body.openDecisions[0].alternatives).toHaveLength(3)
+    expect(after.body.openQuestions).toEqual([
+      expect.objectContaining({
+        inquiryRole: 'decision-sensitive',
+        concerns: [after.body.openDecisions[0].id],
+      }),
+    ])
+    const viaMcp = await h.mcp('get_situation', { projectId: pid })
+    expect(canonicalJson(viaMcp.body)).toBe(canonicalJson(after.body))
   })
 
   it('validates input and keeps paid inference off MCP', async () => {

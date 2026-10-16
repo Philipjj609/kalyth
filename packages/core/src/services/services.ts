@@ -33,6 +33,8 @@ import {
   type RelationQueryResult,
   type Result,
   type Scope,
+  type Situation,
+  SituationQuery,
 } from '@kalyth/contracts'
 import type { z } from 'zod'
 import { applyOperations } from '../kernel/apply.ts'
@@ -278,6 +280,71 @@ export class KalythServices {
       { maxDepth: q.maxDepth, maxNodes: q.maxNodes },
     )
     return ok({ projectId: project.id, revision, seeds, ...trace })
+  }
+
+  /** What needs attention at a revision: a deterministic read model (ADR 0010). */
+  getSituation(caller: unknown, input: unknown): Result<Situation> {
+    const r = this.#readable(caller, SituationQuery, input)
+    if (!r.ok) return r
+    const { project, revision } = r.value
+    const objects = this.store.objectsAt(project.id, revision, {})
+    const relations = this.store.relationsAt(project.id, revision, {})
+    const byId = new Map(objects.map((o) => [o.id, o]))
+    const attr = (o: { attributes: unknown }, key: string) => {
+      const value = (o.attributes as Record<string, unknown>)[key]
+      return typeof value === 'string' ? value : ''
+    }
+    const openDecisions = objects
+      .filter((o) => o.type === 'core.Decision' && attr(o, 'status') === 'open')
+      .map((d) => ({
+        id: d.id,
+        title: attr(d, 'title'),
+        alternatives: relations
+          .filter((rel) => rel.type === 'alternativeOf' && rel.to === d.id)
+          .flatMap((rel) => {
+            const alt = byId.get(rel.from)
+            return alt
+              ? [{ id: alt.id, title: attr(alt, 'title'), status: attr(alt, 'status') }]
+              : []
+          }),
+      }))
+    const openQuestions = objects
+      .filter((o) => o.type === 'core.Question' && attr(o, 'status') === 'open')
+      .map((q) => ({
+        id: q.id,
+        text: attr(q, 'text'),
+        inquiryRole: attr(q, 'inquiryRole'),
+        concerns: relations
+          .filter((rel) => rel.type === 'concerns' && rel.from === q.id)
+          .map((rel) => rel.to),
+      }))
+    const pendingProposals = this.store.listProposals(project.id, 'pending', 100).map((p) => ({
+      id: p.id,
+      proposedBy: p.proposedBy,
+      origin: p.origin,
+      createdAt: p.createdAt,
+      operations: p.ops.length,
+      rationale: p.rationale,
+    }))
+    const { claims } = assessFreshness(
+      objects,
+      relations,
+      this.store.evidenceMapAt(project.id, revision),
+    )
+    const freshness: Record<string, number> = {}
+    for (const c of claims) freshness[c.status] = (freshness[c.status] ?? 0) + 1
+    const staleClaims = claims
+      .filter((c) => c.status === 'stale' || c.status === 'derived-stale')
+      .slice(0, 100)
+    return ok({
+      projectId: project.id,
+      revision,
+      openDecisions,
+      openQuestions,
+      pendingProposals,
+      freshness,
+      staleClaims,
+    })
   }
 
   describeTypes(caller: unknown): Result<ReturnType<TypeRegistry['describe']>> {

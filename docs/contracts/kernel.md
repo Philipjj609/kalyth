@@ -66,6 +66,13 @@ relations from seed elements in the direction each type's `impact` rule declares
 carries a shortest typed path and its nearest seed. The result is deterministic and bounded by depth
 and node count (ADR 0010).
 
+## Situation
+
+`getSituation` (HTTP `GET /projects/:id/situation`, MCP `get_situation`) lists what needs a person's
+attention: open decisions with their alternatives, open questions, pending proposals, freshness
+counts and the first 100 stale claims. It is computed on read. Pending proposals are listed as they
+are now, whatever revision is asked for.
+
 ## Navigator output
 
 A Navigator run (HTTP only, started by a person) ends in one pending proposal by the Navigator

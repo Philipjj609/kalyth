@@ -162,3 +162,43 @@ export const FreshnessResult = z.object({
   summary: z.record(z.string(), z.int()),
 })
 export type FreshnessResult = z.infer<typeof FreshnessResult>
+
+/**
+ * What needs a person's attention at a revision, computed deterministically (ADR 0010): open
+ * decisions with their alternatives, open questions, pending proposals and stale claims. The
+ * Navigator and agents read it; models summarise it but never invent it.
+ */
+export const SituationQuery = z.object({ projectId: ProjectId, revision })
+export const Situation = z.object({
+  projectId: ProjectId,
+  revision: z.int().min(0),
+  openDecisions: z.array(
+    z.object({
+      id: ObjectId,
+      title: z.string(),
+      alternatives: z.array(z.object({ id: ObjectId, title: z.string(), status: z.string() })),
+    }),
+  ),
+  openQuestions: z.array(
+    z.object({
+      id: ObjectId,
+      text: z.string(),
+      inquiryRole: z.string(),
+      concerns: z.array(ObjectId),
+    }),
+  ),
+  pendingProposals: z.array(
+    z.object({
+      id: ProposalId,
+      proposedBy: PrincipalId,
+      origin: InstructionOrigin,
+      createdAt: z.iso.datetime(),
+      operations: z.int().min(0),
+      rationale: z.string(),
+    }),
+  ),
+  freshness: z.record(z.string(), z.int()),
+  /** The first 100 claims that are stale or derived-stale. */
+  staleClaims: z.array(ClaimFreshness),
+})
+export type Situation = z.infer<typeof Situation>

@@ -138,6 +138,15 @@ export function buildHttpApp(
       }),
     ),
   )
+  app.get('/api/v1/projects/:projectId/situation', async (req, reply) =>
+    send(
+      reply,
+      services.getSituation(caller, {
+        projectId: params(req).projectId,
+        ...revisionOf(query(req)),
+      }),
+    ),
+  )
   app.get('/api/v1/projects/:projectId/impact', async (req, reply) => {
     const q = query(req)
     return send(
