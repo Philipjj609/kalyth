@@ -20,7 +20,8 @@
     "dev:server": "pnpm --filter @kalyth/server dev",
     "ingest": "node apps/server/src/cli/ingest.ts",
     "dev:web": "pnpm --filter @kalyth/web dev",
-    "dev:seed": "pnpm --filter @kalyth/server exec node src/dev/seed.ts"
+    "dev:seed": "pnpm --filter @kalyth/server exec node src/dev/seed.ts",
+    "budget": "node apps/server/src/cli/budget.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

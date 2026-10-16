@@ -5,6 +5,7 @@ import {
   EvidenceQuery,
   FreshnessQuery,
   HistoryQuery,
+  ImpactQuery,
   ObjectQuery,
   ProjectRef,
   ProposalListQuery,
@@ -100,6 +101,15 @@ export const TOOLS: readonly ToolSpec[] = [
     input: FreshnessQuery,
     readOnly: true,
     run: (s, c, i) => s.assessFreshness(c, i),
+  },
+  {
+    name: 'analyze_impact',
+    title: 'Analyze impact',
+    description:
+      'Elements a change to the seed elements may affect, each with a typed path (relation, direction, rule). Deterministic: it follows the impact rule declared by each relation type, plus "a module defines its endpoints and data entities". It is a dependency trace, not a prediction; check freshness of the relations it walks.',
+    input: ImpactQuery,
+    readOnly: true,
+    run: (s, c, i) => s.analyzeImpact(c, i),
   },
   {
     name: 'propose_change',

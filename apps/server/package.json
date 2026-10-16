@@ -8,12 +8,15 @@
   "scripts": {
     "dev": "node src/http/main.ts",
     "mcp:stdio": "node src/mcp/stdio.ts",
-    "ingest": "node src/cli/ingest.ts"
+    "ingest": "node src/cli/ingest.ts",
+    "budget": "node src/cli/budget.ts"
   },
   "dependencies": {
     "@kalyth/analyzer": "workspace:*",
     "@kalyth/contracts": "workspace:*",
     "@kalyth/core": "workspace:*",
+    "@kalyth/gateway": "workspace:*",
+    "@kalyth/navigator": "workspace:*",
     "@modelcontextprotocol/server": "^2.3.1",
     "fastify": "^5.12.7",
     "zod": "^4.6.7"

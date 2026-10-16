@@ -1,4 +1,6 @@
 import { ensureLocalAgent, ensureLocalOwner, KalythServices, SqliteStore } from '@kalyth/core'
+import { BudgetLedger, DEFAULT_ROLE_MODELS, MockProvider, ProviderGateway } from '@kalyth/gateway'
+import { Navigator, navigatorMockResponder } from '@kalyth/navigator'
 import { Client } from '@modelcontextprotocol/client'
 import { InMemoryTransport } from '@modelcontextprotocol/server'
 import { buildHttpApp } from '../src/http/app.ts'
@@ -12,7 +14,17 @@ export async function harness() {
   const services = new KalythServices({ store: new SqliteStore(':memory:') })
   const owner = ensureLocalOwner(services)
   const agent = ensureLocalAgent(services)
-  const app = buildHttpApp(services, { token: TOKEN, principalId: owner.id, allowedHosts: [HOST] })
+  const gateway = new ProviderGateway({
+    provider: new MockProvider(navigatorMockResponder),
+    ledger: new BudgetLedger(':memory:'),
+    roleModels: DEFAULT_ROLE_MODELS.mock ?? {},
+  })
+  const navigator = new Navigator({ services, gateway })
+  const app = buildHttpApp(
+    services,
+    { token: TOKEN, principalId: owner.id, allowedHosts: [HOST] },
+    { navigator },
+  )
 
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
   const mcpServer = createKalythMcpServer(services, agent.id)
@@ -20,7 +32,7 @@ export async function harness() {
   const client = new Client({ name: 'kalyth-test', version: '0.0.0' })
   await client.connect(clientSide)
 
-  const http = async (method: 'GET' | 'POST', url: string, payload?: unknown) => {
+  const http = async (method: 'GET' | 'POST' | 'PUT', url: string, payload?: unknown) => {
     const res = await app.inject({
       method,
       url,
@@ -40,7 +52,7 @@ export async function harness() {
     await client.close()
     await app.close()
   }
-  return { services, owner, agent, app, client, http, mcp, close }
+  return { services, owner, agent, navigator, app, client, http, mcp, close }
 }
 
 export const stated = { basis: 'stated' }

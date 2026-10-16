@@ -58,6 +58,27 @@ of each analysed file. `assessFreshness` (HTTP `GET /projects/:id/freshness`, MC
 `assess_freshness`) reports each claim as `current`, `weakened`, `stale`, `derived-stale`,
 `unknown` or `not-applicable`. It is computed on read and never changes state (ADR 0009).
 
+## Impact
+
+`analyzeImpact` (HTTP `GET /projects/:id/impact?seed=...`, MCP `analyze_impact`) walks active
+relations from seed elements in the direction each type's `impact` rule declares. It also follows
+`contains` from an endpoint or data entity up to the module that defines it. Every reached element
+carries a shortest typed path and its nearest seed. The result is deterministic and bounded by depth
+and node count (ADR 0010).
+
+## Navigator output
+
+A Navigator run (HTTP only, started by a person) ends in one pending proposal by the Navigator
+principal, which may only read and propose:
+
+- **Summaries:** `core.Assertion` records with `concerns` relations.
+- **Alternatives:** a `core.Decision`, its `core.Alternative` records (`alternativeOf`), `impacts`
+  relations from an alternative to the elements it changes directly (`properties.change`), and
+  `core.Question` records (`concerns`).
+
+Every claim is `inferred`, with model provenance, confidence and validated citations as support
+(ADR 0010).
+
 ## Proposal lifecycle
 
 `pending` → `committed` | `rejected` | `stale` | `conflicting`; `invalid` when validation fails at

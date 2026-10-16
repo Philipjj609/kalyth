@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import { type Caller, HTTP_STATUS, type KernelError, type Result } from '@kalyth/contracts'
 import { type KalythServices, SCHEMA_VERSION } from '@kalyth/core'
+import type { Navigator } from '@kalyth/navigator'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 
 export interface HttpAuth {
@@ -19,7 +20,11 @@ type Query = Record<string, string | string[] | undefined>
  * rebinding or cross-origin requests. Authenticated requests act for the owner with origin "human",
  * because the token is only handed to the first-party UI.
  */
-export function buildHttpApp(services: KalythServices, auth: HttpAuth): FastifyInstance {
+export function buildHttpApp(
+  services: KalythServices,
+  auth: HttpAuth,
+  options: { navigator?: Navigator } = {},
+): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 })
   const allowedOrigins = new Set(auth.allowedHosts.map((h) => `http://${h}`))
 
@@ -133,6 +138,19 @@ export function buildHttpApp(services: KalythServices, auth: HttpAuth): FastifyI
       }),
     ),
   )
+  app.get('/api/v1/projects/:projectId/impact', async (req, reply) => {
+    const q = query(req)
+    return send(
+      reply,
+      services.analyzeImpact(caller, {
+        projectId: params(req).projectId,
+        ...revisionOf(q),
+        seeds: list('seeds', q.seed).seeds ?? [],
+        ...(one(q.maxDepth) === undefined ? {} : { maxDepth: Number(one(q.maxDepth)) }),
+        ...(one(q.maxNodes) === undefined ? {} : { maxNodes: Number(one(q.maxNodes)) }),
+      }),
+    )
+  })
   app.get('/api/v1/projects/:projectId/proposals', async (req, reply) => {
     const q = query(req)
     return send(
@@ -167,6 +185,40 @@ export function buildHttpApp(services: KalythServices, auth: HttpAuth): FastifyI
       }),
     ),
   )
+
+  const navigator = options.navigator
+  if (navigator) {
+    // Navigator runs may spend money, so only this first-party UI (acting for the owner) starts
+    // them; MCP has no such tool (ADR 0010).
+    app.get('/api/v1/projects/:projectId/navigator', async (req, reply) =>
+      send(reply, navigator.status(caller, { projectId: params(req).projectId })),
+    )
+    app.put('/api/v1/projects/:projectId/navigator/consent', async (req, reply) =>
+      send(
+        reply,
+        navigator.setConsent(caller, {
+          projectId: params(req).projectId,
+          granted: body(req).granted,
+        }),
+      ),
+    )
+    app.post('/api/v1/projects/:projectId/navigator/runs', async (req, reply) => {
+      const started = navigator.start(caller, { ...body(req), projectId: params(req).projectId })
+      if (!started.ok) return sendError(reply, HTTP_STATUS[started.error.code], started.error)
+      // The run continues after the response; its record says how it ended.
+      started.value.done.catch(() => {})
+      return reply.code(202).send(started.value.run)
+    })
+    app.get('/api/v1/projects/:projectId/navigator/runs', async (req, reply) =>
+      send(
+        reply,
+        navigator.listRuns(caller, { projectId: params(req).projectId, ...limitOf(query(req)) }),
+      ),
+    )
+    app.get('/api/v1/navigator/runs/:runId', async (req, reply) =>
+      send(reply, navigator.getRun(caller, { runId: params(req).runId })),
+    )
+  }
 
   return app
 }

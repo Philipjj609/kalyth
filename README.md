@@ -33,9 +33,17 @@ Phase 1, first vertical slice. What exists and is tested today:
   evidence, proposal review with commit and reject, and revision history. Light and dark themes,
   keyboard navigation.
 
-Not built yet: the Navigator and NVIDIA Nemotron inference through Nebius Token Factory, context
-packages and task handoff. They are planned for the next gates; this README will say when each one
-works. No hosted demo exists yet.
+- **Impact traversal**: from any elements, the elements a change may affect, each with a typed
+  path, following the impact rule declared by each relation type (HTTP and MCP `analyze_impact`).
+- **Navigator (mock provider so far)**: grounded summaries of an element, and alternatives for a
+  change request with the elements each one changes directly. Every citation is checked against the
+  pinned source text and fabricated ones are rejected; everything becomes a proposal for a person
+  to review. Model calls go through one gateway with a persistent spend cap.
+
+Not working yet: real NVIDIA Nemotron inference through Nebius Token Factory. The adapter is built
+and tested without network access, but no call has been made until a budget is approved. Context
+packages and task handoff are also still to come. This README will say when each one works. No
+hosted demo exists yet.
 
 ## Quick start
 
@@ -63,6 +71,32 @@ pnpm ingest --repo https://github.com/fastapi/full-stack-fastapi-template --ref 
 The second run advances the project's source snapshot; claims whose evidence changed are refreshed
 or reported stale (`GET /api/v1/projects/:id/freshness`, MCP `assess_freshness`).
 
+### Navigator and model providers
+
+The Navigator uses a local mock provider by default: it is free, deterministic and labels everything
+it produces as mock output. Start a run from the UI, or over HTTP with
+`POST /api/v1/projects/:id/navigator/runs`.
+
+Real inference uses NVIDIA Nemotron models on Nebius Token Factory. Every call passes through a
+gateway that refuses it unless all three of these hold:
+
+- the model is in the price catalogue;
+- the project has consented to sending content to the provider;
+- a spend ledger can reserve the call's worst-case cost under the cap.
+
+The ledger lives in `~/.kalyth/ledger.sqlite` (override with `KALYTH_LEDGER`). Without a cap, no
+paid call is possible.
+
+```bash
+pnpm budget                                   # show cap, spend and remaining budget
+pnpm budget set 0.50 --note "approval reference"
+```
+
+To use Nebius, copy `.env.example` to `.env` (git-ignored), set `KALYTH_PROVIDER=nebius` and your
+own `KALYTH_NEBIUS_API_KEY`, then grant consent for the project in the UI. The key stays in the
+server process; it is never sent to the browser, stored in run records or logged. See
+[ADR 0010](docs/adr/0010-provider-gateway-grounding-and-navigator.md).
+
 ### Connect a coding agent over MCP
 
 The MCP server runs over stdio. Node runs the TypeScript sources directly; no build step is needed.
@@ -82,8 +116,9 @@ args = ["/absolute/path/to/kalyth/apps/server/src/mcp/stdio.ts"]
 env = { KALYTH_DB = "/absolute/path/to/kalyth.db" }
 ```
 
-Agents get read tools and `propose_change`. There is no commit or accept tool: proposals wait for a
-person to review and commit them.
+Agents get read tools (including `analyze_impact` and `assess_freshness`) and `propose_change`.
+There is no commit or accept tool: proposals wait for a person to review and commit them. Nor is
+there a tool that spends money: Navigator runs are started by a person in the UI.
 
 ## Concepts in brief
 
@@ -105,6 +140,8 @@ The architecture decisions are in [docs/adr](docs/adr/README.md) and the kernel 
 packages/contracts   shared zod schemas and types (kernel, API, MCP)
 packages/core        semantic kernel, SQLite store, application services
 packages/analyzer    static repository analysis and ingest (tree-sitter, git objects)
+packages/gateway     provider gateway: model catalogue, spend ledger, consent, providers
+packages/navigator   grounded summaries and change alternatives, as proposals
 apps/server          HTTP API, MCP server and ingest CLI over the services
 apps/web             workbench UI (React, React Flow)
 docs/adr             architecture decision records

@@ -47,6 +47,7 @@ describe('MCP interface', () => {
     h = await harness()
     const tools = (await h.client.listTools()).tools.map((t) => t.name).sort()
     expect(tools).toEqual([
+      'analyze_impact',
       'assess_freshness',
       'describe_types',
       'get_evidence',

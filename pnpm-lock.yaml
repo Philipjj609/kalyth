@@ -38,6 +38,12 @@ importers:
       '@kalyth/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@kalyth/gateway':
+        specifier: workspace:*
+        version: link:../../packages/gateway
+      '@kalyth/navigator':
+        specifier: workspace:*
+        version: link:../../packages/navigator
       '@modelcontextprotocol/server':
         specifier: ^2.3.1
         version: 2.3.1
@@ -168,6 +174,25 @@ importers:
       '@types/better-sqlite3':
         specifier: ^9.6.0
         version: 9.6.0
+
+  packages/navigator:
+    dependencies:
+      '@kalyth/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@kalyth/core':
+        specifier: workspace:*
+        version: link:../core
+      '@kalyth/gateway':
+        specifier: workspace:*
+        version: link:../gateway
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@kalyth/analyzer':
+        specifier: workspace:*
+        version: link:../analyzer
 
 packages:
 

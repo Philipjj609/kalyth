@@ -15,3 +15,4 @@ cite those entries where a decision came from review.
 | [0007](0007-mcp-sdk-and-tool-surface.md) | MCP SDK v2 and the version 1 tool surface | Accepted |
 | [0008](0008-repository-parsing.md) | Repository parsing with tree-sitter | Accepted |
 | [0009](0009-source-snapshots-analyzer-and-freshness.md) | Source snapshots, the repository analyzer and claim freshness | Accepted |
+| [0010](0010-provider-gateway-grounding-and-navigator.md) | Provider gateway, budget ledger, grounding and the Navigator | Accepted |
