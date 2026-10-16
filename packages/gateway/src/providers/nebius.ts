@@ -30,6 +30,29 @@ export class NebiusProvider implements Provider {
     this.#fetch = options.fetch ?? fetch
   }
 
+  /** Model ids the key can use. Listing models is not billed; it confirms catalogue ids. */
+  async listModels(signal: AbortSignal): Promise<string[]> {
+    let res: Response
+    try {
+      res = await this.#fetch(`${this.#baseUrl}/models`, {
+        headers: { authorization: `Bearer ${this.#apiKey}`, accept: 'application/json' },
+        signal,
+        redirect: 'error',
+      })
+    } catch (error) {
+      throw new ProviderError(this.#scrub(`request failed: ${(error as Error).message}`))
+    }
+    const text = await res.text().catch(() => '')
+    if (!res.ok) {
+      throw new ProviderError(
+        this.#scrub(`provider answered ${res.status}: ${text.slice(0, 300)}`),
+        res.status,
+      )
+    }
+    const data = JSON.parse(text) as { data?: { id?: unknown }[] }
+    return (data.data ?? []).flatMap((m) => (typeof m.id === 'string' ? [m.id] : []))
+  }
+
   async complete(request: ChatRequest, signal: AbortSignal): Promise<ChatResponse> {
     const body: Record<string, unknown> = {
       model: request.model,

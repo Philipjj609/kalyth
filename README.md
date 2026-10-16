@@ -94,7 +94,10 @@ pnpm budget set 0.50 --note "approval reference"
 
 To use Nebius, copy `.env.example` to `.env` (git-ignored), set `KALYTH_PROVIDER=nebius` and your
 own `KALYTH_NEBIUS_API_KEY`, then grant consent for the project in the UI. The key stays in the
-server process; it is never sent to the browser, stored in run records or logged. See
+server process; it is never sent to the browser, stored in run records or logged. Once a cap is set,
+`pnpm spike --project "<name>"` checks the model ids (listing is not billed), makes one summary and
+one alternatives call, records them for replay and reports validity, citations, tokens and cost.
+Feedback on the tools is logged in [docs/feedback](docs/feedback/nebius-nvidia.md). See
 [ADR 0010](docs/adr/0010-provider-gateway-grounding-and-navigator.md).
 
 ### Connect a coding agent over MCP

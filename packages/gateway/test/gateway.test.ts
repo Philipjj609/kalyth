@@ -29,7 +29,9 @@ function fakeFetch(
   const calls: FetchArgs[] = []
   const impl = async (url: string | URL | Request, init?: RequestInit) => {
     calls.push([String(url), init ?? {}])
-    const out = respond(JSON.parse(String(init?.body)) as Record<string, unknown>)
+    const out = respond(
+      init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+    )
     if (out instanceof Error) throw out
     return new Response(JSON.stringify(out.body), { status: out.status ?? 200 })
   }
@@ -221,6 +223,14 @@ describe('Nebius provider (no network: fetch is injected)', () => {
     const out = await leaky.ask()
     expect(JSON.stringify(out)).not.toContain(FAKE_KEY)
     expect(JSON.stringify(out)).toContain('[redacted]')
+  })
+
+  it('lists model ids for the spike without sending a completion', async () => {
+    const net = fakeFetch(() => ({ body: { data: [{ id: SUPER }, { id: 'other/model' }, {}] } }))
+    const provider = new NebiusProvider({ apiKey: FAKE_KEY, fetch: net.fetch })
+    expect(await provider.listModels(AbortSignal.timeout(1000))).toEqual([SUPER, 'other/model'])
+    expect(net.calls[0]?.[0]).toBe('https://api.tokenfactory.nebius.com/v1/models')
+    expect(net.calls[0]?.[1].method).toBeUndefined()
   })
 
   it('accepts only https endpoints', () => {
