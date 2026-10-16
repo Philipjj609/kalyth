@@ -28,9 +28,14 @@ Phase 1, first vertical slice. What exists and is tested today:
   are refreshed and vanished ones are reported stale for review, along with anything derived from
   them.
 
-Not built yet: the Navigator and NVIDIA Nemotron inference through Nebius Token Factory, the
-workbench UI, context packages and task handoff. They are planned for the next gates; this README
-will say when each one works. No hosted demo exists yet.
+- **Workbench UI (first shell)**: project overview, a hierarchical graph of the model with claim
+  basis and freshness shown on every node and edge, a records table, an inspector with pinned
+  evidence, proposal review with commit and reject, and revision history. Light and dark themes,
+  keyboard navigation.
+
+Not built yet: the Navigator and NVIDIA Nemotron inference through Nebius Token Factory, context
+packages and task handoff. They are planned for the next gates; this README will say when each one
+works. No hosted demo exists yet.
 
 ## Quick start
 
@@ -39,8 +44,12 @@ Requires Node 24 and pnpm 11.
 ```bash
 pnpm install
 pnpm check          # lint, typecheck, tests
-pnpm dev:server     # HTTP API on http://127.0.0.1:4317/api/v1 (prints a session token)
+pnpm build          # build the workbench UI
+pnpm dev:server     # API and UI on 127.0.0.1:4317; open the printed http://127.0.0.1:4317/#token=... link
 ```
+
+`pnpm dev:seed` creates a small sample project; `pnpm dev:web` runs the UI with hot reload (see
+[apps/web/README.md](apps/web/README.md)).
 
 Data is stored in `.kalyth/kalyth.db` in the working directory; set `KALYTH_DB` to use another file.
 
@@ -96,7 +105,8 @@ The architecture decisions are in [docs/adr](docs/adr/README.md) and the kernel 
 packages/contracts   shared zod schemas and types (kernel, API, MCP)
 packages/core        semantic kernel, SQLite store, application services
 packages/analyzer    static repository analysis and ingest (tree-sitter, git objects)
-apps/server          HTTP API and MCP server over the services
+apps/server          HTTP API, MCP server and ingest CLI over the services
+apps/web             workbench UI (React, React Flow)
 docs/adr             architecture decision records
 ```
 

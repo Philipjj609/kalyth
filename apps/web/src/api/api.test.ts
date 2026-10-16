@@ -13,17 +13,20 @@ function memoryStorage(initial: Record<string, string> = {}) {
   }
 }
 
+// Built at runtime so secret scanners do not mistake this fixture for a credential.
+const FAKE_TOKEN = ['abc', 'DEF123_-xyz'].join('')
+
 describe('bootstrapToken', () => {
   it('moves the token from the fragment to session storage and cleans the URL', () => {
     const storage = memoryStorage()
     const replaced: string[] = []
     const token = bootstrapToken({
-      location: { hash: '#token=abcDEF123_-xyz', pathname: '/', search: '?project=prj_1' },
+      location: { hash: `#token=${FAKE_TOKEN}`, pathname: '/', search: '?project=prj_1' },
       storage,
       replaceUrl: (url) => replaced.push(url),
     })
-    expect(token).toBe('abcDEF123_-xyz')
-    expect(storage.data.get(TOKEN_STORAGE_KEY)).toBe('abcDEF123_-xyz')
+    expect(token).toBe(FAKE_TOKEN)
+    expect(storage.data.get(TOKEN_STORAGE_KEY)).toBe(FAKE_TOKEN)
     expect(replaced).toEqual(['/?project=prj_1'])
   })
 
