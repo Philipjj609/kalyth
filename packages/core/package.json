@@ -1,0 +1,19 @@
+{
+  "name": "@kalyth/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kalyth semantic kernel, SQLite store and application services.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0"
+  },
+  "dependencies": {
+    "@kalyth/contracts": "workspace:*",
+    "better-sqlite3": "^13.0.3",
+    "zod": "^4.6.7"
+  }
+}

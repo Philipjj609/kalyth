@@ -1,0 +1,29 @@
+{
+  "name": "kalyth",
+  "private": true,
+  "description": "Kalyth: a persistent, evidence-backed engineering model and decision record for people and coding agents.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <27"
+  },
+  "packageManager": "pnpm@11.6.0",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "mcp:stdio": "pnpm --filter @kalyth/server mcp:stdio",
+    "dev:server": "pnpm --filter @kalyth/server dev"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/node": "^24.19.2",
+    "fast-check": "^4.10.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  }
+}

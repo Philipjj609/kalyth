@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Dependency install scripts are blocked by default; allow only reviewed ones.
+allowBuilds:
+  esbuild: true
+  better-sqlite3: false  # ships a prebuilt binary; its install script would compile from source

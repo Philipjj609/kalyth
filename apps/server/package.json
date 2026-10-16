@@ -1,0 +1,22 @@
+{
+  "name": "@kalyth/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kalyth HTTP API and MCP server over the shared application services.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/http/main.ts",
+    "mcp:stdio": "node src/mcp/stdio.ts"
+  },
+  "dependencies": {
+    "@kalyth/contracts": "workspace:*",
+    "@kalyth/core": "workspace:*",
+    "@modelcontextprotocol/server": "^2.3.1",
+    "fastify": "^5.12.7",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.3.1"
+  }
+}

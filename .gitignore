@@ -1,0 +1,27 @@
+# Local-only agent instructions (never committed)
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local data and secrets
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.kalyth/
+
+# Tooling
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
