@@ -1,0 +1,5 @@
+export { type AnalysisResult, type AnalyzeOptions, analyzeRepository } from './analyze.ts'
+export { ANALYZER, type EvidenceSpan, type ObjectFact, type RelationFact } from './facts.ts'
+export { GitRepository, type TreeEntry } from './git.ts'
+export { IngestError, type IngestReport, ingestRepository } from './ingest.ts'
+export { type ExistingState, objectKey, type PlanStats, planIngest } from './plan.ts'

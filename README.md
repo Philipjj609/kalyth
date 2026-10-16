@@ -21,10 +21,16 @@ Phase 1, first vertical slice. What exists and is tested today:
   and a replay test proving the event log reproduces the stored state.
 - **Interfaces**: an HTTP API for the local UI and an MCP server for coding agents, both thin
   adapters over the same services.
+- **Repository analyzer**: static tree-sitter analysis of Python and TypeScript repositories
+  (modules, imports, libraries, FastAPI routes, SQLModel tables) into observed facts with evidence
+  pinned to commit, blob and line span. Nothing from the analysed repository is executed.
+- **Staleness**: a source snapshot per repository; when the repository advances, re-observed facts
+  are refreshed and vanished ones are reported stale for review, along with anything derived from
+  them.
 
-Not built yet: the repository analyzer, the Navigator and NVIDIA Nemotron inference through Nebius
-Token Factory, the workbench UI, context packages and task handoff. They are planned for the next
-gates; this README will say when each one works. No hosted demo exists yet.
+Not built yet: the Navigator and NVIDIA Nemotron inference through Nebius Token Factory, the
+workbench UI, context packages and task handoff. They are planned for the next gates; this README
+will say when each one works. No hosted demo exists yet.
 
 ## Quick start
 
@@ -37,6 +43,16 @@ pnpm dev:server     # HTTP API on http://127.0.0.1:4317/api/v1 (prints a session
 ```
 
 Data is stored in `.kalyth/kalyth.db` in the working directory; set `KALYTH_DB` to use another file.
+
+Analyse a repository (cloned bare over HTTPS into `.kalyth/repos`; never executed):
+
+```bash
+pnpm ingest --repo https://github.com/fastapi/full-stack-fastapi-template --ref 0.12.0
+pnpm ingest --repo https://github.com/fastapi/full-stack-fastapi-template --ref b1125d8839482cb7bbae603ddc6d0081bf87532e
+```
+
+The second run advances the project's source snapshot; claims whose evidence changed are refreshed
+or reported stale (`GET /api/v1/projects/:id/freshness`, MCP `assess_freshness`).
 
 ### Connect a coding agent over MCP
 
@@ -79,6 +95,7 @@ The architecture decisions are in [docs/adr](docs/adr/README.md) and the kernel 
 ```
 packages/contracts   shared zod schemas and types (kernel, API, MCP)
 packages/core        semantic kernel, SQLite store, application services
+packages/analyzer    static repository analysis and ingest (tree-sitter, git objects)
 apps/server          HTTP API and MCP server over the services
 docs/adr             architecture decision records
 ```

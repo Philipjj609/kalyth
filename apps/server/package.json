@@ -7,9 +7,11 @@
   "type": "module",
   "scripts": {
     "dev": "node src/http/main.ts",
-    "mcp:stdio": "node src/mcp/stdio.ts"
+    "mcp:stdio": "node src/mcp/stdio.ts",
+    "ingest": "node src/cli/ingest.ts"
   },
   "dependencies": {
+    "@kalyth/analyzer": "workspace:*",
     "@kalyth/contracts": "workspace:*",
     "@kalyth/core": "workspace:*",
     "@modelcontextprotocol/server": "^2.3.1",

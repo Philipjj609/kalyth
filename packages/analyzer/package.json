@@ -1,0 +1,19 @@
+{
+  "name": "@kalyth/analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Static repository analyzer: observed facts with pinned evidence, never executes analysed code.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@kalyth/contracts": "workspace:*",
+    "@kalyth/core": "workspace:*",
+    "tree-sitter-python": "0.25.0",
+    "tree-sitter-typescript": "0.23.2",
+    "web-tree-sitter": "0.27.1",
+    "zod": "^4.6.7"
+  }
+}

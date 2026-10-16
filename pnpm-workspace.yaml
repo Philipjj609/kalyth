@@ -6,3 +6,7 @@ packages:
 allowBuilds:
   esbuild: true
   better-sqlite3: false  # ships a prebuilt binary; its install script would compile from source
+  # Grammar packages ship WASM files we load with web-tree-sitter; their native builds are not needed.
+  tree-sitter-python: false
+  tree-sitter-typescript: false
+  tree-sitter-javascript: false

@@ -16,7 +16,8 @@
     "format": "biome check --write .",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "mcp:stdio": "pnpm --filter @kalyth/server mcp:stdio",
-    "dev:server": "pnpm --filter @kalyth/server dev"
+    "dev:server": "pnpm --filter @kalyth/server dev",
+    "ingest": "node apps/server/src/cli/ingest.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
