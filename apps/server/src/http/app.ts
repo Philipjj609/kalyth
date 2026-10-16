@@ -1,0 +1,194 @@
+import { timingSafeEqual } from 'node:crypto'
+import { type Caller, HTTP_STATUS, type KernelError, type Result } from '@kalyth/contracts'
+import { type KalythServices, SCHEMA_VERSION } from '@kalyth/core'
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
+
+export interface HttpAuth {
+  /** Per-launch session token for the local owner's UI. */
+  token: string
+  principalId: string
+  /** Allowed Host header values, e.g. 127.0.0.1:4317 and localhost:4317. Empty disables the check. */
+  allowedHosts: readonly string[]
+}
+
+type Query = Record<string, string | string[] | undefined>
+
+/**
+ * HTTP API v1 over the shared services (ADR 0006). Local mode binds to 127.0.0.1; requests need
+ * the session token, and Host/Origin are checked so a web page cannot reach the API through DNS
+ * rebinding or cross-origin requests. Authenticated requests act for the owner with origin "human",
+ * because the token is only handed to the first-party UI.
+ */
+export function buildHttpApp(services: KalythServices, auth: HttpAuth): FastifyInstance {
+  const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 })
+  const allowedOrigins = new Set(auth.allowedHosts.map((h) => `http://${h}`))
+
+  app.addHook('onRequest', async (req, reply) => {
+    if (auth.allowedHosts.length > 0 && !auth.allowedHosts.includes(req.headers.host ?? '')) {
+      return sendError(reply, 403, {
+        code: 'unauthorized',
+        message: 'host not allowed',
+        issues: [],
+      })
+    }
+    const origin = req.headers.origin
+    if (origin !== undefined && !allowedOrigins.has(origin)) {
+      return sendError(reply, 403, {
+        code: 'unauthorized',
+        message: 'origin not allowed',
+        issues: [],
+      })
+    }
+    if (req.url === '/api/v1/health') return
+    if (!tokenMatches(req.headers.authorization, auth.token)) {
+      return sendError(reply, 401, {
+        code: 'unauthenticated',
+        message: 'missing or invalid session token',
+        issues: [],
+      })
+    }
+  })
+
+  const caller: Caller = { principalId: auth.principalId, origin: 'human' }
+  const send = (reply: FastifyReply, result: Result<unknown>, okStatus = 200) =>
+    result.ok
+      ? reply.code(okStatus).send(result.value)
+      : sendError(reply, HTTP_STATUS[result.error.code], result.error)
+  const params = (req: FastifyRequest) => req.params as Record<string, string>
+  const query = (req: FastifyRequest) => req.query as Query
+  const body = (req: FastifyRequest) => (req.body ?? {}) as Record<string, unknown>
+
+  app.get('/api/v1/health', async () => ({ status: 'ok', schemaVersion: SCHEMA_VERSION }))
+  app.get('/api/v1/types', async (_req, reply) => send(reply, services.describeTypes(caller)))
+
+  app.get('/api/v1/projects', async (_req, reply) => send(reply, services.listProjects(caller)))
+  app.post('/api/v1/projects', async (req, reply) =>
+    send(reply, services.createProject(caller, body(req)), 201),
+  )
+  app.get('/api/v1/projects/:projectId', async (req, reply) =>
+    send(
+      reply,
+      services.getProjectOverview(caller, {
+        projectId: params(req).projectId,
+        ...revisionOf(query(req)),
+      }),
+    ),
+  )
+  app.get('/api/v1/projects/:projectId/objects', async (req, reply) => {
+    const q = query(req)
+    return send(
+      reply,
+      services.queryObjects(caller, {
+        projectId: params(req).projectId,
+        ...revisionOf(q),
+        ...list('types', q.type),
+        ...list('ids', q.id),
+        ...flagsOf(q),
+      }),
+    )
+  })
+  app.get('/api/v1/projects/:projectId/relations', async (req, reply) => {
+    const q = query(req)
+    return send(
+      reply,
+      services.queryRelations(caller, {
+        projectId: params(req).projectId,
+        ...revisionOf(q),
+        ...list('types', q.type),
+        ...list('ids', q.id),
+        ...(typeof q.from === 'string' ? { from: q.from } : {}),
+        ...(typeof q.to === 'string' ? { to: q.to } : {}),
+        ...flagsOf(q),
+      }),
+    )
+  })
+  app.get('/api/v1/projects/:projectId/evidence', async (req, reply) =>
+    send(
+      reply,
+      services.getEvidence(caller, {
+        projectId: params(req).projectId,
+        ...list('ids', query(req).id),
+      }),
+    ),
+  )
+  app.get('/api/v1/projects/:projectId/history', async (req, reply) =>
+    send(
+      reply,
+      services.getHistory(caller, { projectId: params(req).projectId, ...limitOf(query(req)) }),
+    ),
+  )
+  app.get('/api/v1/projects/:projectId/proposals', async (req, reply) => {
+    const q = query(req)
+    return send(
+      reply,
+      services.listProposals(caller, {
+        projectId: params(req).projectId,
+        ...(typeof q.status === 'string' ? { status: q.status } : {}),
+        ...limitOf(q),
+      }),
+    )
+  })
+  app.post('/api/v1/projects/:projectId/proposals', async (req, reply) => {
+    const result = services.proposeChange(caller, {
+      ...body(req),
+      projectId: params(req).projectId,
+    })
+    if (result.ok && result.value.status === 'invalid') return reply.code(422).send(result.value)
+    return send(reply, result, 201)
+  })
+  app.get('/api/v1/proposals/:proposalId', async (req, reply) =>
+    send(reply, services.getProposal(caller, { proposalId: params(req).proposalId })),
+  )
+  app.post('/api/v1/proposals/:proposalId/commit', async (req, reply) =>
+    send(reply, services.commitProposal(caller, { proposalId: params(req).proposalId })),
+  )
+  app.post('/api/v1/proposals/:proposalId/reject', async (req, reply) =>
+    send(
+      reply,
+      services.rejectProposal(caller, {
+        proposalId: params(req).proposalId,
+        reason: body(req).reason,
+      }),
+    ),
+  )
+
+  return app
+}
+
+function sendError(reply: FastifyReply, status: number, error: KernelError) {
+  return reply.code(status).send({ error })
+}
+
+function tokenMatches(header: string | undefined, token: string): boolean {
+  if (!header?.startsWith('Bearer ')) return false
+  const given = Buffer.from(header.slice('Bearer '.length))
+  const expected = Buffer.from(token)
+  return given.length === expected.length && timingSafeEqual(given, expected)
+}
+
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)
+
+function revisionOf(q: Query): { revision?: number } {
+  const v = one(q.revision)
+  return v === undefined ? {} : { revision: Number(v) }
+}
+
+function limitOf(q: Query): { limit?: number } {
+  const v = one(q.limit)
+  return v === undefined ? {} : { limit: Number(v) }
+}
+
+function flagsOf(q: Query): { includeRetired?: boolean; limit?: number } {
+  const retired = one(q.includeRetired)
+  return { ...(retired === undefined ? {} : { includeRetired: retired === 'true' }), ...limitOf(q) }
+}
+
+/** Accepts repeated parameters and comma-separated values. */
+function list<K extends string>(
+  key: K,
+  v: string | string[] | undefined,
+): Partial<Record<K, string[]>> {
+  if (v === undefined) return {}
+  const values = (Array.isArray(v) ? v : [v]).flatMap((s) => s.split(',')).filter(Boolean)
+  return { [key]: values } as Partial<Record<K, string[]>>
+}
