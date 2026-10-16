@@ -96,10 +96,16 @@ describe('static analysis', () => {
     })
     const spans = [...result.objects, ...result.relations].flatMap((f) => f.supports.flat())
     expect(spans.length).toBeGreaterThan(30)
+    // One git call per file, not per span: process spawns are slow on Windows runners.
+    const blobs = new Map<string, string>()
+    const contents = new Map<string, string>()
+    const once = <T>(cache: Map<string, T>, key: string, load: () => T): T => {
+      if (!cache.has(key)) cache.set(key, load())
+      return cache.get(key) as T
+    }
     for (const span of spans) {
-      expect(span.blobSha).toBe(fixture.blob(v1, span.path))
-      const text = fixture
-        .show(v1, span.path)
+      expect(span.blobSha).toBe(once(blobs, span.path, () => fixture.blob(v1, span.path)))
+      const text = once(contents, span.path, () => fixture.show(v1, span.path))
         .split(/\r?\n/)
         .slice(span.startLine - 1, span.endLine)
         .join('\n')
