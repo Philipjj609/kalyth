@@ -12,6 +12,8 @@ import {
   HistoryQuery,
   type HistoryResult,
   HUMAN_ONLY_SCOPES,
+  ImpactQuery,
+  type ImpactResult,
   type Issue,
   type KernelError,
   ObjectQuery,
@@ -35,6 +37,7 @@ import {
 import type { z } from 'zod'
 import { applyOperations } from '../kernel/apply.ts'
 import { assessFreshness } from '../kernel/freshness.ts'
+import { traceImpact } from '../kernel/impact.ts'
 import { predicateFingerprint } from '../kernel/predicates.ts'
 import { readSetOf, resolveOperations, writeSetOf } from '../kernel/resolve.ts'
 import { findSecretRule } from '../kernel/secrets.ts'
@@ -250,6 +253,31 @@ export class KalythServices {
       claims,
       summary,
     })
+  }
+
+  /**
+   * Elements a change to the seeds may affect, with typed paths (ADR 0010). Deterministic and
+   * read-only: it follows each relation type's declared impact rule, never a model's guess.
+   */
+  analyzeImpact(caller: unknown, input: unknown): Result<ImpactResult> {
+    const r = this.#readable(caller, ImpactQuery, input)
+    if (!r.ok) return r
+    const { project, revision, input: q } = r.value
+    const seeds = [...new Set(q.seeds)]
+    const objects = this.store.objectsAt(project.id, revision, {})
+    const active = new Set(objects.map((o) => o.id))
+    const missing = seeds.filter((id) => !active.has(id))
+    if (missing.length > 0) {
+      return fail('not_found', `no active element ${missing.join(', ')} at revision ${revision}`)
+    }
+    const trace = traceImpact(
+      objects,
+      this.store.relationsAt(project.id, revision, {}),
+      this.registry,
+      seeds,
+      { maxDepth: q.maxDepth, maxNodes: q.maxNodes },
+    )
+    return ok({ projectId: project.id, revision, seeds, ...trace })
   }
 
   describeTypes(caller: unknown): Result<ReturnType<TypeRegistry['describe']>> {

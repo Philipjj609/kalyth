@@ -15,6 +15,7 @@ export const ID_PREFIX = {
   event: 'evt',
   principal: 'pcp',
   grant: 'grt',
+  navigatorRun: 'nav',
 } as const
 
 export type IdKind = keyof typeof ID_PREFIX
@@ -32,6 +33,7 @@ export const ChangeSetId = idSchema('changeSet')
 export const EventId = idSchema('event')
 export const PrincipalId = idSchema('principal')
 export const GrantId = idSchema('grant')
+export const NavigatorRunId = idSchema('navigatorRun')
 
 /** Claims are carried by objects and relations, so a claim id is either. */
 export const ClaimId = z.union([ObjectId, RelationId])

@@ -293,6 +293,16 @@ export const relationTypes: RelationTypeDef[] = [
   },
   {
     ...base,
+    type: 'impacts',
+    pack: 'core',
+    description:
+      'Choosing the alternative changes the target directly; properties.change says how. Propagated impact is computed by traversal, not stored (ADR 0010).',
+    from: ['core.Alternative'],
+    to: SOFTWARE_ELEMENTS,
+    impact: 'none',
+  },
+  {
+    ...base,
     type: 'supersedes',
     pack: 'core',
     description: 'The source decision replaces the target decision.',

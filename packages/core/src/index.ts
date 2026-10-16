@@ -8,6 +8,7 @@ export {
 export { type ApplyOutcome, applyOperations } from './kernel/apply.ts'
 export { isClaimSupported, validateClaim } from './kernel/claims.ts'
 export { assessFreshness, type SnapshotState } from './kernel/freshness.ts'
+export { elementLabel, type ImpactTrace, traceImpact } from './kernel/impact.ts'
 export { predicateFingerprint } from './kernel/predicates.ts'
 export { findSecretRule } from './kernel/secrets.ts'
 export { OverlayState, type StateView } from './kernel/state.ts'
