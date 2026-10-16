@@ -1,10 +1,18 @@
 import { randomBytes } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { ensureLocalOwner } from '@kalyth/core'
 import { openLocalServices } from '../runtime.ts'
 import { buildHttpApp } from './app.ts'
+import { registerWebUi } from './static.ts'
 
-// Local HTTP API. Binds to loopback only; the session token changes on every launch.
+// Local HTTP API and workbench UI. Binds to loopback only; the session token changes on every
+// launch. The UI receives it in the URL fragment, which browsers never send to the server.
 const port = Number(process.env.KALYTH_PORT ?? 4317)
+const webRoot = resolve(
+  process.env.KALYTH_WEB_DIST ?? fileURLToPath(new URL('../../../web/dist', import.meta.url)),
+)
 const services = openLocalServices()
 const owner = ensureLocalOwner(services)
 const token = randomBytes(24).toString('base64url')
@@ -13,5 +21,14 @@ const app = buildHttpApp(services, {
   principalId: owner.id,
   allowedHosts: [`127.0.0.1:${port}`, `localhost:${port}`],
 })
+registerWebUi(app, { root: webRoot })
 await app.listen({ host: '127.0.0.1', port })
-process.stderr.write(`kalyth api: http://127.0.0.1:${port}/api/v1 (session token: ${token})\n`)
+process.stderr.write(`kalyth api: http://127.0.0.1:${port}/api/v1\n`)
+if (existsSync(join(webRoot, 'index.html'))) {
+  process.stderr.write(`kalyth ui:  http://127.0.0.1:${port}/#token=${token}\n`)
+} else {
+  process.stderr.write(
+    `kalyth ui:  not built (run \`pnpm build\`); session token: ${token}\n` +
+      `            dev UI: http://127.0.0.1:5173/#token=${token} (pnpm dev:web)\n`,
+  )
+}

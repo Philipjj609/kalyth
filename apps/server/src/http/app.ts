@@ -39,7 +39,14 @@ export function buildHttpApp(services: KalythServices, auth: HttpAuth): FastifyI
         issues: [],
       })
     }
-    if (req.url === '/api/v1/health') return
+    // The token guards the API only; the UI shell and its assets are public. The routed pattern is
+    // checked as well as the raw path, so an encoded path that routes to the API still needs it.
+    const route = req.routeOptions.url
+    if (route === '/api/v1/health') return
+    const underApi = (p: string) => p === '/api' || p.startsWith('/api/')
+    if (!underApi(req.url.split('?', 1)[0] ?? '') && !(route !== undefined && underApi(route))) {
+      return
+    }
     if (!tokenMatches(req.headers.authorization, auth.token)) {
       return sendError(reply, 401, {
         code: 'unauthenticated',
