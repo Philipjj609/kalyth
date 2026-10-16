@@ -1,0 +1,512 @@
+@import "tailwindcss";
+
+/*
+ * Kalyth design tokens. Raw values live in --k-* custom properties, switched by theme; Tailwind
+ * utilities (bg-surface, text-fg-muted, border-border, ...) reference them through @theme inline.
+ * Status tones set --tone-fg/--tone-bg/--tone-bd via .tone-* classes, so a badge is one component
+ * whatever it encodes. Colour always reinforces a text label; it never carries meaning alone.
+ */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.05rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@theme inline {
+  --color-bg: var(--k-bg);
+  --color-surface: var(--k-surface);
+  --color-surface-2: var(--k-surface-2);
+  --color-surface-3: var(--k-surface-3);
+  --color-border: var(--k-border);
+  --color-border-strong: var(--k-border-strong);
+  --color-fg: var(--k-fg);
+  --color-fg-muted: var(--k-fg-muted);
+  --color-fg-subtle: var(--k-fg-subtle);
+  --color-accent: var(--k-accent);
+  --color-accent-hover: var(--k-accent-hover);
+  --color-accent-fg: var(--k-accent-fg);
+  --color-accent-soft: var(--k-accent-soft);
+  --color-focus: var(--k-focus);
+  --color-canvas: var(--k-canvas);
+  --color-tone-fg: var(--tone-fg);
+  --color-tone-bg: var(--tone-bg);
+  --color-tone-bd: var(--tone-bd);
+  --shadow-panel: var(--k-shadow);
+  --shadow-pop: var(--k-shadow-lg);
+}
+
+:root {
+  color-scheme: light;
+  --k-bg: #f5f6f8;
+  --k-surface: #ffffff;
+  --k-surface-2: #f3f4f7;
+  --k-surface-3: #e9ecf1;
+  --k-border: #e1e5eb;
+  --k-border-strong: #cbd1da;
+  --k-fg: #151922;
+  --k-fg-muted: #4f5766;
+  --k-fg-subtle: #737c8c;
+  --k-accent: #3651d4;
+  --k-accent-hover: #2c45bd;
+  --k-accent-fg: #ffffff;
+  --k-accent-soft: #edf0ff;
+  --k-focus: #4466ee;
+  --k-canvas: #f7f8fa;
+  --k-canvas-dot: #d3d8e0;
+  --k-shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.07);
+  --k-shadow-lg: 0 10px 30px -6px rgb(16 24 40 / 0.18), 0 2px 6px rgb(16 24 40 / 0.06);
+
+  --k-tone-neutral-fg: #4b5363;
+  --k-tone-neutral-bg: #f0f2f5;
+  --k-tone-neutral-bd: #d9dee5;
+  --k-tone-accent-fg: #3042ad;
+  --k-tone-accent-bg: #edf0ff;
+  --k-tone-accent-bd: #c7d0fa;
+  --k-tone-success-fg: #17693b;
+  --k-tone-success-bg: #e8f6ee;
+  --k-tone-success-bd: #b3dfc4;
+  --k-tone-warning-fg: #855400;
+  --k-tone-warning-bg: #fff5dc;
+  --k-tone-warning-bd: #efd28c;
+  --k-tone-caution-fg: #9c3c09;
+  --k-tone-caution-bg: #ffefe4;
+  --k-tone-caution-bd: #f3c4a2;
+  --k-tone-danger-fg: #b0221a;
+  --k-tone-danger-bg: #fdebe9;
+  --k-tone-danger-bd: #f3bfba;
+  --k-tone-observed-fg: #0b6662;
+  --k-tone-observed-bg: #e4f5f3;
+  --k-tone-observed-bd: #a5dbd6;
+  --k-tone-inferred-fg: #6738b9;
+  --k-tone-inferred-bg: #f3ecfd;
+  --k-tone-inferred-bd: #d3c0f4;
+  --k-tone-stated-fg: #2a5498;
+  --k-tone-stated-bg: #e9f0fb;
+  --k-tone-stated-bd: #b9cdec;
+  --k-tone-imported-fg: #73542a;
+  --k-tone-imported-bg: #f7f0e5;
+  --k-tone-imported-bd: #dfcbab;
+
+  --k-rel-contains: #a3abb8;
+  --k-rel-dependsOn: #5470a8;
+  --k-rel-exposes: #0c8584;
+  --k-rel-reads: #2b8546;
+  --k-rel-writes: #c0561a;
+  --k-rel-realizes: #8656e8;
+  --k-rel-satisfies: #0f766e;
+  --k-rel-constrains: #b42318;
+  --k-rel-decides: #bc1a5c;
+  --k-rel-alternativeOf: #b27419;
+  --k-rel-concerns: #64748b;
+  --k-rel-other: #8a93a3;
+
+  --k-type-system: #334155;
+  --k-type-container: #3651d4;
+  --k-type-module: #64748b;
+  --k-type-endpoint: #0c8584;
+  --k-type-data: #2b8546;
+  --k-type-library: #8a6a3a;
+  --k-type-snapshot: #6b7280;
+  --k-type-decision: #bc1a5c;
+  --k-type-requirement: #b42318;
+  --k-type-other: #8a93a3;
+}
+
+/* Dark values, applied by the system preference before the app sets data-theme, and by choice. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --k-bg: #0c0f15;
+    --k-surface: #131720;
+    --k-surface-2: #191e29;
+    --k-surface-3: #212735;
+    --k-border: #252b37;
+    --k-border-strong: #343c4c;
+    --k-fg: #e5e8ee;
+    --k-fg-muted: #a2aab8;
+    --k-fg-subtle: #7a8394;
+    --k-accent: #7d95ff;
+    --k-accent-hover: #95a8ff;
+    --k-accent-fg: #0b0e14;
+    --k-accent-soft: #1a2142;
+    --k-focus: #8fa3ff;
+    --k-canvas: #0e1219;
+    --k-canvas-dot: #252c39;
+    --k-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+    --k-shadow-lg: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 6px rgb(0 0 0 / 0.3);
+    --k-tone-neutral-fg: #b6bdcb;
+    --k-tone-neutral-bg: #1c212c;
+    --k-tone-neutral-bd: #313948;
+    --k-tone-accent-fg: #aebcff;
+    --k-tone-accent-bg: #1a2142;
+    --k-tone-accent-bd: #33407a;
+    --k-tone-success-fg: #72d59c;
+    --k-tone-success-bg: #10251a;
+    --k-tone-success-bd: #1f4a31;
+    --k-tone-warning-fg: #f0c25b;
+    --k-tone-warning-bg: #282110;
+    --k-tone-warning-bd: #574616;
+    --k-tone-caution-fg: #f5a46d;
+    --k-tone-caution-bg: #2b1b10;
+    --k-tone-caution-bd: #5a3417;
+    --k-tone-danger-fg: #ff8f85;
+    --k-tone-danger-bg: #2c1414;
+    --k-tone-danger-bd: #5c2521;
+    --k-tone-observed-fg: #62d3cc;
+    --k-tone-observed-bg: #0e2423;
+    --k-tone-observed-bd: #1c4845;
+    --k-tone-inferred-fg: #c5a8ff;
+    --k-tone-inferred-bg: #1f1932;
+    --k-tone-inferred-bd: #41346a;
+    --k-tone-stated-fg: #91b7f3;
+    --k-tone-stated-bg: #131f33;
+    --k-tone-stated-bd: #2a4168;
+    --k-tone-imported-fg: #d8b98b;
+    --k-tone-imported-bg: #251e13;
+    --k-tone-imported-bd: #4b3c25;
+    --k-rel-contains: #5d6677;
+    --k-rel-dependsOn: #7f9bd6;
+    --k-rel-exposes: #3cc0bb;
+    --k-rel-reads: #5cc47a;
+    --k-rel-writes: #f08a4b;
+    --k-rel-realizes: #a988ff;
+    --k-rel-satisfies: #3fb5aa;
+    --k-rel-constrains: #ff7a70;
+    --k-rel-decides: #f0679c;
+    --k-rel-alternativeOf: #e3a64a;
+    --k-rel-concerns: #94a3b8;
+    --k-rel-other: #8a93a3;
+    --k-type-system: #c3cad6;
+    --k-type-container: #7d95ff;
+    --k-type-module: #94a3b8;
+    --k-type-endpoint: #3cc0bb;
+    --k-type-data: #5cc47a;
+    --k-type-library: #d1a865;
+    --k-type-snapshot: #9ca3af;
+    --k-type-decision: #f0679c;
+    --k-type-requirement: #ff7a70;
+    --k-type-other: #8a93a3;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --k-bg: #0c0f15;
+  --k-surface: #131720;
+  --k-surface-2: #191e29;
+  --k-surface-3: #212735;
+  --k-border: #252b37;
+  --k-border-strong: #343c4c;
+  --k-fg: #e5e8ee;
+  --k-fg-muted: #a2aab8;
+  --k-fg-subtle: #7a8394;
+  --k-accent: #7d95ff;
+  --k-accent-hover: #95a8ff;
+  --k-accent-fg: #0b0e14;
+  --k-accent-soft: #1a2142;
+  --k-focus: #8fa3ff;
+  --k-canvas: #0e1219;
+  --k-canvas-dot: #252c39;
+  --k-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  --k-shadow-lg: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 6px rgb(0 0 0 / 0.3);
+  --k-tone-neutral-fg: #b6bdcb;
+  --k-tone-neutral-bg: #1c212c;
+  --k-tone-neutral-bd: #313948;
+  --k-tone-accent-fg: #aebcff;
+  --k-tone-accent-bg: #1a2142;
+  --k-tone-accent-bd: #33407a;
+  --k-tone-success-fg: #72d59c;
+  --k-tone-success-bg: #10251a;
+  --k-tone-success-bd: #1f4a31;
+  --k-tone-warning-fg: #f0c25b;
+  --k-tone-warning-bg: #282110;
+  --k-tone-warning-bd: #574616;
+  --k-tone-caution-fg: #f5a46d;
+  --k-tone-caution-bg: #2b1b10;
+  --k-tone-caution-bd: #5a3417;
+  --k-tone-danger-fg: #ff8f85;
+  --k-tone-danger-bg: #2c1414;
+  --k-tone-danger-bd: #5c2521;
+  --k-tone-observed-fg: #62d3cc;
+  --k-tone-observed-bg: #0e2423;
+  --k-tone-observed-bd: #1c4845;
+  --k-tone-inferred-fg: #c5a8ff;
+  --k-tone-inferred-bg: #1f1932;
+  --k-tone-inferred-bd: #41346a;
+  --k-tone-stated-fg: #91b7f3;
+  --k-tone-stated-bg: #131f33;
+  --k-tone-stated-bd: #2a4168;
+  --k-tone-imported-fg: #d8b98b;
+  --k-tone-imported-bg: #251e13;
+  --k-tone-imported-bd: #4b3c25;
+  --k-rel-contains: #5d6677;
+  --k-rel-dependsOn: #7f9bd6;
+  --k-rel-exposes: #3cc0bb;
+  --k-rel-reads: #5cc47a;
+  --k-rel-writes: #f08a4b;
+  --k-rel-realizes: #a988ff;
+  --k-rel-satisfies: #3fb5aa;
+  --k-rel-constrains: #ff7a70;
+  --k-rel-decides: #f0679c;
+  --k-rel-alternativeOf: #e3a64a;
+  --k-rel-concerns: #94a3b8;
+  --k-rel-other: #8a93a3;
+  --k-type-system: #c3cad6;
+  --k-type-container: #7d95ff;
+  --k-type-module: #94a3b8;
+  --k-type-endpoint: #3cc0bb;
+  --k-type-data: #5cc47a;
+  --k-type-library: #d1a865;
+  --k-type-snapshot: #9ca3af;
+  --k-type-decision: #f0679c;
+  --k-type-requirement: #ff7a70;
+  --k-type-other: #8a93a3;
+}
+
+.tone-neutral {
+  --tone-fg: var(--k-tone-neutral-fg);
+  --tone-bg: var(--k-tone-neutral-bg);
+  --tone-bd: var(--k-tone-neutral-bd);
+}
+.tone-accent {
+  --tone-fg: var(--k-tone-accent-fg);
+  --tone-bg: var(--k-tone-accent-bg);
+  --tone-bd: var(--k-tone-accent-bd);
+}
+.tone-success {
+  --tone-fg: var(--k-tone-success-fg);
+  --tone-bg: var(--k-tone-success-bg);
+  --tone-bd: var(--k-tone-success-bd);
+}
+.tone-warning {
+  --tone-fg: var(--k-tone-warning-fg);
+  --tone-bg: var(--k-tone-warning-bg);
+  --tone-bd: var(--k-tone-warning-bd);
+}
+.tone-caution {
+  --tone-fg: var(--k-tone-caution-fg);
+  --tone-bg: var(--k-tone-caution-bg);
+  --tone-bd: var(--k-tone-caution-bd);
+}
+.tone-danger {
+  --tone-fg: var(--k-tone-danger-fg);
+  --tone-bg: var(--k-tone-danger-bg);
+  --tone-bd: var(--k-tone-danger-bd);
+}
+.tone-observed {
+  --tone-fg: var(--k-tone-observed-fg);
+  --tone-bg: var(--k-tone-observed-bg);
+  --tone-bd: var(--k-tone-observed-bd);
+}
+.tone-inferred {
+  --tone-fg: var(--k-tone-inferred-fg);
+  --tone-bg: var(--k-tone-inferred-bg);
+  --tone-bd: var(--k-tone-inferred-bd);
+}
+.tone-stated {
+  --tone-fg: var(--k-tone-stated-fg);
+  --tone-bg: var(--k-tone-stated-bg);
+  --tone-bd: var(--k-tone-stated-bd);
+}
+.tone-imported {
+  --tone-fg: var(--k-tone-imported-fg);
+  --tone-bg: var(--k-tone-imported-bg);
+  --tone-bd: var(--k-tone-imported-bd);
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--k-border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--k-bg);
+    color: var(--k-fg);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--k-focus);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--k-accent) 28%, transparent);
+  }
+
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
+  }
+
+  dialog::backdrop {
+    background: rgb(8 10 16 / 0.45);
+  }
+}
+
+@layer components {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--k-border-strong) transparent;
+  }
+
+  /* Native select styled as a control, keeping native keyboard and screen reader behaviour. */
+  .select-control {
+    appearance: none;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--k-fg-subtle) 50%),
+      linear-gradient(135deg, var(--k-fg-subtle) 50%, transparent 50%);
+    background-position:
+      calc(100% - 13px) 50%,
+      calc(100% - 9px) 50%;
+    background-size:
+      4px 4px,
+      4px 4px;
+    background-repeat: no-repeat;
+    padding-right: 1.75rem;
+  }
+}
+
+/* Reduced motion. Unlayered, so it outranks Tailwind's layered utilities without !important. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
+  }
+}
+
+/* ---------- React Flow canvas ---------- */
+
+/* To-be (intended) elements: a light hatch over the node, never the only signal (a tag says it). */
+.k-intended {
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--k-accent) 10%, transparent) 0 5px,
+    transparent 5px 11px
+  );
+}
+
+.kalyth-flow {
+  --xy-background-color: var(--k-canvas);
+  background: var(--k-canvas);
+}
+
+.kalyth-flow .react-flow__node {
+  border-radius: 10px;
+}
+
+.kalyth-flow .react-flow__node:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 3px;
+}
+
+.kalyth-flow .react-flow__handle {
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  pointer-events: none;
+}
+
+.kalyth-flow .react-flow__edge:focus-visible {
+  outline: none;
+}
+
+.kalyth-flow .react-flow__edge:focus-visible .kalyth-edge-path,
+.kalyth-flow .react-flow__edge.selected .kalyth-edge-path {
+  stroke-width: 3;
+}
+
+.kalyth-flow .react-flow__edge:hover .kalyth-edge-path {
+  stroke-width: 2.6;
+}
+
+.kalyth-flow .react-flow__controls {
+  box-shadow: var(--k-shadow);
+  border: 1px solid var(--k-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.kalyth-flow .react-flow__controls-button {
+  background: var(--k-surface);
+  color: var(--k-fg-muted);
+  border: 0;
+  border-bottom: 1px solid var(--k-border);
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+}
+
+.kalyth-flow .react-flow__controls-button:last-child {
+  border-bottom: 0;
+}
+
+.kalyth-flow .react-flow__controls-button:hover {
+  background: var(--k-surface-2);
+  color: var(--k-fg);
+}
+
+.kalyth-flow .react-flow__controls-button svg {
+  fill: currentColor;
+  max-width: 12px;
+  max-height: 12px;
+}
+
+.kalyth-flow .react-flow__minimap {
+  background: var(--k-surface);
+  border: 1px solid var(--k-border);
+  border-radius: 8px;
+  box-shadow: var(--k-shadow);
+  overflow: hidden;
+}
+
+.kalyth-flow .react-flow__minimap-mask {
+  fill: color-mix(in oklab, var(--k-bg) 72%, transparent);
+}
+
+.kalyth-flow .react-flow__attribution {
+  background: transparent;
+  color: var(--k-fg-subtle);
+  font-size: 10px;
+}
+
+.kalyth-flow .react-flow__attribution a {
+  color: var(--k-fg-subtle);
+}

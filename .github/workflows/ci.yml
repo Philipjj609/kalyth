@@ -26,6 +26,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm build
 
   # Scans the full git history with the gitleaks CLI (checksum-verified release binary).
   secrets:
