@@ -4,6 +4,12 @@ The Kalyth workbench: one app shell with Overview, Graph, Records, Proposals and
 an Inspector. React 19, Vite 8, Tailwind CSS 4, TanStack Query, React Flow 12 with dagre layout.
 It talks only to the local HTTP API (`/api/v1`) and imports its types from `@kalyth/contracts`.
 
+Screenshots against the sample seed (1440x900): [overview](docs/screenshots/01-overview-light.png),
+[graph with an expanded container](docs/screenshots/02-graph-dark.png),
+[default collapsed graph](docs/screenshots/06-graph-collapsed-light.png),
+[evidence groups and a redacted excerpt](docs/screenshots/03-inspector-evidence-dark.png),
+[proposals](docs/screenshots/04-proposals-light.png), [history](docs/screenshots/05-history-light.png).
+
 ## Run it against the server (production build)
 
 ```bash

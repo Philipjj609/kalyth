@@ -86,11 +86,21 @@ function GraphCanvas() {
   const wb = useWorkbench()
   const model = wb.model as NonNullable<typeof wb.model>
   const flow = useReactFlow<FlowNode, RelationFlowEdge>()
-  const [prefs, setPrefs] = useState<GraphPrefs>(() => initialPrefs(wb.projectId))
+  // Arriving with a selection hidden in a collapsed group (a deep link, or a pick in another
+  // view) expands that group once and focuses it, so the selection is visible.
+  const [initial] = useState(() => {
+    const prefs = initialPrefs(wb.projectId)
+    const holder = wb.selection
+      ? projectGraph(model.objects, model.relations, prefs).containerOf.get(wb.selection)
+      : undefined
+    if (holder === undefined || prefs.expanded.has(holder)) return { prefs, focus: null }
+    return { prefs: { ...prefs, expanded: new Set(prefs.expanded).add(holder) }, focus: holder }
+  })
+  const [prefs, setPrefs] = useState<GraphPrefs>(initial.prefs)
   useEffect(() => {
     prefsByProject.set(wb.projectId, prefs)
   }, [wb.projectId, prefs])
-  const [focusTarget, setFocusTarget] = useState<string | null>(null)
+  const [focusTarget, setFocusTarget] = useState<string | null>(initial.focus)
 
   const freshnessOf = useCallback(
     (id: string) => wb.freshness.index.get(id)?.status,
@@ -177,11 +187,18 @@ function GraphCanvas() {
     const duration = reducedMotion() ? 0 : 280
     const frame = requestAnimationFrame(() => {
       if (nodes.length === 0) return
-      if (!fitted.current) {
+      if (!fitted.current && !focusTarget) {
         fitted.current = true
         fitAll(0)
       } else if (focusTarget) {
-        void flow.fitView({ nodes: [{ id: focusTarget }], padding, maxZoom: 1.1, duration })
+        const first = !fitted.current
+        fitted.current = true
+        void flow.fitView({
+          nodes: [{ id: focusTarget }],
+          padding,
+          maxZoom: 1.1,
+          duration: first ? 0 : duration,
+        })
         setFocusTarget(null)
       }
     })
