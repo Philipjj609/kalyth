@@ -3,7 +3,10 @@ import type {
   EvidenceQueryResult,
   EvidenceView,
   HistoryResult,
+  ImpactResult,
   Issue,
+  NavigatorRun,
+  NavigatorStatus,
   ObjectQueryResult,
   ObjectTypeDescriptor,
   ProjectOverview,
@@ -11,6 +14,7 @@ import type {
   Proposal,
   RelationQueryResult,
   RelationTypeDescriptor,
+  StartNavigatorRunInput,
 } from '@kalyth/contracts'
 import { type FreshnessReport, parseFreshness } from './freshness.ts'
 
@@ -109,6 +113,29 @@ export function buildUrl(path: string, query: Record<string, QueryValue> = {}): 
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
+
+/** Body of POST /navigator/runs: a run input without the project id, which is in the path. */
+export type StartRunBody = DistributiveOmit<StartNavigatorRunInput, 'projectId'>
+
+export interface ImpactParams {
+  seeds: readonly string[]
+  maxDepth?: number
+  maxNodes?: number
+  /** A past revision; undefined uses the head. */
+  revision?: number | undefined
+}
+
+/** Impact traversal URL. Seeds go as repeated `seed` parameters, de-duplicated. */
+export function impactUrl(projectId: string, params: ImpactParams): string {
+  const q = new URLSearchParams()
+  for (const seed of new Set(params.seeds)) q.append('seed', seed)
+  if (params.maxDepth !== undefined) q.set('maxDepth', String(params.maxDepth))
+  if (params.maxNodes !== undefined) q.set('maxNodes', String(params.maxNodes))
+  if (params.revision !== undefined) q.set('revision', String(params.revision))
+  return `/api/v1/projects/${encodeURIComponent(projectId)}/impact?${q.toString()}`
+}
+
 export interface TypeDescriptors {
   objectTypes: ObjectTypeDescriptor[]
   relationTypes: RelationTypeDescriptor[]
@@ -124,7 +151,7 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
   const doFetch: FetchLike = fetchImpl ?? ((input, init) => fetch(input, init))
 
   async function request<T>(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PUT',
     url: string,
     body?: Record<string, unknown>,
   ): Promise<T> {
@@ -225,6 +252,34 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
         throw e
       }
     },
+    proposal: (proposalId: string) =>
+      request<Proposal>('GET', `/api/v1/proposals/${enc(proposalId)}`),
+
+    // ---------- Navigator (ADR 0010) ----------
+
+    /** Provider, models, budget and consent, or null while the server has no Navigator (404). */
+    navigatorStatus: async (projectId: string): Promise<NavigatorStatus | null> => {
+      try {
+        return await request<NavigatorStatus>('GET', `${project(projectId)}/navigator`)
+      } catch (e) {
+        if (isApiError(e) && (e.status === 404 || e.status === 501)) return null
+        throw e
+      }
+    },
+    setNavigatorConsent: (projectId: string, granted: boolean) =>
+      request<NavigatorStatus>('PUT', `${project(projectId)}/navigator/consent`, { granted }),
+    /** Answers 202 with the run, which may still be running or already final. */
+    startNavigatorRun: (projectId: string, input: StartRunBody) =>
+      request<NavigatorRun>('POST', `${project(projectId)}/navigator/runs`, { ...input }),
+    navigatorRuns: (projectId: string, limit = 50) =>
+      request<{ runs: NavigatorRun[] }>(
+        'GET',
+        buildUrl(`${project(projectId)}/navigator/runs`, { limit }),
+      ),
+    navigatorRun: (runId: string) =>
+      request<NavigatorRun>('GET', `/api/v1/navigator/runs/${enc(runId)}`),
+    impact: (projectId: string, params: ImpactParams) =>
+      request<ImpactResult>('GET', impactUrl(projectId, params)),
   }
 }
 

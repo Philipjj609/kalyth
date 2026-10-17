@@ -1,7 +1,7 @@
 # @kalyth/web
 
-The Kalyth workbench: one app shell with Overview, Graph, Records, Proposals and History views and
-an Inspector. React 19, Vite 8, Tailwind CSS 4, TanStack Query, React Flow 12 with dagre layout.
+The Kalyth workbench: one app shell with Overview, Graph, Records, Proposals, History and Navigator
+views and an Inspector. React 19, Vite 8, Tailwind CSS 4, TanStack Query, React Flow 12 with dagre layout.
 It talks only to the local HTTP API (`/api/v1`) and imports its types from `@kalyth/contracts`.
 
 Screenshots against the sample seed (1440x900): [overview](docs/screenshots/01-overview-light.png),
@@ -56,9 +56,23 @@ src/model      pure display logic: labels, formatting, status semantics, records
 src/graph      projection (records -> nodes/edges, grouping, collapse) and dagre layout, both pure
                and unit-tested; React Flow nodes, edges and the Graph view (lazy-loaded)
 src/inspector  claim, evidence groups, provenance, relations, attributes
+src/navigator  Navigator view (ADR 0010): provider, budget and consent strip, change request form,
+               runs, run report (model calls, grounding), alternatives and impact; header chip and
+               the Inspector's "Summarise with Navigator"
 src/views      Overview, Records, Proposals, History, project list
-src/app        shell, URL state (?project=&view=&rev=&sel=), session, theme
+src/app        shell, URL state (?project=&view=&rev=&sel=&run=&proposal=), session, theme
 ```
+
+## Navigator
+
+The Navigator view (key `6`, `?view=navigator&run=nav_…`) talks to `/api/v1/projects/:id/navigator`,
+`/navigator/runs`, `/api/v1/navigator/runs/:runId` and `/impact`. A 404 on the status route means the
+server has no Navigator, and the view, header chip and Inspector action stay hidden or explain so.
+Runs are polled about once a second while running. Everything a run produces is one proposal, read
+with `GET /api/v1/proposals/:id` and parsed in `src/model/navigator.ts`; output from the `mock`
+provider carries a "Mock output" badge wherever it appears. Propagated impact is computed by the
+server's traversal on demand ("Show impact"), never stored. Amounts are integer micro-dollars,
+shown as USD with four decimals.
 
 The visual language for epistemic status is defined once in `src/model/semantics.ts`: every
 basis, freshness status, proposal status and origin has a text label, a description and a tone.

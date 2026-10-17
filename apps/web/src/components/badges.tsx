@@ -1,8 +1,23 @@
-import type { InstructionOrigin, Lifecycle, ProposalStatus, Stance } from '@kalyth/contracts'
-import type { LucideIcon } from 'lucide-react'
+import type {
+  InstructionOrigin,
+  Lifecycle,
+  ModelCallRecord,
+  NavigatorRun,
+  ProposalStatus,
+  Stance,
+} from '@kalyth/contracts'
+import {
+  CircleCheck,
+  CircleX,
+  FlaskConical,
+  LoaderCircle,
+  type LucideIcon,
+  TriangleAlert,
+} from 'lucide-react'
 import type { FreshnessStatus } from '../api/freshness.ts'
 import { cn } from '../lib/cn.ts'
 import { humanize } from '../model/format.ts'
+import { CALL_OUTCOME_META, INQUIRY_ROLE_META, RUN_STATUS_META } from '../model/navigator.ts'
 import {
   basisMeta,
   DECISION_STATUS_TONE,
@@ -166,6 +181,76 @@ export function DecisionStatusBadge({ status, ...rest }: { status: string } & Si
       label={humanize(status)}
       description="Changed only by a person, through a dedicated operation."
       prefix="Decision status:"
+      {...rest}
+    />
+  )
+}
+
+/**
+ * Marks text from the local mock provider. It is deterministic test output, not model output, and
+ * must never be read as an analysis of the project.
+ */
+export function MockBadge(props: Size) {
+  return (
+    <StatusBadge
+      tone="caution"
+      icon={FlaskConical}
+      label="Mock output"
+      description="Produced by the local mock provider for testing. It is not model output and says nothing about this project."
+      {...props}
+    />
+  )
+}
+
+const RUN_STATUS_ICONS: Record<string, LucideIcon> = {
+  running: LoaderCircle,
+  completed: CircleCheck,
+  failed: CircleX,
+}
+
+export function RunStatusBadge({ status, ...rest }: { status: NavigatorRun['status'] } & Size) {
+  const meta = RUN_STATUS_META[status] ?? {
+    label: humanize(status),
+    tone: 'neutral' as const,
+    description: '',
+  }
+  return (
+    <StatusBadge
+      tone={meta.tone}
+      icon={RUN_STATUS_ICONS[status]}
+      label={meta.label}
+      description={meta.description}
+      prefix="Run status:"
+      className={status === 'running' ? '[&_svg]:animate-spin' : undefined}
+      {...rest}
+    />
+  )
+}
+
+export function CallOutcomeBadge({
+  outcome,
+  ...rest
+}: { outcome: ModelCallRecord['outcome'] } & Size) {
+  const meta = CALL_OUTCOME_META[outcome] ?? { label: humanize(outcome), tone: 'neutral' as const }
+  return (
+    <StatusBadge
+      tone={meta.tone}
+      icon={outcome === 'ok' ? CircleCheck : outcome === 'failed' ? CircleX : TriangleAlert}
+      label={meta.label}
+      prefix="Outcome:"
+      {...rest}
+    />
+  )
+}
+
+export function InquiryRoleBadge({ role, ...rest }: { role: string } & Size) {
+  const meta = INQUIRY_ROLE_META[role] ?? { tone: 'neutral' as const, description: '' }
+  return (
+    <StatusBadge
+      tone={meta.tone}
+      label={humanize(role || 'unclassified')}
+      description={meta.description}
+      prefix="Inquiry role:"
       {...rest}
     />
   )

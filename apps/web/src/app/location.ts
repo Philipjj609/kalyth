@@ -1,10 +1,10 @@
 import { useCallback, useSyncExternalStore } from 'react'
 
 /**
- * Navigation state lives in the query string (?project=&view=&rev=&sel=), so views are linkable
- * and survive reloads. The fragment is reserved for the session token handoff.
+ * Navigation state lives in the query string (?project=&view=&rev=&sel=&run=&proposal=), so views
+ * are linkable and survive reloads. The fragment is reserved for the session token handoff.
  */
-export const VIEWS = ['overview', 'graph', 'records', 'proposals', 'history'] as const
+export const VIEWS = ['overview', 'graph', 'records', 'proposals', 'history', 'navigator'] as const
 export type View = (typeof VIEWS)[number]
 
 export interface AppLocation {
@@ -14,6 +14,10 @@ export interface AppLocation {
   revision: number | undefined
   /** Selected object or relation id. */
   selection: string | undefined
+  /** The Navigator run shown in detail (Navigator view only). */
+  run?: string | undefined
+  /** A proposal to bring into view (Proposals view only). */
+  proposal?: string | undefined
 }
 
 export function parseLocation(search: string): AppLocation {
@@ -26,15 +30,20 @@ export function parseLocation(search: string): AppLocation {
     view: (VIEWS as readonly string[]).includes(view ?? '') ? (view as View) : 'overview',
     revision,
     selection: q.get('sel') ?? undefined,
+    run: q.get('run') ?? undefined,
+    proposal: q.get('proposal') ?? undefined,
   }
 }
 
+/** The query string for a location. View-specific parameters are kept only for their view. */
 export function formatLocation(loc: AppLocation): string {
   const q = new URLSearchParams()
   if (loc.project) q.set('project', loc.project)
   if (loc.view !== 'overview') q.set('view', loc.view)
   if (loc.revision !== undefined) q.set('rev', String(loc.revision))
   if (loc.selection) q.set('sel', loc.selection)
+  if (loc.run && loc.view === 'navigator') q.set('run', loc.run)
+  if (loc.proposal && loc.view === 'proposals') q.set('proposal', loc.proposal)
   const s = q.toString()
   return s ? `?${s}` : ''
 }
