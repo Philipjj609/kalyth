@@ -1,6 +1,7 @@
 import { CircleX, OctagonAlert, TriangleAlert } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { AnchorHTMLAttributes, ReactNode } from 'react'
 import { type ApiErrorBody, isApiError } from '../api/client.ts'
+import { type AppLocation, formatLocation, useAppLocation } from '../app/location.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import { cn } from '../lib/cn.ts'
 import { shortId } from '../model/format.ts'
@@ -201,6 +202,38 @@ export function RecordLink({ id, children }: { id: string; children?: ReactNode 
     >
       {children ?? name ?? shortId(id)}
     </button>
+  )
+}
+
+/**
+ * A link to a place in the workbench. It has a real href, so it can be copied or opened elsewhere;
+ * a plain click navigates in place without reloading.
+ */
+export function AppLink({
+  to,
+  className,
+  children,
+  ...rest
+}: {
+  to: Partial<AppLocation>
+  className?: string
+  children: ReactNode
+} & Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href' | 'onClick' | 'className'>) {
+  const [loc, navigate] = useAppLocation()
+  const href = formatLocation({ ...loc, ...to }) || '?'
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+        e.preventDefault()
+        navigate(to)
+      }}
+      className={cn('rounded-sm text-accent underline-offset-2 hover:underline', className)}
+      {...rest}
+    >
+      {children}
+    </a>
   )
 }
 

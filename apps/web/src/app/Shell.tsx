@@ -3,6 +3,7 @@ import * as Popover from '@radix-ui/react-popover'
 import * as Tabs from '@radix-ui/react-tabs'
 import {
   ChevronDown,
+  Compass,
   FolderGit2,
   GitPullRequest,
   ClockArrowLeft as HistoryIcon,
@@ -30,6 +31,8 @@ import { Button, Kbd, Spinner, Tip } from '../components/ui.tsx'
 import { Inspector } from '../inspector/Inspector.tsx'
 import { cn } from '../lib/cn.ts'
 import { relativeTime } from '../model/format.ts'
+import { NavigatorIndicator } from '../navigator/NavigatorActions.tsx'
+import { NavigatorView } from '../navigator/NavigatorView.tsx'
 import { HistoryView } from '../views/HistoryView.tsx'
 import { OverviewView } from '../views/OverviewView.tsx'
 import { ProjectsLanding } from '../views/ProjectsLanding.tsx'
@@ -53,6 +56,7 @@ const VIEW_META: Record<View, { label: string; icon: typeof Network }> = {
   records: { label: 'Records', icon: Table2 },
   proposals: { label: 'Proposals', icon: GitPullRequest },
   history: { label: 'History', icon: HistoryIcon },
+  navigator: { label: 'Navigator', icon: Compass },
 }
 
 const INSPECTOR_KEY = 'kalyth.inspector'
@@ -151,7 +155,7 @@ function ProjectWorkbench({
     [navigate],
   )
 
-  // Keyboard shortcuts: 1-5 switch views, "/" focuses the view's search, "i" toggles the
+  // Keyboard shortcuts: 1-6 switch views, "/" focuses the view's search, "i" toggles the
   // Inspector, Escape clears the selection.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -224,17 +228,20 @@ function ProjectWorkbench({
         currentId={projectId}
         revisionControl={<RevisionSelect />}
         actions={
-          <Tip label={inspectorOpen ? 'Hide Inspector (i)' : 'Show Inspector (i)'}>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={inspectorOpen ? 'Hide Inspector' : 'Show Inspector'}
-              aria-pressed={inspectorOpen}
-              onClick={() => toggleInspector()}
-            >
-              {inspectorOpen ? <PanelRightClose aria-hidden /> : <PanelRightOpen aria-hidden />}
-            </Button>
-          </Tip>
+          <>
+            <NavigatorIndicator />
+            <Tip label={inspectorOpen ? 'Hide Inspector (i)' : 'Show Inspector (i)'}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={inspectorOpen ? 'Hide Inspector' : 'Show Inspector'}
+                aria-pressed={inspectorOpen}
+                onClick={() => toggleInspector()}
+              >
+                {inspectorOpen ? <PanelRightClose aria-hidden /> : <PanelRightOpen aria-hidden />}
+              </Button>
+            </Tip>
+          </>
         }
       >
         <Tabs.Root
@@ -303,6 +310,12 @@ function ProjectWorkbench({
                 className="relative min-h-0 flex-1 overflow-auto outline-none"
               >
                 <HistoryView />
+              </Tabs.Content>
+              <Tabs.Content
+                value="navigator"
+                className="relative min-h-0 flex-1 overflow-auto outline-none"
+              >
+                <NavigatorView />
               </Tabs.Content>
             </main>
             {inspectorOpen && (
@@ -442,7 +455,13 @@ function ProjectSwitcher({
                   aria-current={p.id === currentId ? 'true' : undefined}
                   onClick={() => {
                     setOpen(false)
-                    navigate({ project: p.id, selection: undefined, revision: undefined })
+                    navigate({
+                      project: p.id,
+                      selection: undefined,
+                      revision: undefined,
+                      run: undefined,
+                      proposal: undefined,
+                    })
                   }}
                   className={cn(
                     'flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-surface-2',
@@ -582,7 +601,7 @@ function ShortcutsHelp() {
   const rows: [ReactNode, string][] = [
     [
       <>
-        <Kbd>1</Kbd>–<Kbd>5</Kbd>
+        <Kbd>1</Kbd>–<Kbd>{VIEWS.length}</Kbd>
       </>,
       'Switch view',
     ],

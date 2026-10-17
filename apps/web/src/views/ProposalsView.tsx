@@ -2,12 +2,14 @@ import type { Proposal, ProposalStatus } from '@kalyth/contracts'
 import { Check, ChevronRight, GitPullRequest, X } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useCommitProposal, useProposals, useRejectProposal } from '../api/queries.ts'
+import { useAppLocation } from '../app/location.ts'
 import { useWorkbench } from '../app/workbench.ts'
-import { BasisBadge, OriginBadge, ProposalStatusBadge } from '../components/badges.tsx'
+import { BasisBadge, MockBadge, OriginBadge, ProposalStatusBadge } from '../components/badges.tsx'
 import { useToast } from '../components/toast.tsx'
 import { Button, EmptyState, Segmented, Skeleton, Spinner } from '../components/ui.tsx'
 import { cn } from '../lib/cn.ts'
 import { absoluteTime, plural, relativeTime, shortId } from '../model/format.ts'
+import { hasMockOutput } from '../model/navigator.ts'
 import { describeOps, OP_LABEL, opCounts } from '../model/ops.ts'
 import { PROPOSAL_STATUS_META, PROPOSAL_STATUS_ORDER } from '../model/semantics.ts'
 import { ErrorNotice, IssueList, ViewHeader } from './shared.tsx'
@@ -16,8 +18,11 @@ type Filter = ProposalStatus | 'all'
 
 export function ProposalsView() {
   const wb = useWorkbench()
+  const [loc] = useAppLocation()
   const proposals = useProposals(wb.projectId)
   const [filter, setFilter] = useState<Filter>('pending')
+  // A deep-linked proposal (?proposal=) is listed whatever the filter, and brought into view.
+  const focused = loc.proposal
   const [rejecting, setRejecting] = useState<Proposal | null>(null)
   // Proposals acted on here stay listed under the current filter, so the outcome of a commit or
   // reject (including a stale or conflicting error) remains visible after the status changes.
@@ -36,7 +41,10 @@ export function ProposalsView() {
     for (const p of all) c[p.status] = (c[p.status] ?? 0) + 1
     return c
   }, [all])
-  const shown = filter === 'all' ? all : all.filter((p) => p.status === filter || touched.has(p.id))
+  const shown =
+    filter === 'all'
+      ? all
+      : all.filter((p) => p.status === filter || touched.has(p.id) || p.id === focused)
 
   return (
     <div className="mx-auto w-full max-w-[1100px] space-y-4 p-6">
@@ -87,6 +95,7 @@ export function ProposalsView() {
             <li key={p.id}>
               <ProposalCard
                 proposal={p}
+                focused={p.id === focused}
                 onActed={() => touch(p.id)}
                 onReject={() => {
                   touch(p.id)
@@ -104,14 +113,21 @@ export function ProposalsView() {
 
 function ProposalCard({
   proposal: p,
+  focused,
   onReject,
   onActed,
 }: {
   proposal: Proposal
+  focused: boolean
   onReject: () => void
   onActed: () => void
 }) {
   const wb = useWorkbench()
+  const cardRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (focused) cardRef.current?.scrollIntoView({ block: 'center' })
+  }, [focused])
+  const mock = useMemo(() => hasMockOutput(p.ops), [p.ops])
   const notify = useToast()
   const commit = useCommitProposal(wb.projectId)
   const runCommit = () => {
@@ -140,10 +156,13 @@ function ProposalCard({
 
   return (
     <article
+      ref={cardRef}
       aria-labelledby={`${bodyId}-title`}
+      aria-current={focused ? 'true' : undefined}
       className={cn(
         'rounded-lg border bg-surface shadow-panel',
         pending ? 'border-border-strong' : 'border-border',
+        focused && 'border-accent ring-2 ring-accent/30',
       )}
     >
       <header className="flex flex-wrap items-start gap-x-3 gap-y-2 px-4 pt-3 pb-2">
@@ -151,6 +170,7 @@ function ProposalCard({
           <div className="flex flex-wrap items-center gap-2">
             <ProposalStatusBadge status={p.status} />
             <OriginBadge origin={p.origin} size="sm" />
+            {mock && <MockBadge size="sm" />}
             <span className="font-mono text-2xs text-fg-subtle">{shortId(p.id)}</span>
           </div>
           <h2

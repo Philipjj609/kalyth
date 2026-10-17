@@ -3,16 +3,23 @@ import type {
   EvidenceQueryResult,
   EvidenceView,
   HistoryResult,
+  ImpactResult,
   Issue,
+  NavigatorRun,
+  NavigatorStatus,
   ObjectQueryResult,
   ObjectTypeDescriptor,
   ProjectOverview,
   ProjectSummary,
   Proposal,
+  ProposeChangeInput,
+  ProposeChangeOutput,
   RelationQueryResult,
   RelationTypeDescriptor,
+  StartNavigatorRunInput,
 } from '@kalyth/contracts'
 import { type FreshnessReport, parseFreshness } from './freshness.ts'
+import type { Situation } from './situation.ts'
 
 /**
  * The API error envelope, {error: {code, message, issues, changedRefs?, currentRevision?, ...}}.
@@ -109,6 +116,32 @@ export function buildUrl(path: string, query: Record<string, QueryValue> = {}): 
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
+
+/** Body of POST /navigator/runs: a run input without the project id, which is in the path. */
+export type StartRunBody = DistributiveOmit<StartNavigatorRunInput, 'projectId'>
+
+/** Body of POST /projects/:id/proposals: the project id is in the path. */
+export type ProposeBody = Omit<ProposeChangeInput, 'projectId'>
+
+export interface ImpactParams {
+  seeds: readonly string[]
+  maxDepth?: number
+  maxNodes?: number
+  /** A past revision; undefined uses the head. */
+  revision?: number | undefined
+}
+
+/** Impact traversal URL. Seeds go as repeated `seed` parameters, de-duplicated. */
+export function impactUrl(projectId: string, params: ImpactParams): string {
+  const q = new URLSearchParams()
+  for (const seed of new Set(params.seeds)) q.append('seed', seed)
+  if (params.maxDepth !== undefined) q.set('maxDepth', String(params.maxDepth))
+  if (params.maxNodes !== undefined) q.set('maxNodes', String(params.maxNodes))
+  if (params.revision !== undefined) q.set('revision', String(params.revision))
+  return `/api/v1/projects/${encodeURIComponent(projectId)}/impact?${q.toString()}`
+}
+
 export interface TypeDescriptors {
   objectTypes: ObjectTypeDescriptor[]
   relationTypes: RelationTypeDescriptor[]
@@ -123,10 +156,12 @@ const enc = encodeURIComponent
 export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) {
   const doFetch: FetchLike = fetchImpl ?? ((input, init) => fetch(input, init))
 
+  /** `passStatuses`: error statuses whose body is returned instead of thrown. */
   async function request<T>(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PUT',
     url: string,
     body?: Record<string, unknown>,
+    passStatuses: readonly number[] = [],
   ): Promise<T> {
     const headers: Record<string, string> = { accept: 'application/json' }
     const token = getToken()
@@ -155,7 +190,10 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
     } catch {
       payload = undefined
     }
-    if (!res.ok) throw new ApiError(res.status, toApiErrorBody(res.status, payload))
+    const isEnvelope = typeof payload === 'object' && payload !== null && 'error' in payload
+    if (!res.ok && (isEnvelope || !passStatuses.includes(res.status))) {
+      throw new ApiError(res.status, toApiErrorBody(res.status, payload))
+    }
     return payload as T
   }
 
@@ -225,6 +263,50 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
         throw e
       }
     },
+    proposal: (proposalId: string) =>
+      request<Proposal>('GET', `/api/v1/proposals/${enc(proposalId)}`),
+    /**
+     * Proposes a change for review. A proposal that fails validation is still stored and answered
+     * with 422 and the proposal (status "invalid" with its issues), not the error envelope; that
+     * body is returned so the caller sees the issues.
+     */
+    propose: (projectId: string, input: ProposeBody) =>
+      request<ProposeChangeOutput>('POST', `${project(projectId)}/proposals`, { ...input }, [422]),
+    /** What needs attention, or null while the server has no situation route (404). */
+    situation: async (projectId: string): Promise<Situation | null> => {
+      try {
+        return await request<Situation>('GET', `${project(projectId)}/situation`)
+      } catch (e) {
+        if (isApiError(e) && (e.status === 404 || e.status === 501)) return null
+        throw e
+      }
+    },
+
+    // ---------- Navigator (ADR 0010) ----------
+
+    /** Provider, models, budget and consent, or null while the server has no Navigator (404). */
+    navigatorStatus: async (projectId: string): Promise<NavigatorStatus | null> => {
+      try {
+        return await request<NavigatorStatus>('GET', `${project(projectId)}/navigator`)
+      } catch (e) {
+        if (isApiError(e) && (e.status === 404 || e.status === 501)) return null
+        throw e
+      }
+    },
+    setNavigatorConsent: (projectId: string, granted: boolean) =>
+      request<NavigatorStatus>('PUT', `${project(projectId)}/navigator/consent`, { granted }),
+    /** Answers 202 with the run, which may still be running or already final. */
+    startNavigatorRun: (projectId: string, input: StartRunBody) =>
+      request<NavigatorRun>('POST', `${project(projectId)}/navigator/runs`, { ...input }),
+    navigatorRuns: (projectId: string, limit = 50) =>
+      request<{ runs: NavigatorRun[] }>(
+        'GET',
+        buildUrl(`${project(projectId)}/navigator/runs`, { limit }),
+      ),
+    navigatorRun: (runId: string) =>
+      request<NavigatorRun>('GET', `/api/v1/navigator/runs/${enc(runId)}`),
+    impact: (projectId: string, params: ImpactParams) =>
+      request<ImpactResult>('GET', impactUrl(projectId, params)),
   }
 }
 

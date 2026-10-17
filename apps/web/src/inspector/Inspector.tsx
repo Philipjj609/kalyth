@@ -11,6 +11,7 @@ import {
   EdgeSample,
   FreshnessBadge,
   LifecycleBadge,
+  MockBadge,
   StanceBadge,
   TypeLabel,
 } from '../components/badges.tsx'
@@ -18,8 +19,10 @@ import { Button, CopyButton, EmptyState, SectionTitle, Skeleton, Tip } from '../
 import { cn } from '../lib/cn.ts'
 import { absoluteTime, humanize, plural, shortId, shortSha } from '../model/format.ts'
 import { objectLabel } from '../model/labels.ts'
+import { isMockClaim } from '../model/navigator.ts'
 import { evidenceLocation } from '../model/ops.ts'
 import { basisMeta, relationMeta } from '../model/semantics.ts'
+import { SummariseAction } from '../navigator/NavigatorActions.tsx'
 import { ErrorNotice, RecordLink } from '../views/shared.tsx'
 
 export function Inspector({ onClose }: { onClose: () => void }) {
@@ -148,6 +151,9 @@ function ObjectDetails({ object }: { object: ObjectVersion }) {
       {description && (
         <p className="border-border border-b px-4 py-2 text-fg-muted text-xs">{description}</p>
       )}
+      {object.type.startsWith('software.') && object.lifecycle === 'active' && (
+        <SummariseAction key={object.id} object={object} />
+      )}
       <ClaimSection claim={object.claim} freshness={freshness} selfId={object.id} />
       <Section title="Attributes">
         <KeyValues values={attributes} />
@@ -244,6 +250,7 @@ function Facets({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5 border-border border-b px-4 py-2.5">
+      {isMockClaim(claim) && <MockBadge />}
       <BasisBadge basis={claim.basis} />
       {claim.confidence && <ConfidenceBadge level={claim.confidence.level} />}
       {freshness && <FreshnessBadge status={freshness.status} />}
