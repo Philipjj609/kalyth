@@ -1,10 +1,19 @@
 import { useCallback, useSyncExternalStore } from 'react'
 
 /**
- * Navigation state lives in the query string (?project=&view=&rev=&sel=&run=&proposal=), so views
- * are linkable and survive reloads. The fragment is reserved for the session token handoff.
+ * Navigation state lives in the query string (?project=&view=&rev=&sel=&run=&proposal=&package=),
+ * so views are linkable and survive reloads. The fragment is reserved for the session token
+ * handoff. Secrets never go here: agent tokens are held in component state only.
  */
-export const VIEWS = ['overview', 'graph', 'records', 'proposals', 'history', 'navigator'] as const
+export const VIEWS = [
+  'overview',
+  'graph',
+  'records',
+  'proposals',
+  'history',
+  'navigator',
+  'handoff',
+] as const
 export type View = (typeof VIEWS)[number]
 
 export interface AppLocation {
@@ -18,7 +27,12 @@ export interface AppLocation {
   run?: string | undefined
   /** A proposal to bring into view (Proposals view only). */
   proposal?: string | undefined
+  /** The context package shown (Handoff view only). */
+  package?: string | undefined
 }
+
+/** Context package ids are content addresses: `ctx_` and 32 hex digits (ADR 0011). */
+const PACKAGE_ID = /^ctx_[0-9a-f]{32}$/
 
 export function parseLocation(search: string): AppLocation {
   const q = new URLSearchParams(search)
@@ -32,6 +46,7 @@ export function parseLocation(search: string): AppLocation {
     selection: q.get('sel') ?? undefined,
     run: q.get('run') ?? undefined,
     proposal: q.get('proposal') ?? undefined,
+    package: PACKAGE_ID.test(q.get('package') ?? '') ? (q.get('package') as string) : undefined,
   }
 }
 
@@ -44,6 +59,7 @@ export function formatLocation(loc: AppLocation): string {
   if (loc.selection) q.set('sel', loc.selection)
   if (loc.run && loc.view === 'navigator') q.set('run', loc.run)
   if (loc.proposal && loc.view === 'proposals') q.set('proposal', loc.proposal)
+  if (loc.package && loc.view === 'handoff') q.set('package', loc.package)
   const s = q.toString()
   return s ? `?${s}` : ''
 }

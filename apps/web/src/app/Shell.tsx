@@ -6,6 +6,7 @@ import {
   Compass,
   FolderGit2,
   GitPullRequest,
+  Handshake,
   ClockArrowLeft as HistoryIcon,
   Keyboard,
   LayoutDashboard,
@@ -28,6 +29,7 @@ import {
 } from '../api/queries.ts'
 import { FreshnessBadge } from '../components/badges.tsx'
 import { Button, Kbd, Spinner, Tip } from '../components/ui.tsx'
+import { HandoffView } from '../handoff/HandoffView.tsx'
 import { Inspector } from '../inspector/Inspector.tsx'
 import { cn } from '../lib/cn.ts'
 import { relativeTime } from '../model/format.ts'
@@ -57,6 +59,7 @@ const VIEW_META: Record<View, { label: string; icon: typeof Network }> = {
   proposals: { label: 'Proposals', icon: GitPullRequest },
   history: { label: 'History', icon: HistoryIcon },
   navigator: { label: 'Navigator', icon: Compass },
+  handoff: { label: 'Handoff', icon: Handshake },
 }
 
 const INSPECTOR_KEY = 'kalyth.inspector'
@@ -317,6 +320,12 @@ function ProjectWorkbench({
               >
                 <NavigatorView />
               </Tabs.Content>
+              <Tabs.Content
+                value="handoff"
+                className="relative min-h-0 flex-1 overflow-auto outline-none"
+              >
+                <HandoffView />
+              </Tabs.Content>
             </main>
             {inspectorOpen && (
               <aside
@@ -461,6 +470,7 @@ function ProjectSwitcher({
                       revision: undefined,
                       run: undefined,
                       proposal: undefined,
+                      package: undefined,
                     })
                   }}
                   className={cn(

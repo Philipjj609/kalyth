@@ -1,4 +1,4 @@
-import type { ImpactResult, NavigatorRun, Proposal } from '@kalyth/contracts'
+import type { ImpactedElement, ImpactResult, NavigatorRun, Proposal } from '@kalyth/contracts'
 import { ArrowRight, Check, Network, TriangleAlert, Waypoints } from 'lucide-react'
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { MAX_IMPACT_SEEDS, useAcceptAlternative, useImpact, useProposal } from '../api/queries.ts'
@@ -38,7 +38,8 @@ export interface ElementLookup {
 
 // ---------- presentational ----------
 
-function ElementButton({
+/** An element's name; a button that inspects it when `onInspect` is given. */
+export function ElementButton({
   id,
   label,
   onInspect,
@@ -316,6 +317,21 @@ export function SummaryView({
   )
 }
 
+/** A typed path from a direct change to an element, in the Navigator's notation. */
+export function ImpactPath({
+  element,
+  labelOf,
+}: {
+  element: Pick<ImpactedElement, 'seed' | 'path' | 'label'>
+  labelOf: (id: string) => string
+}) {
+  return (
+    <code className="block break-words font-mono text-[11px] text-fg-muted leading-snug">
+      {impactPathText(element, labelOf)}
+    </code>
+  )
+}
+
 /**
  * Propagated impact, grouped by type, with depth and a typed path from the direct change. It is
  * computed by Kalyth's deterministic traversal, never by the model.
@@ -369,11 +385,7 @@ export function ImpactList({
                     onInspect={onInspect}
                     className="text-sm"
                   />
-                  {e.path.length > 0 && (
-                    <code className="block break-words font-mono text-[11px] text-fg-muted leading-snug">
-                      {impactPathText(e, labelOf)}
-                    </code>
-                  )}
+                  {e.path.length > 0 && <ImpactPath element={e} labelOf={labelOf} />}
                 </span>
                 {onShowInGraph && (
                   <Button
