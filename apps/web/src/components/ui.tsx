@@ -183,29 +183,49 @@ export function EmptyState({
   )
 }
 
-/** Copies text, with a transient confirmation announced to screen readers. */
-export function CopyButton({ text, label }: { text: string; label: string }) {
+/**
+ * Copies text, with a transient confirmation announced to screen readers. An icon button with a
+ * tooltip; with children, a small labelled button instead.
+ */
+export function CopyButton({
+  text,
+  label,
+  children,
+}: {
+  text: string
+  label: string
+  children?: ReactNode
+}) {
   const [copied, setCopied] = useState(false)
   const timer = useRef<number | undefined>(undefined)
   useEffect(() => () => window.clearTimeout(timer.current), [])
+  const copy = () => {
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true)
+      window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => setCopied(false), 1400)
+    })
+  }
+  const icon = copied ? <Check aria-hidden /> : <Copy aria-hidden />
+  const announce = (
+    <span className="sr-only" aria-live="polite">
+      {copied ? 'Copied' : ''}
+    </span>
+  )
+  if (children !== undefined) {
+    return (
+      <Button size="sm" onClick={copy}>
+        {icon}
+        {children}
+        {announce}
+      </Button>
+    )
+  }
   return (
     <Tip label={copied ? 'Copied' : label}>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={label}
-        onClick={() => {
-          void navigator.clipboard?.writeText(text).then(() => {
-            setCopied(true)
-            window.clearTimeout(timer.current)
-            timer.current = window.setTimeout(() => setCopied(false), 1400)
-          })
-        }}
-      >
-        {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
-        <span className="sr-only" aria-live="polite">
-          {copied ? 'Copied' : ''}
-        </span>
+      <Button variant="ghost" size="icon-sm" aria-label={label} onClick={copy}>
+        {icon}
+        {announce}
       </Button>
     </Tip>
   )
