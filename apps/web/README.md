@@ -1,7 +1,7 @@
 # @kalyth/web
 
-The Kalyth workbench: one app shell with Overview, Graph, Records, Proposals, History and Navigator
-views and an Inspector. React 19, Vite 8, Tailwind CSS 4, TanStack Query, React Flow 12 with dagre layout.
+The Kalyth workbench: one app shell with Overview, Graph, Records, Proposals, History, Navigator
+and Handoff views and an Inspector. React 19, Vite 8, Tailwind CSS 4, TanStack Query, React Flow 12 with dagre layout.
 It talks only to the local HTTP API (`/api/v1`) and imports its types from `@kalyth/contracts`.
 
 Screenshots against the sample seed (1440x900): [overview](docs/screenshots/01-overview-light.png),
@@ -35,7 +35,8 @@ pnpm dev:web          # terminal 2: Vite on http://127.0.0.1:5173
 ```
 
 Open `http://127.0.0.1:5173/#token=<token>` with the token the server printed (the server also
-prints this dev URL when the UI is not built). Vite proxies `/api` to the API with `changeOrigin`
+prints this dev URL when the UI is not built). Vite proxies `/api`, and `/mcp` for agents, to the
+server with `changeOrigin`
 (so the Host check passes) and rewrites the `Origin` header only for requests from the dev server's
 own origin; any other origin passes through and is refused by the API. Use `KALYTH_API_URL` and
 `KALYTH_WEB_PORT` to change the target or the port.
@@ -59,8 +60,10 @@ src/inspector  claim, evidence groups, provenance, relations, attributes
 src/navigator  Navigator view (ADR 0010): provider, budget and consent strip, change request form,
                runs, run report (model calls, grounding), alternatives and impact; header chip and
                the Inspector's "Summarise with Navigator"
+src/handoff    Handoff view (ADR 0011): choose a decision or elements, the context package, agent
+               tokens and setup, the prompt and the round trip
 src/views      Overview, Records, Proposals, History, project list
-src/app        shell, URL state (?project=&view=&rev=&sel=&run=&proposal=), session, theme
+src/app        shell, URL state (?project=&view=&rev=&sel=&run=&proposal=&package=), session, theme
 ```
 
 ## Navigator
@@ -86,6 +89,24 @@ The visual language for epistemic status is defined once in `src/model/semantics
 basis, freshness status, proposal status and origin has a text label, a description and a tone.
 Basis is also encoded as the edge dash pattern and node border (solid observed, dashed inferred,
 dotted stated, double imported); colour never carries meaning alone.
+
+## Handoff
+
+The Handoff view (key `7`, `?view=handoff&package=ctx_…`) hands an accepted decision, or chosen
+elements, to a coding agent. It compiles a context package with `POST /api/v1/projects/:id/context`
+(always at the head), reads one with `GET /api/v1/context/:packageId`, lists accepted decisions with
+`GET /api/v1/projects/:id/decisions?status=accepted`, and issues, lists and revokes agent tokens with
+`/api/v1/projects/:id/agent-tokens` and `/api/v1/agent-tokens/:id/revoke`. A 404 on the decisions or
+token routes means the server has neither, and the view says so. Display and request logic is pure
+and lives in `src/model/handoff.ts`.
+
+Agents connect to `<page origin>/mcp` with an agent token; the view gives the Claude Code command,
+the Codex `config.toml` entry and the prompt that names the package id and the revision to propose
+against. The token is shown once, right after it is issued. It is held only in the panel's component
+state: never in the URL, `localStorage`, `sessionStorage` or the TanStack Query caches (issuing is
+not a react-query mutation for this reason), and it is dropped when the person leaves the view.
+"What came back" lists pending proposals whose base revision is the package revision, with a link
+to review each in Proposals.
 
 ## Freshness
 
