@@ -1,0 +1,18 @@
+{
+  "name": "@kalyth/tasks",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Task coordination: leases, execution reports and their verification against git.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@kalyth/analyzer": "workspace:*",
+    "@kalyth/context": "workspace:*",
+    "@kalyth/contracts": "workspace:*",
+    "@kalyth/core": "workspace:*",
+    "zod": "^4.6.7"
+  }
+}

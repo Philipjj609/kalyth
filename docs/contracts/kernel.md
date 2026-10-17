@@ -90,8 +90,29 @@ package it answers (`contextPackageId`); adapters check that it exists in the sa
 
 Agent tokens are issued, listed and revoked by a person with `grant.manage`, through HTTP
 `/projects/:id/agent-tokens` and `/agent-tokens/:id/revoke`. Each token gives an agent principal
-`project.read` and `proposal.create` on one project until it expires, and is the only credential
-`/mcp` accepts (ADR 0011).
+`project.read`, `proposal.create` and `task.work` on one project until it expires, and is the only
+credential `/mcp` accepts (ADR 0011).
+
+## Tasks
+
+A `core.Task` changes status and lease only through `setTaskStatus`, along `TASK_TRANSITIONS`
+(ADR 0013). People create and move tasks through ordinary proposals and read them over HTTP
+(`GET /projects/:id/tasks`, `GET /tasks/:id`). Agents with `task.work` use MCP only:
+
+- `claim_task` returns a lease, the context package to read and the commit trailer
+  `Kalyth-Task: <task id>`. It is refused while another agent holds the task or its requirements
+  are unmet. An expired lease moves the task to `unknown_outcome`; it is resumed only when no commit
+  in the task repository carries its trailer.
+- `renew_task_lease` and `release_task` need the current lease.
+- `submit_execution_report` records the report as stated. When it names a commit, the git verifier
+  checks that the commit exists, carries the trailer, changes exactly the files reported and
+  descends from the task's base commit, and records the check as an observed `core.Verification`.
+  A pass moves the task to `review`. Reported tests are recorded, not run.
+
+The task coordinator commits these lifecycle records and nothing else; only a person acting
+directly moves a task to `completed` or `cancelled`. The task repository, the local clone agents
+commit to, is registered per project by a person with `grant.manage`
+(`PUT /projects/:id/task-repository`); Kalyth only reads it.
 
 ## Navigator output
 

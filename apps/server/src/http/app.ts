@@ -3,6 +3,7 @@ import type { ContextCompiler } from '@kalyth/context'
 import { type Caller, HTTP_STATUS, type KernelError, type Result } from '@kalyth/contracts'
 import { type KalythServices, SCHEMA_VERSION } from '@kalyth/core'
 import type { Navigator } from '@kalyth/navigator'
+import { TaskCoordinator } from '@kalyth/tasks'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import { registerMcpEndpoint } from './mcp-http.ts'
 
@@ -25,7 +26,7 @@ type Query = Record<string, string | string[] | undefined>
 export function buildHttpApp(
   services: KalythServices,
   auth: HttpAuth,
-  options: { navigator?: Navigator; context?: ContextCompiler } = {},
+  options: { navigator?: Navigator; context?: ContextCompiler; tasks?: TaskCoordinator } = {},
 ): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 })
   const allowedOrigins = new Set(auth.allowedHosts.map((h) => `http://${h}`))
@@ -238,7 +239,33 @@ export function buildHttpApp(
     app.get('/api/v1/context/:packageId', async (req, reply) =>
       send(reply, context.get(caller, { packageId: params(req).packageId })),
     )
-    registerMcpEndpoint(app, { services, context })
+
+    // Tasks (ADR 0013). People read tasks here and change them through proposals; agents claim
+    // and report over MCP only. The task repository is registered by a person, acting directly.
+    const tasks = options.tasks ?? new TaskCoordinator({ services, context })
+    app.get('/api/v1/projects/:projectId/tasks', async (req, reply) => {
+      const status = query(req).status
+      return send(
+        reply,
+        tasks.listTasks(caller, {
+          projectId: params(req).projectId,
+          ...(typeof status === 'string' ? { status } : {}),
+        }),
+      )
+    })
+    app.get('/api/v1/tasks/:taskId', async (req, reply) =>
+      send(reply, tasks.getTask(caller, { taskId: params(req).taskId })),
+    )
+    app.get('/api/v1/projects/:projectId/task-repository', async (req, reply) =>
+      send(reply, tasks.getRepository(caller, { projectId: params(req).projectId })),
+    )
+    app.put('/api/v1/projects/:projectId/task-repository', async (req, reply) =>
+      send(
+        reply,
+        tasks.setRepository(caller, { path: body(req).path, projectId: params(req).projectId }),
+      ),
+    )
+    registerMcpEndpoint(app, { services, context, tasks })
   }
 
   const navigator = options.navigator

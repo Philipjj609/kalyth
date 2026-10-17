@@ -1,6 +1,7 @@
 import type { ContextCompiler } from '@kalyth/context'
 import {
   type Caller,
+  ClaimTaskInput,
   CommitProposalInput,
   CompileContextInput,
   ContextPackageListQuery,
@@ -16,16 +17,23 @@ import {
   ProposalListQuery,
   ProposeChangeInput,
   RelationQuery,
+  ReleaseTaskInput,
+  RenewLeaseInput,
   type Result,
   SituationQuery,
+  SubmitReportInput,
+  TaskListQuery,
+  TaskQuery,
 } from '@kalyth/contracts'
 import type { KalythServices } from '@kalyth/core'
+import type { TaskCoordinator } from '@kalyth/tasks'
 import { z } from 'zod'
 
 /**
  * MCP tool catalogue, version 1 (ADR 0007). Every tool calls a service method and nothing else,
  * so MCP requests get exactly the validation, authorisation and revision checks the UI gets.
- * There is deliberately no commit or accept tool: agents propose, people decide (D4).
+ * There is deliberately no commit or accept tool: agents propose, people decide (D4). The task
+ * tools change only a task's lifecycle records, through the coordinator's checks (ADR 0013).
  */
 export interface ToolSpec {
   name: string
@@ -36,10 +44,11 @@ export interface ToolSpec {
   run(deps: McpDeps, caller: Caller, input: unknown): Result<unknown>
 }
 
-/** What the tools call: the shared services and the context compiler (ADR 0011). */
+/** What the tools call: the shared services, the context compiler (ADR 0011) and tasks (ADR 0013). */
 export interface McpDeps {
   services: KalythServices
   context: ContextCompiler
+  tasks: TaskCoordinator
 }
 
 const noInput = z.object({})
@@ -179,6 +188,59 @@ export const TOOLS: readonly ToolSpec[] = [
       const checked = d.context.checkProvenance(c, i)
       return checked.ok ? d.services.proposeChange(c, i) : checked
     },
+  },
+  {
+    name: 'list_tasks',
+    title: 'List tasks',
+    description:
+      'Tasks in a project with their status, lease, what they implement, what they wait for and their execution reports. Filter by status, for example "ready" for work you can claim.',
+    input: TaskListQuery,
+    readOnly: true,
+    run: (d, c, i) => d.tasks.listTasks(c, i),
+  },
+  {
+    name: 'get_task',
+    title: 'Get a task',
+    description:
+      'One task: description, acceptance criteria, links, lease and every execution report with its verification.',
+    input: TaskQuery,
+    readOnly: true,
+    run: (d, c, i) => d.tasks.getTask(c, i),
+  },
+  {
+    name: 'claim_task',
+    title: 'Claim a task',
+    description:
+      'Takes a ready task with a lease (default 60 minutes) and returns the context package to read first and the commit trailer to use. Refused while another agent holds the task, while its requirements are unmet, or when an expired holder may already have committed. Renew the lease with renew_task_lease if the work runs longer.',
+    input: ClaimTaskInput,
+    readOnly: false,
+    run: (d, c, i) => d.tasks.claim(c, i),
+  },
+  {
+    name: 'renew_task_lease',
+    title: 'Renew a task lease',
+    description: 'Extends the lease you hold on a running task.',
+    input: RenewLeaseInput,
+    readOnly: false,
+    run: (d, c, i) => d.tasks.renew(c, i),
+  },
+  {
+    name: 'release_task',
+    title: 'Release a task',
+    description:
+      'Gives up a task you hold without reporting work, with a reason; it goes back to ready for others.',
+    input: ReleaseTaskInput,
+    readOnly: false,
+    run: (d, c, i) => d.tasks.release(c, i),
+  },
+  {
+    name: 'submit_execution_report',
+    title: 'Submit an execution report',
+    description:
+      'Reports the work on a task you hold: outcome, summary, the commit sha, every file the commit changes and the tests you ran. Kalyth checks the commit in the task repository (it exists, carries the Kalyth-Task trailer, changes exactly the files reported and descends from the task base) and records that check as an observed verification. A passing report moves the task to review; a person completes it. Tests are recorded as reported, not run. Reuse the idempotencyKey when retrying.',
+    input: SubmitReportInput,
+    readOnly: false,
+    run: (d, c, i) => d.tasks.submitReport(c, i),
   },
   {
     name: 'get_proposal',

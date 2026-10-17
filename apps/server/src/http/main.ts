@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ContextCompiler } from '@kalyth/context'
 import { ensureLocalOwner } from '@kalyth/core'
+import { TaskCoordinator } from '@kalyth/tasks'
 import { loadLocalEnv, openLocalServices, openNavigator } from '../runtime.ts'
 import { buildHttpApp } from './app.ts'
 import { registerWebUi } from './static.ts'
@@ -19,10 +20,11 @@ const services = openLocalServices()
 const owner = ensureLocalOwner(services)
 const { navigator, gateway } = openNavigator(services)
 const token = randomBytes(24).toString('base64url')
+const context = new ContextCompiler({ services })
 const app = buildHttpApp(
   services,
   { token, principalId: owner.id, allowedHosts: [`127.0.0.1:${port}`, `localhost:${port}`] },
-  { navigator, context: new ContextCompiler({ services }) },
+  { navigator, context, tasks: new TaskCoordinator({ services, context }) },
 )
 registerWebUi(app, { root: webRoot })
 await app.listen({ host: '127.0.0.1', port })

@@ -50,6 +50,9 @@ importers:
       '@kalyth/navigator':
         specifier: workspace:*
         version: link:../../packages/navigator
+      '@kalyth/tasks':
+        specifier: workspace:*
+        version: link:../../packages/tasks
       '@modelcontextprotocol/server':
         specifier: ^2.3.1
         version: 2.3.1
@@ -239,6 +242,24 @@ importers:
       '@kalyth/analyzer':
         specifier: workspace:*
         version: link:../analyzer
+
+  packages/tasks:
+    dependencies:
+      '@kalyth/analyzer':
+        specifier: workspace:*
+        version: link:../analyzer
+      '@kalyth/context':
+        specifier: workspace:*
+        version: link:../context
+      '@kalyth/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@kalyth/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
 packages:
 

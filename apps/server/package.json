@@ -19,6 +19,7 @@
     "@kalyth/eval": "workspace:*",
     "@kalyth/gateway": "workspace:*",
     "@kalyth/navigator": "workspace:*",
+    "@kalyth/tasks": "workspace:*",
     "@modelcontextprotocol/server": "^2.3.1",
     "fastify": "^5.12.7",
     "zod": "^4.6.7"

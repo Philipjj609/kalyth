@@ -8,7 +8,9 @@ Every record has a claim basis: observed (a tool saw it in pinned source, within
 inferred (a hypothesis), stated or imported. Observed is not runtime verification.
 When a person hands you a task, read its context package (get_context_package) first and follow
 everything under "mandatory". Propose changes against the package revision.
-You can propose changes; a person reviews and commits them in Kalyth. Decisions are accepted only by people.`
+You can propose changes; a person reviews and commits them in Kalyth. Decisions are accepted only by people.
+For tasks: claim_task, read the context package it returns, commit with the Kalyth-Task trailer, then
+submit_execution_report. Kalyth checks the commit against git; a person completes the task.`
 
 /**
  * Builds an MCP server bound to one principal. Every request runs as that principal with origin

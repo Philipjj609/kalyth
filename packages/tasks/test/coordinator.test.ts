@@ -1,0 +1,378 @@
+import { ContextCompiler } from '@kalyth/context'
+import type { Caller, OperationInput, Result } from '@kalyth/contracts'
+import {
+  ensureLocalAgent,
+  ensureLocalOwner,
+  ensurePrincipal,
+  KalythServices,
+  SqliteStore,
+} from '@kalyth/core'
+import { afterEach, describe, expect, it } from 'vitest'
+import { FixtureRepo } from '../../analyzer/test/fixture-repo.ts'
+import { TaskCoordinator, taskTrailer } from '../src/index.ts'
+
+const unwrap = <T>(r: Result<T>): T => {
+  if (!r.ok)
+    throw new Error(`${r.error.code}: ${r.error.message} ${JSON.stringify(r.error.issues)}`)
+  return r.value
+}
+const errorOf = <T>(r: Result<T>) => {
+  if (r.ok) throw new Error('expected an error')
+  return r.error
+}
+
+const stated = { basis: 'stated' as const }
+const repos: FixtureRepo[] = []
+afterEach(() => {
+  for (const r of repos.splice(0)) r.dispose()
+})
+
+/** A project with a ready task implementing a requirement, a registered repository and two agents. */
+function world() {
+  let now = Date.UTC(2026, 9, 17, 12, 0, 0)
+  const clock = () => new Date(now).toISOString()
+  const services = new KalythServices({ store: new SqliteStore(':memory:') })
+  const owner: Caller = { principalId: ensureLocalOwner(services).id, origin: 'human' }
+  const agent: Caller = { principalId: ensureLocalAgent(services).id, origin: 'agent' }
+  const other: Caller = {
+    principalId: ensurePrincipal(services, 'agent-2', 'agent', 'Second agent', [
+      'project.read',
+      'proposal.create',
+      'task.work',
+    ]).id,
+    origin: 'agent',
+  }
+  const reader: Caller = {
+    principalId: ensurePrincipal(services, 'reader', 'agent', 'Reader', ['project.read']).id,
+    origin: 'agent',
+  }
+  const projectId = unwrap(services.createProject(owner, { name: 'Fixture' })).id
+  const commitOps = (ops: OperationInput[]) => {
+    const head = unwrap(services.getProjectOverview(owner, { projectId })).project.headRevision
+    const p = unwrap(
+      services.proposeChange(owner, { projectId, baseRevision: head, rationale: 'test', ops }),
+    )
+    if (p.status !== 'pending') throw new Error(JSON.stringify(p.issues))
+    return unwrap(services.commitProposal(owner, { proposalId: p.proposalId }))
+  }
+
+  const repo = new FixtureRepo()
+  repos.push(repo)
+  repo.write({ 'app/models.py': 'class Item:\n    pass\n' })
+  const base = repo.commit('base')
+
+  commitOps([
+    {
+      op: 'createObject',
+      ref: '$req',
+      type: 'core.Requirement',
+      stance: 'toBe',
+      attributes: { title: 'Tenant isolation', statement: 'Every item belongs to one tenant.' },
+      claim: stated,
+    },
+    {
+      op: 'createObject',
+      ref: '$t',
+      type: 'core.Task',
+      stance: 'toBe',
+      attributes: {
+        title: 'Add tenant_id to Item',
+        acceptanceCriteria: ['Item has a tenant_id column'],
+        baseCommit: base,
+      },
+      claim: stated,
+    },
+    {
+      op: 'createRelation',
+      type: 'implements',
+      from: '$t',
+      to: '$req',
+      stance: 'toBe',
+      claim: stated,
+    },
+  ])
+  const taskId = unwrap(services.queryObjects(owner, { projectId, types: ['core.Task'] }))
+    .objects[0]?.id as string
+  commitOps([{ op: 'setTaskStatus', id: taskId, status: 'ready', rationale: 'scoped' }])
+
+  const context = new ContextCompiler({ services, clock })
+  const tasks = new TaskCoordinator({ services, context, clock })
+  unwrap(tasks.setRepository(owner, { projectId, path: repo.path }))
+  const view = (id = taskId) => unwrap(tasks.getTask(owner, { taskId: id }))
+  const advance = (minutes: number) => {
+    now += minutes * 60_000
+  }
+  return {
+    services,
+    tasks,
+    owner,
+    agent,
+    other,
+    reader,
+    projectId,
+    taskId,
+    repo,
+    base,
+    commitOps,
+    view,
+    advance,
+  }
+}
+
+/** The agent's work: a commit in the task repository, with or without the trailer. */
+function work(w: ReturnType<typeof world>, options: { trailer?: boolean } = {}) {
+  w.repo.write({ 'app/models.py': 'class Item:\n    tenant_id: int\n', 'app/tenant.py': 'X = 1\n' })
+  const trailer = options.trailer === false ? '' : `\n\n${taskTrailer(w.taskId)}`
+  return w.repo.commit(`Add tenant_id${trailer}`)
+}
+
+const report = (leaseId: string, commit: string | undefined, extra: object = {}) => ({
+  leaseId,
+  idempotencyKey: `report-${leaseId.slice(-8)}`,
+  outcome: 'succeeded' as const,
+  summary: 'Added tenant_id to Item.',
+  ...(commit ? { commit } : {}),
+  filesChanged: ['app/models.py', 'app/tenant.py'],
+  tests: [{ command: 'pytest', passed: 12, failed: 0 }],
+  ...extra,
+})
+
+describe('task coordinator (ADR 0013)', () => {
+  it('claims with a lease and a context package, refuses a second claimant, renews and releases', () => {
+    const w = world()
+    const claim = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    expect(claim.task.status).toBe('running')
+    expect(claim.lease).toMatchObject({
+      holder: w.agent.principalId,
+      expiresAt: '2026-10-17T13:00:00.000Z',
+    })
+    expect(claim.contextPackageId).toMatch(/^ctx_/)
+    expect(claim.instructions.join('\n')).toContain(taskTrailer(w.taskId))
+    expect(claim.task.implements).toEqual([
+      expect.objectContaining({ type: 'core.Requirement', label: 'Tenant isolation' }),
+    ])
+
+    expect(errorOf(w.tasks.claim(w.other, { taskId: w.taskId })).message).toMatch(/held until/)
+    expect(errorOf(w.tasks.claim(w.reader, { taskId: w.taskId })).code).toBe('unauthorized')
+    expect(
+      errorOf(w.tasks.renew(w.other, { taskId: w.taskId, leaseId: claim.lease.id })).code,
+    ).toBe('unauthorized')
+
+    w.advance(50)
+    const renewed = unwrap(
+      w.tasks.renew(w.agent, { taskId: w.taskId, leaseId: claim.lease.id, leaseMinutes: 30 }),
+    )
+    expect(renewed.lease).toMatchObject({
+      id: claim.lease.id,
+      expiresAt: '2026-10-17T13:20:00.000Z',
+    })
+
+    const released = unwrap(
+      w.tasks.release(w.agent, {
+        taskId: w.taskId,
+        leaseId: claim.lease.id,
+        reason: 'blocked on a schema question',
+      }),
+    )
+    expect(released).toMatchObject({ status: 'ready', lease: null })
+    expect(unwrap(w.tasks.claim(w.other, { taskId: w.taskId })).lease.holder).toBe(
+      w.other.principalId,
+    )
+  })
+
+  it('verifies a report against git, moves the task to review and leaves completion to a person', () => {
+    const w = world()
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    const sha = work(w)
+    const result = unwrap(
+      w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, sha) }),
+    )
+    expect(result.duplicate).toBe(false)
+    expect(result.verification.outcome).toBe('pass')
+    expect(result.verification.checks.map((c) => c.name)).toEqual([
+      'commit exists',
+      'task trailer',
+      'files changed',
+      'descends from base',
+    ])
+    expect(result.task.status).toBe('review')
+    expect(result.task.lease).toBeNull()
+    expect(result.task.reports).toEqual([
+      expect.objectContaining({
+        id: result.reportId,
+        commit: sha,
+        outcome: 'succeeded',
+        verification: expect.objectContaining({ outcome: 'pass' }),
+      }),
+    ])
+
+    // The verification is a tool-observed claim backed by the commit, within its declared coverage.
+    const verification = unwrap(
+      w.services.queryObjects(w.owner, { projectId: w.projectId, types: ['core.Verification'] }),
+    ).objects[0]
+    expect(verification?.claim).toMatchObject({
+      basis: 'observed',
+      observation: { tool: 'kalyth-git-verifier' },
+    })
+
+    // Retrying the same report is answered from the record, not written twice.
+    const again = unwrap(
+      w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, sha) }),
+    )
+    expect(again).toMatchObject({ duplicate: true, reportId: result.reportId })
+    expect(w.view().reports).toHaveLength(1)
+
+    // Completion: never the coordinator, never through relayed text; the owner acting directly.
+    const coordinator: Caller = { principalId: w.tasks.principal.id, origin: 'tool' }
+    const finish = (who: Caller) => {
+      const head = unwrap(w.services.getProjectOverview(w.owner, { projectId: w.projectId }))
+        .project.headRevision
+      const p = unwrap(
+        w.services.proposeChange(w.agent, {
+          projectId: w.projectId,
+          baseRevision: head,
+          rationale: 'done',
+          ops: [{ op: 'setTaskStatus', id: w.taskId, status: 'completed', rationale: 'done' }],
+        }),
+      )
+      return w.services.commitProposal(who, { proposalId: p.proposalId })
+    }
+    expect(errorOf(finish(coordinator)).code).toBe('unauthorized')
+    expect(errorOf(finish({ ...w.owner, origin: 'relayed' })).code).toBe('unauthorized')
+    expect(finish(w.owner).ok).toBe(true)
+    expect(w.view().status).toBe('completed')
+  })
+
+  it('fails verification without the trailer or with misreported files, and keeps the task running', () => {
+    const w = world()
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    const sha = work(w, { trailer: false })
+    const result = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, sha, { filesChanged: ['app/models.py', 'README.md'] }),
+      }),
+    )
+    expect(result.verification.outcome).toBe('fail')
+    const failed = Object.fromEntries(result.verification.checks.map((c) => [c.name, c]))
+    expect(failed['task trailer']?.ok).toBe(false)
+    expect(failed['files changed']).toMatchObject({ ok: false })
+    expect(failed['files changed']?.detail).toMatch(/changed but not reported: app\/tenant\.py/)
+    expect(failed['files changed']?.detail).toMatch(/reported but not changed: README\.md/)
+    expect(result.task.status).toBe('running')
+
+    const missing = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, 'f'.repeat(40), { idempotencyKey: 'report-missing-commit' }),
+      }),
+    )
+    expect(missing.verification.checks).toEqual([
+      expect.objectContaining({ name: 'commit exists', ok: false }),
+    ])
+
+    // A reported failure moves the task to failed whatever the repository shows.
+    const gaveUp = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, undefined, {
+          idempotencyKey: 'report-gave-up',
+          outcome: 'failed',
+          filesChanged: [],
+        }),
+      }),
+    )
+    expect(gaveUp.verification.outcome).toBe('inconclusive')
+    expect(gaveUp.task.status).toBe('failed')
+    expect(gaveUp.task.reports).toHaveLength(3)
+  })
+
+  it('resumes an expired task only when no commit references it', () => {
+    const w = world()
+    const first = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId, leaseMinutes: 5 }))
+    expect(errorOf(w.tasks.claim(w.other, { taskId: w.taskId })).code).toBe('conflicting')
+    w.advance(6)
+    expect(w.view().leaseExpired).toBe(true)
+    // Nothing in the repository mentions the task: the next agent may take it over.
+    const second = unwrap(w.tasks.claim(w.other, { taskId: w.taskId }))
+    expect(second.lease.holder).toBe(w.other.principalId)
+    expect(
+      errorOf(w.tasks.renew(w.agent, { taskId: w.taskId, leaseId: first.lease.id })).code,
+    ).toBe('unauthorized')
+  })
+
+  it('refuses to resume when the previous holder committed, and accepts that holder’s late report', () => {
+    const w = world()
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId, leaseMinutes: 5 }))
+    const sha = work(w)
+    w.advance(6)
+    const refused = errorOf(w.tasks.claim(w.other, { taskId: w.taskId }))
+    expect(refused.code).toBe('conflicting')
+    expect(refused.message).toContain(sha.slice(0, 12))
+    expect(w.view()).toMatchObject({
+      status: 'unknown_outcome',
+      lease: { id: lease.id, holder: w.agent.principalId },
+    })
+    // The original holder reports against the kept lease.
+    const late = unwrap(
+      w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, sha) }),
+    )
+    expect(late.verification.outcome).toBe('pass')
+    expect(late.task.status).toBe('review')
+  })
+
+  it('waits for required tasks', () => {
+    const w = world()
+    w.commitOps([
+      {
+        op: 'createObject',
+        ref: '$b',
+        type: 'core.Task',
+        stance: 'toBe',
+        attributes: { title: 'Backfill tenant_id' },
+        claim: stated,
+      },
+      {
+        op: 'createRelation',
+        type: 'requires',
+        from: '$b',
+        to: w.taskId,
+        stance: 'toBe',
+        claim: stated,
+      },
+    ])
+    const list = unwrap(w.tasks.listTasks(w.owner, { projectId: w.projectId }))
+    const b = list.tasks.find((t) => t.title === 'Backfill tenant_id')
+    if (!b) throw new Error('no task B')
+    expect(b.requires).toEqual([expect.objectContaining({ id: w.taskId, satisfied: false })])
+    w.commitOps([{ op: 'setTaskStatus', id: b.id, status: 'ready', rationale: 'scoped' }])
+    expect(errorOf(w.tasks.claim(w.agent, { taskId: b.id })).message).toMatch(/waiting for/)
+    expect(
+      unwrap(w.tasks.listTasks(w.owner, { projectId: w.projectId, status: 'ready' })).tasks,
+    ).toHaveLength(2)
+  })
+
+  it('lets only a person acting directly register the task repository', () => {
+    const w = world()
+    expect(
+      errorOf(w.tasks.setRepository(w.agent, { projectId: w.projectId, path: w.repo.path })).code,
+    ).toBe('unauthorized')
+    expect(
+      errorOf(
+        w.tasks.setRepository(
+          { ...w.owner, origin: 'relayed' },
+          {
+            projectId: w.projectId,
+            path: w.repo.path,
+          },
+        ),
+      ).code,
+    ).toBe('unauthorized')
+    expect(
+      errorOf(
+        w.tasks.setRepository(w.owner, { projectId: w.projectId, path: `${w.repo.path}-missing` }),
+      ).code,
+    ).toBe('invalid')
+    expect(unwrap(w.tasks.getRepository(w.reader, { projectId: w.projectId })).path).toBeTruthy()
+  })
+})

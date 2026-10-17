@@ -49,6 +49,7 @@ describe('MCP interface', () => {
     expect(tools).toEqual([
       'analyze_impact',
       'assess_freshness',
+      'claim_task',
       'compile_context_package',
       'describe_types',
       'get_context_package',
@@ -57,13 +58,18 @@ describe('MCP interface', () => {
       'get_project_overview',
       'get_proposal',
       'get_situation',
+      'get_task',
       'list_context_packages',
       'list_decisions',
       'list_projects',
       'list_proposals',
+      'list_tasks',
       'propose_change',
       'query_objects',
       'query_relations',
+      'release_task',
+      'renew_task_lease',
+      'submit_execution_report',
     ])
     expect(tools.some((t) => /commit|accept|decide|grant/.test(t))).toBe(false)
   })

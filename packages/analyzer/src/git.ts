@@ -53,6 +53,51 @@ export class GitRepository {
     return entries
   }
 
+  /** The full message of a commit. */
+  commitMessage(commit: string): string {
+    const raw = this.#git(['cat-file', 'commit', commit]).toString('utf8')
+    const blank = raw.indexOf('\n\n')
+    return blank === -1 ? '' : raw.slice(blank + 2)
+  }
+
+  /** Paths a commit changed against its first parent; every path for a root commit. */
+  changedFiles(commit: string): string[] {
+    let parent: string | undefined
+    try {
+      parent = this.#git(['rev-parse', '--verify', '--end-of-options', `${commit}^1`])
+        .toString('utf8')
+        .trim()
+    } catch {
+      parent = undefined
+    }
+    const args = parent
+      ? ['diff-tree', '-r', '--name-only', '-z', '--no-renames', parent, commit]
+      : ['diff-tree', '-r', '--name-only', '-z', '--no-renames', '--root', '--no-commit-id', commit]
+    return this.#git(args)
+      .toString('utf8')
+      .split('\0')
+      .filter((p) => p.length > 0)
+  }
+
+  /** Whether `ancestor` is reachable from `descendant`. */
+  isAncestor(ancestor: string, descendant: string): boolean {
+    try {
+      this.#git(['merge-base', '--is-ancestor', ancestor, descendant])
+      return true
+    } catch (error) {
+      if ((error as { status?: number }).status === 1) return false
+      throw error
+    }
+  }
+
+  /** Commits on any ref whose message contains `text` (a fixed string), newest first. */
+  commitsMentioning(text: string): string[] {
+    return this.#git(['log', '--all', '--format=%H', '--fixed-strings', `--grep=${text}`])
+      .toString('utf8')
+      .split('\n')
+      .filter((l) => /^[0-9a-f]{40}$/.test(l))
+  }
+
   /** Reads blobs by sha in one `cat-file --batch` call. */
   readBlobs(shas: readonly string[]): Map<string, Buffer> {
     const unique = [...new Set(shas)]
