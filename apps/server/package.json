@@ -16,6 +16,7 @@
     "@kalyth/context": "workspace:*",
     "@kalyth/contracts": "workspace:*",
     "@kalyth/core": "workspace:*",
+    "@kalyth/eval": "workspace:*",
     "@kalyth/gateway": "workspace:*",
     "@kalyth/navigator": "workspace:*",
     "@modelcontextprotocol/server": "^2.3.1",

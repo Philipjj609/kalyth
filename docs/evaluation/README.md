@@ -55,3 +55,29 @@ Taken from the Phase 0 review, section 11:
 
 Three runs per scenario and condition. Results are reported with their small sample size and without
 claims of statistical significance.
+
+## Harness
+
+The harness is `packages/eval`, documented in
+[ADR 0012](../adr/0012-evaluation-harness.md). It compares two conditions:
+
+- **Baseline:** BM25 over 60-line chunks of the repository.
+- **Kalyth:** the model names the elements the change touches directly, and Kalyth compiles their
+  context package.
+
+Both get the same final call, the same model and the same character budget. Runs go through the
+provider gateway, so the spend cap applies, and real calls are recorded for replay.
+
+```bash
+git clone --bare https://github.com/fastapi/full-stack-fastapi-template .kalyth/repos/fsft.git
+pnpm eval --truth docs/evaluation/ground-truth.draft.json --git .kalyth/repos/fsft.git --dry-run
+pnpm eval --truth docs/evaluation/ground-truth.json --truth-sha <recorded sha256> --git .kalyth/repos/fsft.git
+```
+
+- **A dry run** reads only the scenario requests and scores nothing.
+- **A scored run** refuses any truth file that is not frozen, or whose hash differs from the
+  recorded one.
+- **Provider.** The default is the mock provider, which only exercises the pipeline. Real runs use
+  `KALYTH_PROVIDER=nebius`, need `--consent` (public repositories only), and spend within the ledger
+  cap.
+- **Output.** Results and a report are written to `.kalyth/eval/<time>/`.

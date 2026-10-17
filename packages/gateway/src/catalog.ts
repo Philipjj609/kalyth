@@ -65,8 +65,10 @@ export const DEFAULT_ROLE_MODELS: Readonly<Record<string, Readonly<Record<string
   nebius: {
     summarize: 'nvidia/nemotron-3-super-120b-a12b',
     alternatives: 'nvidia/Nemotron-3-Ultra-550b-a55b',
+    /** One model for both evaluation conditions (ADR 0012). */
+    evaluate: 'nvidia/nemotron-3-super-120b-a12b',
   },
-  mock: { summarize: 'mock', alternatives: 'mock' },
+  mock: { summarize: 'mock', alternatives: 'mock', evaluate: 'mock' },
 }
 
 export function findModel(

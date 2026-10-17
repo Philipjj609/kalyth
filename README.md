@@ -166,6 +166,7 @@ packages/analyzer    static repository analysis and ingest (tree-sitter, git obj
 packages/gateway     provider gateway: model catalogue, spend ledger, consent, providers
 packages/navigator   grounded summaries and change alternatives, as proposals
 packages/context     deterministic context packages for coding agents
+packages/eval        evaluation harness: lexical retrieval versus context packages
 apps/server          HTTP API, MCP server and ingest CLI over the services
 apps/web             workbench UI (React, React Flow)
 docs/adr             architecture decision records
