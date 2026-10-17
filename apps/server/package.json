@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@kalyth/analyzer": "workspace:*",
+    "@kalyth/context": "workspace:*",
     "@kalyth/contracts": "workspace:*",
     "@kalyth/core": "workspace:*",
     "@kalyth/gateway": "workspace:*",

@@ -1,22 +1,23 @@
-import { CONTRACTS_VERSION } from '@kalyth/contracts'
-import type { KalythServices } from '@kalyth/core'
-import { McpServer } from '@modelcontextprotocol/server'
-import { TOOLS, toToolResult } from './tools.ts'
+import { CONTRACTS_VERSION, canonicalJson } from '@kalyth/contracts'
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/server'
+import { type McpDeps, TOOLS, toToolResult } from './tools.ts'
 
 const INSTRUCTIONS = `Kalyth holds a persistent, evidence-backed engineering model of this project.
 Read before you change: query objects, relations and evidence at a revision.
 Every record has a claim basis: observed (a tool saw it in pinned source, within stated coverage),
 inferred (a hypothesis), stated or imported. Observed is not runtime verification.
+When a person hands you a task, read its context package (get_context_package) first and follow
+everything under "mandatory". Propose changes against the package revision.
 You can propose changes; a person reviews and commits them in Kalyth. Decisions are accepted only by people.`
 
 /**
  * Builds an MCP server bound to one principal. Every request runs as that principal with origin
  * "agent": text arriving over MCP never carries a person's direct authority.
  */
-export function createKalythMcpServer(services: KalythServices, principalId: string): McpServer {
+export function createKalythMcpServer(deps: McpDeps, principalId: string): McpServer {
   const server = new McpServer(
     { name: 'kalyth', version: CONTRACTS_VERSION },
-    { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
+    { capabilities: { tools: {}, resources: {} }, instructions: INSTRUCTIONS },
   )
   const caller = { principalId, origin: 'agent' as const }
   for (const tool of TOOLS) {
@@ -32,8 +33,31 @@ export function createKalythMcpServer(services: KalythServices, principalId: str
           openWorldHint: false,
         },
       },
-      async (input: unknown) => toToolResult(tool.run(services, caller, input)),
+      async (input: unknown) => toToolResult(tool.run(deps, caller, input)),
     )
   }
+  server.registerResource(
+    'context-package',
+    new ResourceTemplate('kalyth://context/{packageId}', { list: undefined }),
+    {
+      title: 'Context package',
+      description: 'An immutable, content-addressed context package (ADR 0011).',
+      mimeType: 'application/json',
+    },
+    async (uri, variables) => {
+      const packageId = String(variables.packageId ?? '')
+      const result = deps.context.get(caller, { packageId })
+      if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'application/json',
+            text: canonicalJson(result.value.package),
+          },
+        ],
+      }
+    },
+  )
   return server
 }

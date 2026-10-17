@@ -32,6 +32,9 @@ importers:
       '@kalyth/analyzer':
         specifier: workspace:*
         version: link:../../packages/analyzer
+      '@kalyth/context':
+        specifier: workspace:*
+        version: link:../../packages/context
       '@kalyth/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

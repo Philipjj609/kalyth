@@ -73,6 +73,25 @@ attention: open decisions with their alternatives, open questions, pending propo
 counts and the first 100 stale claims. It is computed on read. Pending proposals are listed as they
 are now, whatever revision is asked for.
 
+## Context packages and agent tokens
+
+`compileContext` (HTTP `POST /projects/:id/context`, MCP `compile_context_package`) builds a
+content-addressed package (`ctx_` + 32 hex digits of its SHA-256) at one revision. Its parts:
+
+- **Mandatory, never truncated:** invariants, constraints, accepted decisions, acceptance criteria
+  and the agent policy.
+- **Optional:** items ranked by typed distance, cut at the size limit with omissions and retrieval
+  calls.
+
+If the mandatory part exceeds the limit, the package is `blocked` with `context_overflow` and a
+suggested split. Packages are read back by id, over HTTP or MCP (`get_context_package`), or as
+`kalyth://context/{id}`.
+
+Agent tokens are issued, listed and revoked by a person with `grant.manage`, through HTTP
+`/projects/:id/agent-tokens` and `/agent-tokens/:id/revoke`. Each token gives an agent principal
+`project.read` and `proposal.create` on one project until it expires, and is the only credential
+`/mcp` accepts (ADR 0011).
+
 ## Navigator output
 
 A Navigator run (HTTP only, started by a person) ends in one pending proposal by the Navigator

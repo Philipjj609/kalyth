@@ -41,11 +41,17 @@ Phase 1, first vertical slice. What exists and is tested today:
   change request with the elements each one changes directly. Every citation is checked against the
   pinned source text and fabricated ones are rejected; everything becomes a proposal for a person
   to review. Model calls go through one gateway with a persistent spend cap.
+- **Context packages and agent handoff**: for an accepted decision or chosen elements, a
+  deterministic, content-addressed package pinned to one revision. Its mandatory part (invariants,
+  constraints, accepted decisions, acceptance criteria, agent policy) is never truncated, and
+  optional items are ranked by typed distance with an explicit list of what was left out. Agents
+  connect over MCP, locally on stdio or over HTTP with a scoped, expiring token issued in Kalyth,
+  read the package and propose; a person commits.
 
 Not working yet: real NVIDIA Nemotron inference through Nebius Token Factory. The adapter is built
-and tested without network access, but no call has been made until a budget is approved. Context
-packages and task handoff are also still to come. This README will say when each one works. No
-hosted demo exists yet.
+and tested without network access, but no call has been made until a budget is approved. Tasks and
+execution reports verified against git are planned next. This README will say when each one works.
+No hosted demo exists yet.
 
 ## Quick start
 
@@ -121,7 +127,19 @@ args = ["/absolute/path/to/kalyth/apps/server/src/mcp/stdio.ts"]
 env = { KALYTH_DB = "/absolute/path/to/kalyth.db" }
 ```
 
-Agents get read tools (including `analyze_impact` and `assess_freshness`) and `propose_change`.
+Over HTTP instead (the server must be running): issue an agent token for the project in Kalyth,
+then
+
+```bash
+claude mcp add --transport http kalyth http://127.0.0.1:4317/mcp --header "Authorization: Bearer <agent token>"
+```
+
+or, for Codex, `url = "http://127.0.0.1:4317/mcp"` with `bearer_token_env_var = "KALYTH_AGENT_TOKEN"`.
+A token works for one project, reads and proposes only, and expires within 30 days; the UI session
+token is not accepted on `/mcp`.
+
+Agents get read tools (including `list_decisions`, `get_context_package`, `analyze_impact` and
+`assess_freshness`) and `propose_change`.
 There is no commit or accept tool: proposals wait for a person to review and commit them. Nor is
 there a tool that spends money: Navigator runs are started by a person in the UI.
 
@@ -147,6 +165,7 @@ packages/core        semantic kernel, SQLite store, application services
 packages/analyzer    static repository analysis and ingest (tree-sitter, git objects)
 packages/gateway     provider gateway: model catalogue, spend ledger, consent, providers
 packages/navigator   grounded summaries and change alternatives, as proposals
+packages/context     deterministic context packages for coding agents
 apps/server          HTTP API, MCP server and ingest CLI over the services
 apps/web             workbench UI (React, React Flow)
 docs/adr             architecture decision records

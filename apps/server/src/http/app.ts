@@ -1,8 +1,10 @@
 import { timingSafeEqual } from 'node:crypto'
+import type { ContextCompiler } from '@kalyth/context'
 import { type Caller, HTTP_STATUS, type KernelError, type Result } from '@kalyth/contracts'
 import { type KalythServices, SCHEMA_VERSION } from '@kalyth/core'
 import type { Navigator } from '@kalyth/navigator'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
+import { registerMcpEndpoint } from './mcp-http.ts'
 
 export interface HttpAuth {
   /** Per-launch session token for the local owner's UI. */
@@ -23,7 +25,7 @@ type Query = Record<string, string | string[] | undefined>
 export function buildHttpApp(
   services: KalythServices,
   auth: HttpAuth,
-  options: { navigator?: Navigator } = {},
+  options: { navigator?: Navigator; context?: ContextCompiler } = {},
 ): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 })
   const allowedOrigins = new Set(auth.allowedHosts.map((h) => `http://${h}`))
@@ -194,6 +196,44 @@ export function buildHttpApp(
       }),
     ),
   )
+
+  app.get('/api/v1/projects/:projectId/decisions', async (req, reply) => {
+    const status = one(query(req).status)
+    return send(
+      reply,
+      services.listDecisions(caller, {
+        projectId: params(req).projectId,
+        ...revisionOf(query(req)),
+        ...(status === undefined ? {} : { status }),
+      }),
+    )
+  })
+
+  // Agent tokens: issued, listed and revoked by the owner in the UI (ADR 0011).
+  app.get('/api/v1/projects/:projectId/agent-tokens', async (req, reply) =>
+    send(reply, services.listAgentTokens(caller, { projectId: params(req).projectId })),
+  )
+  app.post('/api/v1/projects/:projectId/agent-tokens', async (req, reply) =>
+    send(
+      reply,
+      services.issueAgentToken(caller, { ...body(req), projectId: params(req).projectId }),
+      201,
+    ),
+  )
+  app.post('/api/v1/agent-tokens/:tokenId/revoke', async (req, reply) =>
+    send(reply, services.revokeAgentToken(caller, { tokenId: params(req).tokenId })),
+  )
+
+  const context = options.context
+  if (context) {
+    app.post('/api/v1/projects/:projectId/context', async (req, reply) =>
+      send(reply, context.compile(caller, { ...body(req), projectId: params(req).projectId }), 201),
+    )
+    app.get('/api/v1/context/:packageId', async (req, reply) =>
+      send(reply, context.get(caller, { packageId: params(req).packageId })),
+    )
+    registerMcpEndpoint(app, { services, context })
+  }
 
   const navigator = options.navigator
   if (navigator) {

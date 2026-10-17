@@ -1,7 +1,11 @@
+import type { ContextCompiler } from '@kalyth/context'
 import {
   type Caller,
   CommitProposalInput,
+  CompileContextInput,
+  ContextPackageQuery,
   canonicalJson,
+  DecisionsQuery,
   EvidenceQuery,
   FreshnessQuery,
   HistoryQuery,
@@ -28,7 +32,13 @@ export interface ToolSpec {
   description: string
   input: z.ZodType
   readOnly: boolean
-  run(services: KalythServices, caller: Caller, input: unknown): Result<unknown>
+  run(deps: McpDeps, caller: Caller, input: unknown): Result<unknown>
+}
+
+/** What the tools call: the shared services and the context compiler (ADR 0011). */
+export interface McpDeps {
+  services: KalythServices
+  context: ContextCompiler
 }
 
 const noInput = z.object({})
@@ -40,7 +50,7 @@ export const TOOLS: readonly ToolSpec[] = [
     description: 'Lists the Kalyth projects this agent may read, with their head revisions.',
     input: noInput,
     readOnly: true,
-    run: (s, c) => s.listProjects(c),
+    run: (d, c) => d.services.listProjects(c),
   },
   {
     name: 'get_project_overview',
@@ -49,7 +59,7 @@ export const TOOLS: readonly ToolSpec[] = [
       'Counts of objects, relations and evidence at a revision (default: head), plus pending proposals.',
     input: ProjectRef,
     readOnly: true,
-    run: (s, c, i) => s.getProjectOverview(c, i),
+    run: (d, c, i) => d.services.getProjectOverview(c, i),
   },
   {
     name: 'describe_types',
@@ -58,7 +68,7 @@ export const TOOLS: readonly ToolSpec[] = [
       'Object types with their attribute JSON Schemas, and relation types with allowed endpoints and impact rules.',
     input: noInput,
     readOnly: true,
-    run: (s, c) => s.describeTypes(c),
+    run: (d, c) => d.services.describeTypes(c),
   },
   {
     name: 'query_objects',
@@ -67,7 +77,7 @@ export const TOOLS: readonly ToolSpec[] = [
       'Typed objects at a revision. Each carries its claim: basis (observed, inferred, stated, imported), evidence support groups and provenance. "observed" means a tool observed it in source, not that runtime behaviour was verified.',
     input: ObjectQuery,
     readOnly: true,
-    run: (s, c, i) => s.queryObjects(c, i),
+    run: (d, c, i) => d.services.queryObjects(c, i),
   },
   {
     name: 'query_relations',
@@ -75,7 +85,7 @@ export const TOOLS: readonly ToolSpec[] = [
     description: 'Typed relations at a revision, filterable by type and endpoint.',
     input: RelationQuery,
     readOnly: true,
-    run: (s, c, i) => s.queryRelations(c, i),
+    run: (d, c, i) => d.services.queryRelations(c, i),
   },
   {
     name: 'get_evidence',
@@ -84,7 +94,7 @@ export const TOOLS: readonly ToolSpec[] = [
       'Evidence records: pinned source (commit, path, blob, line span), collector and excerpt text unless redacted.',
     input: EvidenceQuery,
     readOnly: true,
-    run: (s, c, i) => s.getEvidence(c, i),
+    run: (d, c, i) => d.services.getEvidence(c, i),
   },
   {
     name: 'get_history',
@@ -92,7 +102,7 @@ export const TOOLS: readonly ToolSpec[] = [
     description: 'Committed change sets, newest first, with who proposed and who committed each.',
     input: HistoryQuery,
     readOnly: true,
-    run: (s, c, i) => s.getHistory(c, i),
+    run: (d, c, i) => d.services.getHistory(c, i),
   },
   {
     name: 'assess_freshness',
@@ -101,7 +111,7 @@ export const TOOLS: readonly ToolSpec[] = [
       'Freshness of every claim at a revision against the recorded source snapshots: current, weakened (some evidence stale but still supported), stale (needs review), derived-stale, unknown or not-applicable. Check this before relying on observed facts.',
     input: FreshnessQuery,
     readOnly: true,
-    run: (s, c, i) => s.assessFreshness(c, i),
+    run: (d, c, i) => d.services.assessFreshness(c, i),
   },
   {
     name: 'get_situation',
@@ -110,7 +120,7 @@ export const TOOLS: readonly ToolSpec[] = [
       'What needs attention: open decisions with their alternatives, open questions, pending proposals and stale claims. Read this first to see what people are deciding before proposing changes.',
     input: SituationQuery,
     readOnly: true,
-    run: (s, c, i) => s.getSituation(c, i),
+    run: (d, c, i) => d.services.getSituation(c, i),
   },
   {
     name: 'analyze_impact',
@@ -119,7 +129,34 @@ export const TOOLS: readonly ToolSpec[] = [
       'Elements a change to the seed elements may affect, each with a typed path (relation, direction, rule). Deterministic: it follows the impact rule declared by each relation type, plus "a module defines its endpoints and data entities". It is a dependency trace, not a prediction; check freshness of the relations it walks.',
     input: ImpactQuery,
     readOnly: true,
-    run: (s, c, i) => s.analyzeImpact(c, i),
+    run: (d, c, i) => d.services.analyzeImpact(c, i),
+  },
+  {
+    name: 'list_decisions',
+    title: 'List decisions',
+    description:
+      'Decisions with their status, alternatives and the elements each alternative changes directly. Filter by status "accepted" to find work that people have decided and that can be handed off.',
+    input: DecisionsQuery,
+    readOnly: true,
+    run: (d, c, i) => d.services.listDecisions(c, i),
+  },
+  {
+    name: 'compile_context_package',
+    title: 'Compile a context package',
+    description:
+      'Builds the context for a task: focus elements, or an accepted decision, which expands to the elements its accepted alternative changes. The mandatory part (invariants, constraints, accepted decisions, acceptance criteria, agent policy) is never truncated; optional items are ranked by typed distance and cut at maxChars with an omissions list and retrieval calls. The result is content-addressed and pinned to one revision: propose against that revision.',
+    input: CompileContextInput,
+    readOnly: true,
+    run: (d, c, i) => d.context.compile(c, i),
+  },
+  {
+    name: 'get_context_package',
+    title: 'Get a context package',
+    description:
+      'Reads a context package by id (ctx_...), for example one a person prepared for you in Kalyth. Also available as the resource kalyth://context/{packageId}.',
+    input: ContextPackageQuery,
+    readOnly: true,
+    run: (d, c, i) => d.context.get(c, i),
   },
   {
     name: 'propose_change',
@@ -128,7 +165,7 @@ export const TOOLS: readonly ToolSpec[] = [
       'Submits typed operations against a base revision. The proposal is validated and stored as pending (or invalid, with issues). It changes nothing until a person reviews and commits it in Kalyth. Use local refs like "$name" to link records created in the same proposal, and an idempotencyKey when retrying.',
     input: ProposeChangeInput,
     readOnly: false,
-    run: (s, c, i) => s.proposeChange(c, i),
+    run: (d, c, i) => d.services.proposeChange(c, i),
   },
   {
     name: 'get_proposal',
@@ -136,7 +173,7 @@ export const TOOLS: readonly ToolSpec[] = [
     description: 'A proposal with its status, issues and, once committed, the resulting revision.',
     input: CommitProposalInput,
     readOnly: true,
-    run: (s, c, i) => s.getProposal(c, i),
+    run: (d, c, i) => d.services.getProposal(c, i),
   },
   {
     name: 'list_proposals',
@@ -144,7 +181,7 @@ export const TOOLS: readonly ToolSpec[] = [
     description: 'Proposals for a project, optionally filtered by status.',
     input: ProposalListQuery,
     readOnly: true,
-    run: (s, c, i) => s.listProposals(c, i),
+    run: (d, c, i) => d.services.listProposals(c, i),
   },
 ]
 
