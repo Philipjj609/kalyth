@@ -629,7 +629,7 @@ describe('setup snippets', () => {
   it('writes the prompt with the package id and revision', () => {
     const prompt = agentPrompt(readyPackage())
     expect(prompt).toBe(
-      `Use the kalyth MCP server. Call get_context_package with packageId ${PACKAGE_ID}, follow everything under mandatory, and propose your changes with propose_change at baseRevision 7. A person reviews them in Kalyth.`,
+      `Use the kalyth MCP server. Call get_context_package with packageId ${PACKAGE_ID}, follow everything under mandatory, and propose your changes with propose_change at baseRevision 7 and contextPackageId ${PACKAGE_ID}. A person reviews them in Kalyth.`,
     )
     const panel = textOf(render(<AgentPromptPanel pkg={readyPackage()} headRevision={9} />))
     expect(panel).toContain(prompt)
@@ -642,7 +642,11 @@ describe('setup snippets', () => {
 
 describe('round trip', () => {
   const proposals = [
-    proposal({ id: id('prp', 1), createdAt: '2026-10-17T09:00:00.000Z' }),
+    proposal({
+      id: id('prp', 1),
+      createdAt: '2026-10-17T09:00:00.000Z',
+      contextPackageId: PACKAGE_ID,
+    }),
     proposal({
       id: id('prp', 2),
       createdAt: '2026-10-17T10:00:00.000Z',
@@ -653,12 +657,32 @@ describe('round trip', () => {
     proposal({ id: id('prp', 3), baseRevision: 6, rationale: 'Older base' }),
     proposal({ id: id('prp', 4), status: 'committed', rationale: 'Already committed' }),
     proposal({ id: id('prp', 5), status: 'rejected', rationale: 'Rejected' }),
+    proposal({
+      id: id('prp', 6),
+      contextPackageId: `ctx_${'f'.repeat(32)}`,
+      rationale: 'Answers another package',
+    }),
   ]
 
-  it('keeps pending proposals at the package revision, newest first', () => {
-    expect(roundTripProposals(proposals, 7).map((p) => p.id)).toEqual([id('prp', 2), id('prp', 1)])
-    expect(roundTripProposals(proposals, 6).map((p) => p.id)).toEqual([id('prp', 3)])
-    expect(roundTripProposals(proposals, 8)).toEqual([])
+  it('puts proposals that name the package first and leaves out other packages', () => {
+    const ids = (r: { linked: { id: string }[]; unlinked: { id: string }[] }) => ({
+      linked: r.linked.map((p) => p.id),
+      unlinked: r.unlinked.map((p) => p.id),
+    })
+    expect(ids(roundTripProposals(proposals, { id: PACKAGE_ID, revision: 7 }))).toEqual({
+      linked: [id('prp', 1)],
+      unlinked: [id('prp', 2)],
+    })
+    expect(ids(roundTripProposals(proposals, { id: PACKAGE_ID, revision: 6 }))).toEqual({
+      linked: [id('prp', 1)],
+      unlinked: [id('prp', 3)],
+    })
+    expect(
+      ids(roundTripProposals(proposals, { id: `ctx_${'0'.repeat(32)}`, revision: 8 })),
+    ).toEqual({
+      linked: [],
+      unlinked: [],
+    })
   })
 
   it('shows origin, the token it came through and a review link for each', () => {
@@ -666,6 +690,7 @@ describe('round trip', () => {
       render(
         <RoundTripList
           proposals={proposals}
+          packageId={PACKAGE_ID}
           revision={7}
           tokenLabelOf={(p) =>
             p === tokenSummary().principalId ? 'Claude Code on my laptop' : undefined
@@ -682,15 +707,24 @@ describe('round trip', () => {
     expect(text).toContain('REVIEW 01')
     expect(text).not.toContain('Older base')
     expect(text).not.toContain('Already committed')
-    expect(text.indexOf('REVIEW 02')).toBeLessThan(text.indexOf('REVIEW 01'))
+    expect(text).not.toContain('Answers another package')
+    expect(text).toContain('Also pending at r7 without a package')
+    expect(text.indexOf('REVIEW 01')).toBeLessThan(text.indexOf('REVIEW 02'))
   })
 
   it('says when nothing came back yet', () => {
     const text = textOf(
-      render(<RoundTripList proposals={[]} revision={7} reviewLink={() => null} />),
+      render(
+        <RoundTripList
+          proposals={[]}
+          packageId={PACKAGE_ID}
+          revision={7}
+          reviewLink={() => null}
+        />,
+      ),
     )
     expect(text).toBe(
-      'Nothing back yet When the agent calls propose_change at baseRevision 7, its proposal appears here for review.',
+      'Nothing back yet When the agent calls propose_change with this package, its proposal appears here for review.',
     )
   })
 })

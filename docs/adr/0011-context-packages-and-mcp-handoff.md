@@ -84,3 +84,11 @@ Every MCP request runs as the token's principal with origin `agent`.
 - The local server now accepts a second kind of credential. Tests cover each boundary: no token,
   an expired or revoked token, an agent token on `/api/`, the session token on `/mcp`, and an agent
   attempting to commit.
+
+## Amendment, 2026-10-17
+
+A proposal may name the context package it answers (`contextPackageId`; schema version 3). The HTTP
+and MCP adapters check that the package exists and belongs to the proposal's project before the
+proposal is stored, and the Handoff view lists the proposals that name the package first.
+Packages compiled for a project can be listed (HTTP `GET /projects/:id/context`, MCP
+`list_context_packages`).

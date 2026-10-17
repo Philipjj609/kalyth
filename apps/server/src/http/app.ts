@@ -174,10 +174,10 @@ export function buildHttpApp(
     )
   })
   app.post('/api/v1/projects/:projectId/proposals', async (req, reply) => {
-    const result = services.proposeChange(caller, {
-      ...body(req),
-      projectId: params(req).projectId,
-    })
+    const input = { ...body(req), projectId: params(req).projectId }
+    const checked = options.context?.checkProvenance(caller, input)
+    if (checked && !checked.ok) return send(reply, checked)
+    const result = services.proposeChange(caller, input)
     if (result.ok && result.value.status === 'invalid') return reply.code(422).send(result.value)
     return send(reply, result, 201)
   })
@@ -228,6 +228,12 @@ export function buildHttpApp(
   if (context) {
     app.post('/api/v1/projects/:projectId/context', async (req, reply) =>
       send(reply, context.compile(caller, { ...body(req), projectId: params(req).projectId }), 201),
+    )
+    app.get('/api/v1/projects/:projectId/context', async (req, reply) =>
+      send(
+        reply,
+        context.list(caller, { projectId: params(req).projectId, ...limitOf(query(req)) }),
+      ),
     )
     app.get('/api/v1/context/:packageId', async (req, reply) =>
       send(reply, context.get(caller, { packageId: params(req).packageId })),

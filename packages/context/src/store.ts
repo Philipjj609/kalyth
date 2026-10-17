@@ -1,4 +1,4 @@
-import { ContextPackage } from '@kalyth/contracts'
+import { ContextPackage, type ContextPackageSummary } from '@kalyth/contracts'
 import type { SqliteStore } from '@kalyth/core'
 
 type Db = SqliteStore['db']
@@ -36,6 +36,28 @@ export class PackageStore {
          VALUES (?, ?, ?, ?, ?, ?)`,
       )
       .run(pkg.id, pkg.projectId, pkg.revision, JSON.stringify(pkg), at, compiledBy)
+  }
+
+  list(projectId: string, limit: number): ContextPackageSummary[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT body, first_compiled_at FROM context_packages WHERE project_id = ?
+         ORDER BY first_compiled_at DESC, id DESC LIMIT ?`,
+      )
+      .all(projectId, limit) as { body: string; first_compiled_at: string }[]
+    return rows.map((r) => {
+      const p = ContextPackage.parse(JSON.parse(r.body))
+      return {
+        id: p.id,
+        revision: p.revision,
+        status: p.status,
+        focus: p.focus,
+        taskTitle: p.task?.title ?? null,
+        items: p.items.length,
+        chars: p.size.chars,
+        firstCompiledAt: r.first_compiled_at,
+      }
+    })
   }
 
   get(id: string): ContextPackage | undefined {

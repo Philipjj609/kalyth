@@ -4,7 +4,7 @@
  * Triggers make events, change sets and evidence append-only, and allow a version row only to be
  * closed (rev_to set once). Content rows may only lose their body (redaction).
  */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export const SCHEMA_V1 = `
 CREATE TABLE meta (
@@ -232,4 +232,9 @@ WHEN OLD.revoked_at IS NOT NULL
   OR NEW.label IS NOT OLD.label OR NEW.created_by IS NOT OLD.created_by
   OR NEW.created_at IS NOT OLD.created_at OR NEW.expires_at IS NOT OLD.expires_at
 BEGIN SELECT RAISE(ABORT, 'an agent token can only be revoked, once'); END;
+`
+
+/** Version 3: the context package a proposal answers, if any (ADR 0011). */
+export const SCHEMA_V3 = `
+ALTER TABLE proposals ADD COLUMN context_package_id TEXT;
 `

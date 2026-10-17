@@ -316,3 +316,52 @@ describe('context packages (ADR 0011)', () => {
     expect(missing.ok || missing.error.code).toBe('not_found')
   })
 })
+
+describe('package listing and provenance', () => {
+  it('lists packages newest first and checks the package a proposal names', async () => {
+    const { services, compiler, owner, projectId, decision, item } = await setup()
+    const first = unwrap(compiler.compile(owner, { projectId, focus: [decision.id] })).package
+    const second = unwrap(
+      compiler.compile(owner, { projectId, focus: [item], task: { title: 'Only Item' } }),
+    ).package
+    const listed = unwrap(compiler.list(owner, { projectId })).packages
+    expect(listed.map((p) => p.id).sort()).toEqual([first.id, second.id].sort())
+    expect(listed.find((p) => p.id === second.id)).toMatchObject({
+      taskTitle: 'Only Item',
+      revision: second.revision,
+      items: second.items.length,
+      chars: second.size.chars,
+    })
+
+    expect(compiler.checkProvenance(owner, { projectId, contextPackageId: first.id }).ok).toBe(true)
+    expect(compiler.checkProvenance(owner, { projectId }).ok).toBe(true)
+    const other = unwrap(services.createProject(owner, { name: 'Other' })).id
+    const foreign = compiler.checkProvenance(owner, {
+      projectId: other,
+      contextPackageId: first.id,
+    })
+    expect(foreign.ok).toBe(false)
+    if (!foreign.ok) expect(foreign.error.issues[0]?.code).toBe('context.package_not_found')
+
+    const proposed = unwrap(
+      services.proposeChange(owner, {
+        projectId,
+        baseRevision: first.revision,
+        rationale: 'answers the package',
+        contextPackageId: first.id,
+        ops: [
+          {
+            op: 'createObject',
+            type: 'core.Assertion',
+            stance: 'asIs',
+            attributes: { statement: 'Recorded with its package.' },
+            claim: { basis: 'stated' },
+          },
+        ],
+      }),
+    )
+    expect(
+      unwrap(services.getProposal(owner, { proposalId: proposed.proposalId })).contextPackageId,
+    ).toBe(first.id)
+  })
+})

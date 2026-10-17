@@ -4,6 +4,7 @@ import {
   useAgentTokens,
   useCompileContext,
   useContextPackage,
+  useContextPackages,
   useProposals,
 } from '../api/queries.ts'
 import { useAppLocation } from '../app/location.ts'
@@ -15,6 +16,7 @@ import { AppLink, ErrorNotice, ViewHeader } from '../views/shared.tsx'
 import { AgentConnect } from './AgentConnect.tsx'
 import { HandoffSource } from './HandoffSource.tsx'
 import { type PackageLookup, PackageView } from './PackageView.tsx'
+import { RecentPackages } from './RecentPackages.tsx'
 import { AgentPromptPanel, ReviewLinkLabel, RoundTripList } from './RoundTrip.tsx'
 
 /**
@@ -24,6 +26,8 @@ import { AgentPromptPanel, ReviewLinkLabel, RoundTripList } from './RoundTrip.ts
  */
 export function HandoffView() {
   const [loc, navigate] = useAppLocation()
+  const wb = useWorkbench()
+  const recent = useContextPackages(wb.projectId)
   const focusOnLoad = useRef(false)
   return (
     <div className="@container mx-auto w-full max-w-[1200px] space-y-4 p-6">
@@ -40,6 +44,7 @@ export function HandoffView() {
         />
         <AgentConnect />
       </div>
+      <RecentPackages packages={recent.data?.packages ?? []} openId={loc.package} />
       {loc.package ? (
         <PackageSection key={loc.package} packageId={loc.package} focusOnLoad={focusOnLoad} />
       ) : (
@@ -167,12 +172,12 @@ function PackageSection({
               ) : (
                 <>
                   <p className="border-border border-b px-4 py-2 text-fg-muted text-xs">
-                    Pending proposals based on r{pkg.revision}, the package revision. Proposals do
-                    not record the package they answer, so every pending proposal at that base is
-                    listed. Checked every 15 seconds.
+                    Pending proposals that name this package, then any others at r{pkg.revision}
+                    that name none. Checked every 15 seconds.
                   </p>
                   <RoundTripList
                     proposals={proposals.data.proposals}
+                    packageId={pkg.id}
                     revision={pkg.revision}
                     tokenLabelOf={tokenLabelOf}
                     reviewLink={(proposalId) => (

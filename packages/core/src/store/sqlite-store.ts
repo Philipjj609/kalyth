@@ -23,7 +23,7 @@ import {
   type RelationFilter,
   type StateView,
 } from '../kernel/state.ts'
-import { SCHEMA_V1, SCHEMA_V2, SCHEMA_VERSION } from './schema.ts'
+import { SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_VERSION } from './schema.ts'
 
 type Row = Record<string, unknown>
 const str = (v: unknown): string => v as string
@@ -61,6 +61,7 @@ export class SqliteStore {
       this.db.transaction(() => {
         if (version < 1) this.db.exec(SCHEMA_V1)
         if (version < 2) this.db.exec(SCHEMA_V2)
+        if (version < 3) this.db.exec(SCHEMA_V3)
         this.setMeta('schema_version', String(SCHEMA_VERSION))
       })()
     }
@@ -517,8 +518,8 @@ export class SqliteStore {
   insertProposal(p: Proposal, opsHash: string): void {
     this.#stmt(
       `INSERT INTO proposals (id, project_id, base_revision, proposed_by, origin, ops, ops_hash, rationale, read_set, write_set, predicates,
-         idempotency_key, status, issues, result, created_at, decided_at, decided_by, decision_note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         idempotency_key, status, issues, result, created_at, decided_at, decided_by, decision_note, context_package_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       p.id,
       p.projectId,
@@ -539,6 +540,7 @@ export class SqliteStore {
       p.decidedAt,
       p.decidedBy,
       p.decisionNote,
+      p.contextPackageId,
     )
   }
 
@@ -770,6 +772,7 @@ function toProposal(r: Row): Proposal {
     writeSet: json(r.write_set),
     predicates: json(r.predicates),
     idempotencyKey: nstr(r.idempotency_key),
+    contextPackageId: nstr(r.context_package_id),
     status: r.status as ProposalStatus,
     issues: json(r.issues),
     result: r.result === null ? null : json(r.result),

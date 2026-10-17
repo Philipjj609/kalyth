@@ -25,7 +25,7 @@ describe('HTTP API security', () => {
       url: '/api/v1/health',
       headers: { host: HOST },
     })
-    expect(health.json()).toMatchObject({ status: 'ok', schemaVersion: 2 })
+    expect(health.json()).toMatchObject({ status: 'ok', schemaVersion: 3 })
   })
 
   it('rejects foreign Host headers (DNS rebinding) and foreign origins', async () => {

@@ -57,6 +57,7 @@ describe('MCP interface', () => {
       'get_project_overview',
       'get_proposal',
       'get_situation',
+      'list_context_packages',
       'list_decisions',
       'list_projects',
       'list_proposals',

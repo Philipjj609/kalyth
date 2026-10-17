@@ -140,6 +140,27 @@ export type ContextPackageResult = z.infer<typeof ContextPackageResult>
 
 export const ContextPackageQuery = z.object({ packageId: ContextPackageId })
 
+export const ContextPackageListQuery = z.object({
+  projectId: ProjectId,
+  limit: z.int().min(1).max(200).default(50),
+})
+
+/** A compiled package, as listed for a project: newest first. */
+export const ContextPackageSummary = z.object({
+  id: ContextPackageId,
+  revision: z.int().min(0),
+  status: z.enum(['ready', 'blocked']),
+  focus: z.array(ObjectId),
+  taskTitle: z.string().nullable(),
+  items: z.int().min(0),
+  chars: z.int().min(0),
+  firstCompiledAt: z.iso.datetime(),
+})
+export type ContextPackageSummary = z.infer<typeof ContextPackageSummary>
+
+export const ContextPackageList = z.object({ packages: z.array(ContextPackageSummary) })
+export type ContextPackageList = z.infer<typeof ContextPackageList>
+
 // ---------- decisions read model ----------
 
 export const DecisionsQuery = z.object({

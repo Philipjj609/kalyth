@@ -539,6 +539,7 @@ export class KalythServices {
       baseRevision: req.baseRevision,
       ops: req.ops,
       rationale: req.rationale,
+      ...(req.contextPackageId ? { contextPackageId: req.contextPackageId } : {}),
     })
     if (req.idempotencyKey) {
       const existing = this.store.findProposalByKey(project.id, req.idempotencyKey)
@@ -581,6 +582,7 @@ export class KalythServices {
           resultHash: predicateFingerprint(base, p.query),
         })),
         idempotencyKey: req.idempotencyKey ?? null,
+        contextPackageId: req.contextPackageId ?? null,
         status: issues.length > 0 ? 'invalid' : 'pending',
         issues,
         result: null,

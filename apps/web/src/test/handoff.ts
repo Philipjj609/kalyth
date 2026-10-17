@@ -330,6 +330,7 @@ export function proposal(overrides: Partial<Proposal> = {}): Proposal {
     writeSet: [],
     predicates: [],
     idempotencyKey: null,
+    contextPackageId: null,
     status: 'pending',
     issues: [],
     result: null,

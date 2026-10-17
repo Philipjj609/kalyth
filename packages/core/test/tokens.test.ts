@@ -141,20 +141,30 @@ describe('agent tokens (ADR 0011)', () => {
     expect(findSecretRule(`MCP_TOKEN = "${t.token}"`)).toBeDefined()
   })
 
-  it('migrates a version 1 database to version 2 in place', () => {
+  it('migrates version 1 and version 2 databases in place', () => {
     const dir = mkdtempSync(join(tmpdir(), 'kalyth-migrate-'))
     try {
-      const path = join(dir, 'k.db')
-      const first = new SqliteStore(path)
-      first.db.exec('DROP TABLE agent_tokens')
-      first.setMeta('schema_version', '1')
-      first.close()
-      const reopened = new SqliteStore(path)
-      expect(reopened.getMeta('schema_version')).toBe(String(SCHEMA_VERSION))
-      expect(
-        reopened.db.prepare("SELECT name FROM sqlite_master WHERE name = 'agent_tokens'").get(),
-      ).toBeDefined()
-      reopened.close()
+      for (const from of [1, 2]) {
+        const path = join(dir, `k${from}.db`)
+        const first = new SqliteStore(path)
+        first.db.exec('ALTER TABLE proposals DROP COLUMN context_package_id')
+        if (from === 1) first.db.exec('DROP TABLE agent_tokens')
+        first.setMeta('schema_version', String(from))
+        first.close()
+        const reopened = new SqliteStore(path)
+        try {
+          expect(reopened.getMeta('schema_version')).toBe(String(SCHEMA_VERSION))
+          expect(
+            reopened.db.prepare("SELECT name FROM sqlite_master WHERE name = 'agent_tokens'").get(),
+          ).toBeDefined()
+          const columns = reopened.db.prepare('PRAGMA table_info(proposals)').all() as {
+            name: string
+          }[]
+          expect(columns.map((c) => c.name)).toContain('context_package_id')
+        } finally {
+          reopened.close()
+        }
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

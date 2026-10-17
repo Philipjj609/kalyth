@@ -221,6 +221,7 @@ describe('MCP over Streamable HTTP with agent tokens (ADR 0011)', () => {
         projectId,
         baseRevision: pkg.revision,
         rationale: `Implements ${pkg.id}`,
+        contextPackageId: pkg.id,
         ops: [
           {
             op: 'createObject',
@@ -242,7 +243,35 @@ describe('MCP over Streamable HTTP with agent tokens (ADR 0011)', () => {
       origin: 'agent',
       proposedBy: token.summary.principalId,
       baseRevision: pkg.revision,
+      contextPackageId: pkg.id,
     })
+    const listed = (await client.callTool({
+      name: 'list_context_packages',
+      arguments: { projectId },
+    })) as { structuredContent?: { packages: { id: string; revision: number }[] } }
+    expect(listed.structuredContent?.packages.map((p) => [p.id, p.revision])).toEqual([
+      [pkg.id, pkg.revision],
+    ])
+    const unknown = (await client.callTool({
+      name: 'propose_change',
+      arguments: {
+        projectId,
+        baseRevision: pkg.revision,
+        rationale: 'names a package that does not exist',
+        contextPackageId: `ctx_${'0'.repeat(32)}`,
+        ops: [
+          {
+            op: 'createObject',
+            type: 'core.Assertion',
+            stance: 'asIs',
+            attributes: { statement: 'x' },
+            claim: { basis: 'stated' },
+          },
+        ],
+      },
+    })) as { isError?: boolean; structuredContent?: { error?: { issues: { code: string }[] } } }
+    expect(unknown.isError).toBe(true)
+    expect(unknown.structuredContent?.error?.issues[0]?.code).toBe('context.package_not_found')
     const committed = await h.http('POST', `/api/v1/proposals/${proposalId}/commit`)
     expect(committed.body).toMatchObject({
       status: 'committed',

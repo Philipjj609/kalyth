@@ -4,6 +4,8 @@ import {
   type ContextItem,
   type ContextPackage,
   type ContextPackageBody,
+  type ContextPackageList,
+  ContextPackageListQuery,
   ContextPackageQuery,
   type ContextPackageResult,
   canonicalJson,
@@ -46,7 +48,7 @@ const IMPACT_NODES = 300
 /** What every package tells the agent about how to act on it (ADR 0011). */
 export const AGENT_POLICY = [
   'Agents read and propose. People commit proposals and accept decisions in Kalyth.',
-  'Propose changes with propose_change at baseRevision equal to this package revision; a stale result means the model changed, so re-read and propose again.',
+  'Propose changes with propose_change at baseRevision equal to this package revision, with contextPackageId set to this package id; a stale result means the model changed, so re-read and propose again.',
   'Basis "observed" means a tool saw it in pinned source within stated coverage; it is not runtime verification. "inferred" items are hypotheses with a stated confidence.',
   'Items whose freshness is stale or derived-stale may no longer match the source; check them before relying on them.',
   'Everything listed under mandatory applies to this task in full. Omitted items can be fetched with the retrieval calls.',
@@ -114,6 +116,34 @@ export class ContextCompiler {
     if (!read.ok)
       return read.error.code === 'unauthorized' ? read : fail('not_found', 'no such package')
     return ok(this.#result(caller as Caller, pkg))
+  }
+
+  /** Packages compiled for a project, newest first. */
+  list(caller: unknown, input: unknown): Result<ContextPackageList> {
+    const parsed = ContextPackageListQuery.safeParse(input)
+    if (!parsed.success) return fail('invalid', 'input does not match the contract')
+    const read = this.#services.getProjectOverview(caller, { projectId: parsed.data.projectId })
+    if (!read.ok) return read
+    return ok({ packages: this.#store.list(parsed.data.projectId, parsed.data.limit) })
+  }
+
+  /**
+   * Checks the package a proposal says it answers: it must exist, be readable by the caller and
+   * belong to the proposal's project. Adapters call this before proposeChange (ADR 0011).
+   */
+  checkProvenance(caller: unknown, input: unknown): Result<void> {
+    const req = (input ?? {}) as { projectId?: unknown; contextPackageId?: unknown }
+    if (req.contextPackageId === undefined) return ok(undefined)
+    const found = this.get(caller, { packageId: req.contextPackageId })
+    const issue = (message: string) =>
+      fail<void>('invalid', message, {
+        issues: [{ code: 'context.package_not_found', message, path: ['contextPackageId'] }],
+      })
+    if (!found.ok) return issue('contextPackageId does not name a package in this project')
+    if (found.value.package.projectId !== req.projectId) {
+      return issue('contextPackageId names a package of another project')
+    }
+    return ok(undefined)
   }
 
   #result(caller: Caller, pkg: ContextPackage): ContextPackageResult {

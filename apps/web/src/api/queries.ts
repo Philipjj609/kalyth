@@ -76,6 +76,7 @@ export const keys = {
     ['impact', projectId, revision, seeds] as const,
   decisions: (projectId: string, status: string) => ['decisions', projectId, status] as const,
   contextPackage: (packageId: string) => ['context', packageId] as const,
+  contextPackages: (projectId: string) => ['contextPackages', projectId] as const,
   agentTokens: (projectId: string) => ['agentTokens', projectId] as const,
 }
 
@@ -435,12 +436,24 @@ export function useContextPackage(packageId: string | undefined) {
   })
 }
 
+/** Packages compiled for the project, newest first; null while the server has no list route. */
+export function useContextPackages(projectId: string) {
+  return useQuery({
+    queryKey: keys.contextPackages(projectId),
+    queryFn: () => api.contextPackages(projectId),
+    staleTime: 30_000,
+  })
+}
+
 /** Compiles a package at the head and caches it under its id, so opening it needs no request. */
 export function useCompileContext(projectId: string) {
   const client = useQueryClient()
   return useMutation<ContextPackageResult, ApiError, CompileContextBody>({
     mutationFn: (input) => api.compileContext(projectId, input),
-    onSuccess: (result) => client.setQueryData(keys.contextPackage(result.package.id), result),
+    onSuccess: (result) => {
+      client.setQueryData(keys.contextPackage(result.package.id), result)
+      void client.invalidateQueries({ queryKey: keys.contextPackages(projectId) })
+    },
     onError: (error) => {
       if (error.status === 401) session.reject()
     },

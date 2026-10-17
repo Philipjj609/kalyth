@@ -60,27 +60,53 @@ export function AgentPromptPanel({
  */
 export function RoundTripList({
   proposals,
+  packageId,
   revision,
   tokenLabelOf,
   reviewLink,
 }: {
   proposals: readonly Proposal[]
+  packageId: string
   revision: number
   tokenLabelOf?: (principalId: string) => string | undefined
   reviewLink: (proposalId: string) => ReactNode
 }) {
-  const shown = roundTripProposals(proposals, revision)
-  if (shown.length === 0) {
+  const { linked, unlinked } = roundTripProposals(proposals, { id: packageId, revision })
+  if (linked.length === 0 && unlinked.length === 0) {
     return (
       <EmptyState icon={<Inbox />} title="Nothing back yet" className="py-8">
-        When the agent calls propose_change at baseRevision {revision}, its proposal appears here
-        for review.
+        When the agent calls propose_change with this package, its proposal appears here for review.
       </EmptyState>
     )
   }
   return (
+    <>
+      <ProposalRows proposals={linked} tokenLabelOf={tokenLabelOf} reviewLink={reviewLink} />
+      {unlinked.length > 0 && (
+        <>
+          <p className="border-border border-y bg-surface-2 px-4 py-1.5 text-fg-muted text-xs">
+            Also pending at r{revision} without a package
+          </p>
+          <ProposalRows proposals={unlinked} tokenLabelOf={tokenLabelOf} reviewLink={reviewLink} />
+        </>
+      )}
+    </>
+  )
+}
+
+function ProposalRows({
+  proposals,
+  tokenLabelOf,
+  reviewLink,
+}: {
+  proposals: readonly Proposal[]
+  tokenLabelOf?: ((principalId: string) => string | undefined) | undefined
+  reviewLink: (proposalId: string) => ReactNode
+}) {
+  if (proposals.length === 0) return null
+  return (
     <ul className="divide-y divide-border">
-      {shown.map((p) => {
+      {proposals.map((p) => {
         const via = tokenLabelOf?.(p.proposedBy)
         return (
           <li key={p.id} className="space-y-1 px-4 py-2.5">

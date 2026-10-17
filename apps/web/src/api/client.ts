@@ -2,6 +2,7 @@ import type {
   AgentTokenSummary,
   CommitSuccess,
   CompileContextInput,
+  ContextPackageList,
   ContextPackageResult,
   DecisionsResult,
   EvidenceQueryResult,
@@ -347,6 +348,18 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
       request<ContextPackageResult>('POST', `${project(projectId)}/context`, { ...input }),
     contextPackage: (packageId: string) =>
       request<ContextPackageResult>('GET', `/api/v1/context/${enc(packageId)}`),
+    /** Packages compiled for the project, newest first, or null while the route is missing. */
+    contextPackages: async (projectId: string, limit = 20): Promise<ContextPackageList | null> => {
+      try {
+        return await request<ContextPackageList>(
+          'GET',
+          buildUrl(`${project(projectId)}/context`, { limit }),
+        )
+      } catch (e) {
+        if (isApiError(e) && (e.status === 404 || e.status === 501)) return null
+        throw e
+      }
+    },
     /** Agent token summaries (never the secrets), or null while the route is missing (404). */
     agentTokens: async (projectId: string): Promise<{ tokens: AgentTokenSummary[] } | null> => {
       try {

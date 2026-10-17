@@ -3,6 +3,7 @@ import {
   type Caller,
   CommitProposalInput,
   CompileContextInput,
+  ContextPackageListQuery,
   ContextPackageQuery,
   canonicalJson,
   DecisionsQuery,
@@ -150,6 +151,15 @@ export const TOOLS: readonly ToolSpec[] = [
     run: (d, c, i) => d.context.compile(c, i),
   },
   {
+    name: 'list_context_packages',
+    title: 'List context packages',
+    description:
+      'Context packages compiled for a project, newest first, with their revision, focus, task and size. Read one with get_context_package.',
+    input: ContextPackageListQuery,
+    readOnly: true,
+    run: (d, c, i) => d.context.list(c, i),
+  },
+  {
     name: 'get_context_package',
     title: 'Get a context package',
     description:
@@ -162,10 +172,13 @@ export const TOOLS: readonly ToolSpec[] = [
     name: 'propose_change',
     title: 'Propose a change',
     description:
-      'Submits typed operations against a base revision. The proposal is validated and stored as pending (or invalid, with issues). It changes nothing until a person reviews and commits it in Kalyth. Use local refs like "$name" to link records created in the same proposal, and an idempotencyKey when retrying.',
+      'Submits typed operations against a base revision. The proposal is validated and stored as pending (or invalid, with issues). It changes nothing until a person reviews and commits it in Kalyth. Use local refs like "$name" to link records created in the same proposal, an idempotencyKey when retrying, and contextPackageId when the work answers a context package.',
     input: ProposeChangeInput,
     readOnly: false,
-    run: (d, c, i) => d.services.proposeChange(c, i),
+    run: (d, c, i) => {
+      const checked = d.context.checkProvenance(c, i)
+      return checked.ok ? d.services.proposeChange(c, i) : checked
+    },
   },
   {
     name: 'get_proposal',

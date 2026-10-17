@@ -85,7 +85,8 @@ content-addressed package (`ctx_` + 32 hex digits of its SHA-256) at one revisio
 
 If the mandatory part exceeds the limit, the package is `blocked` with `context_overflow` and a
 suggested split. Packages are read back by id, over HTTP or MCP (`get_context_package`), or as
-`kalyth://context/{id}`.
+`kalyth://context/{id}`, and listed per project (`list_context_packages`). A proposal may name the
+package it answers (`contextPackageId`); adapters check that it exists in the same project.
 
 Agent tokens are issued, listed and revoked by a person with `grant.manage`, through HTTP
 `/projects/:id/agent-tokens` and `/agent-tokens/:id/revoke`. Each token gives an agent principal

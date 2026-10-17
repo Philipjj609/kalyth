@@ -339,7 +339,7 @@ export function codexEnvCommands(token: string | null): { posix: string; powersh
 
 /** What to tell the agent: which package to read and the base revision to propose against. */
 export function agentPrompt(pkg: Pick<ContextPackage, 'id' | 'revision'>): string {
-  return `Use the kalyth MCP server. Call get_context_package with packageId ${pkg.id}, follow everything under mandatory, and propose your changes with propose_change at baseRevision ${pkg.revision}. A person reviews them in Kalyth.`
+  return `Use the kalyth MCP server. Call get_context_package with packageId ${pkg.id}, follow everything under mandatory, and propose your changes with propose_change at baseRevision ${pkg.revision} and contextPackageId ${pkg.id}. A person reviews them in Kalyth.`
 }
 
 export type TokenState = 'active' | 'expired' | 'revoked'
@@ -368,13 +368,21 @@ export const TOKEN_STATE_META: Record<
 // ---------- round trip ----------
 
 /**
- * Pending proposals based on the package revision, newest first. A proposal does not record which
- * package it answers, so this is every pending proposal at that base revision.
+ * Pending proposals for a package, newest first: those that name it as the package they answer,
+ * and those at its revision that name no package (an agent that did not pass the id). Proposals
+ * that answer another package are left out.
  */
-export function roundTripProposals(proposals: readonly Proposal[], revision: number): Proposal[] {
-  return proposals
-    .filter((p) => p.status === 'pending' && p.baseRevision === revision)
+export function roundTripProposals(
+  proposals: readonly Proposal[],
+  pkg: { id: string; revision: number },
+): { linked: Proposal[]; unlinked: Proposal[] } {
+  const pending = proposals
+    .filter((p) => p.status === 'pending')
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+  return {
+    linked: pending.filter((p) => p.contextPackageId === pkg.id),
+    unlinked: pending.filter((p) => p.contextPackageId === null && p.baseRevision === pkg.revision),
+  }
 }
 
 /** The label of the agent token whose principal made a proposal, when it is one of these. */

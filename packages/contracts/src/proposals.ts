@@ -1,6 +1,14 @@
 import { z } from 'zod'
 import { InstructionOrigin } from './auth.ts'
-import { ClaimId, EvidenceId, ObjectId, PrincipalId, ProjectId, ProposalId } from './ids.ts'
+import {
+  ClaimId,
+  ContextPackageId,
+  EvidenceId,
+  ObjectId,
+  PrincipalId,
+  ProjectId,
+  ProposalId,
+} from './ids.ts'
 import { JsonRecord } from './json.ts'
 import { OperationInput, ResolvedOperation } from './ops.ts'
 import { RelationTypeName, TypeName } from './registry.ts'
@@ -43,6 +51,8 @@ export const ProposeChangeInput = z.object({
     .default([]),
   predicates: z.array(ReadPredicate).max(20).default([]),
   idempotencyKey: z.string().min(8).max(200).optional(),
+  /** The context package this proposal answers, recorded as provenance (ADR 0011). */
+  contextPackageId: ContextPackageId.optional(),
 })
 export type ProposeChangeInput = z.input<typeof ProposeChangeInput>
 
@@ -68,6 +78,7 @@ export const Proposal = z.object({
   writeSet: z.array(z.string()),
   predicates: z.array(ReadPredicate.extend({ resultHash: z.string() })),
   idempotencyKey: z.string().nullable(),
+  contextPackageId: ContextPackageId.nullable(),
   status: ProposalStatus,
   issues: z.array(Issue),
   result: CommitSuccess.nullable(),
