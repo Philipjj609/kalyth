@@ -14,6 +14,7 @@ const RULES: ReadonlyArray<{ id: string; pattern: RegExp }> = [
     pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b/,
   },
   { id: 'slack-token', pattern: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/ },
+  { id: 'kalyth-agent-token', pattern: /\bkalyth_at_[A-Za-z0-9_-]{40,}/ },
   { id: 'api-key-prefix', pattern: /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}\b/ },
   {
     id: 'assigned-secret',

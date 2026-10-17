@@ -4,7 +4,7 @@
  * Triggers make events, change sets and evidence append-only, and allow a version row only to be
  * closed (rev_to set once). Content rows may only lose their body (redaction).
  */
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 export const SCHEMA_V1 = `
 CREATE TABLE meta (
@@ -202,4 +202,34 @@ WHEN NEW.project_id IS NOT OLD.project_id OR NEW.id IS NOT OLD.id OR NEW.sha256 
   OR NEW.media_type IS NOT OLD.media_type OR NEW.created_at IS NOT OLD.created_at
   OR (NEW.body IS NOT NULL AND NEW.body IS NOT OLD.body)
 BEGIN SELECT RAISE(ABORT, 'content can only be redacted'); END;
+`
+
+/**
+ * Version 2: agent tokens (ADR 0011). Only the SHA-256 of a token is stored. A row can be revoked
+ * once and never deleted, so the record of who could act, and until when, stays complete.
+ */
+export const SCHEMA_V2 = `
+CREATE TABLE agent_tokens (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  principal_id TEXT NOT NULL REFERENCES principals(id),
+  token_sha256 TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+  created_by TEXT NOT NULL REFERENCES principals(id),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  revoked_at TEXT
+) STRICT;
+CREATE INDEX agent_tokens_project ON agent_tokens(project_id);
+
+CREATE TRIGGER agent_tokens_no_delete BEFORE DELETE ON agent_tokens
+BEGIN SELECT RAISE(ABORT, 'agent tokens are revoked, never deleted'); END;
+
+CREATE TRIGGER agent_tokens_revoke_only BEFORE UPDATE ON agent_tokens
+WHEN OLD.revoked_at IS NOT NULL
+  OR NEW.id IS NOT OLD.id OR NEW.project_id IS NOT OLD.project_id
+  OR NEW.principal_id IS NOT OLD.principal_id OR NEW.token_sha256 IS NOT OLD.token_sha256
+  OR NEW.label IS NOT OLD.label OR NEW.created_by IS NOT OLD.created_by
+  OR NEW.created_at IS NOT OLD.created_at OR NEW.expires_at IS NOT OLD.expires_at
+BEGIN SELECT RAISE(ABORT, 'an agent token can only be revoked, once'); END;
 `

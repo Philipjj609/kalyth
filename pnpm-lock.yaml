@@ -137,6 +137,22 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
+  packages/context:
+    dependencies:
+      '@kalyth/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@kalyth/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@kalyth/analyzer':
+        specifier: workspace:*
+        version: link:../analyzer
+
   packages/contracts:
     dependencies:
       zod:

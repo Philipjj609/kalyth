@@ -1,8 +1,14 @@
+import { randomBytes } from 'node:crypto'
 import {
+  AgentTokenListQuery,
+  type AgentTokenSummary,
   Caller,
   CommitProposalInput,
   type CommitSuccess,
   CreateProjectInput,
+  type DecisionSummary,
+  DecisionsQuery,
+  type DecisionsResult,
   EvidenceQuery,
   type EvidenceQueryResult,
   FreshnessQuery,
@@ -15,6 +21,8 @@ import {
   ImpactQuery,
   type ImpactResult,
   type Issue,
+  IssueAgentTokenInput,
+  type IssuedAgentToken,
   type KernelError,
   ObjectQuery,
   type ObjectQueryResult,
@@ -32,6 +40,7 @@ import {
   RelationQuery,
   type RelationQueryResult,
   type Result,
+  RevokeAgentTokenInput,
   type Scope,
   type Situation,
   SituationQuery,
@@ -39,7 +48,7 @@ import {
 import type { z } from 'zod'
 import { applyOperations } from '../kernel/apply.ts'
 import { assessFreshness } from '../kernel/freshness.ts'
-import { traceImpact } from '../kernel/impact.ts'
+import { elementLabel, traceImpact } from '../kernel/impact.ts'
 import { predicateFingerprint } from '../kernel/predicates.ts'
 import { readSetOf, resolveOperations, writeSetOf } from '../kernel/resolve.ts'
 import { findSecretRule } from '../kernel/secrets.ts'
@@ -111,6 +120,7 @@ export class KalythServices {
     scopes: readonly Scope[],
     projectId: string | null = null,
     grantedBy: string | null = null,
+    expiresAt: string | null = null,
   ): Grant {
     const principal = this.store.getPrincipal(principalId)
     if (!principal) throw new Error(`unknown principal ${principalId}`)
@@ -123,7 +133,7 @@ export class KalythServices {
       principalId,
       projectId,
       scopes: [...scopes],
-      expiresAt: null,
+      expiresAt,
       grantedBy,
       createdAt: this.#clock(),
     }
@@ -347,10 +357,160 @@ export class KalythServices {
     })
   }
 
+  /** Decisions with their alternatives and each alternative's direct changes (ADR 0011). */
+  listDecisions(caller: unknown, input: unknown): Result<DecisionsResult> {
+    const r = this.#readable(caller, DecisionsQuery, input)
+    if (!r.ok) return r
+    const { project, revision, input: q } = r.value
+    const objects = this.store.objectsAt(project.id, revision, {
+      types: ['core.Decision', 'core.Alternative'],
+    })
+    const relations = this.store.relationsAt(project.id, revision, {
+      types: ['alternativeOf', 'impacts', 'decides'],
+    })
+    const byId = new Map(objects.map((o) => [o.id, o]))
+    const labelOf = (id: string) => {
+      const o = byId.get(id) ?? this.store.objectsAt(project.id, revision, { ids: [id] })[0]
+      return o ? elementLabel(o) : id
+    }
+    const text = (o: { attributes: unknown }, key: string) => {
+      const v = (o.attributes as Record<string, unknown>)[key]
+      return typeof v === 'string' ? v : ''
+    }
+    const decisions: DecisionSummary[] = objects
+      .filter((o) => o.type === 'core.Decision')
+      .filter((d) => q.status === undefined || text(d, 'status') === q.status)
+      .map((d) => ({
+        id: d.id,
+        title: text(d, 'title'),
+        question: text(d, 'question'),
+        status: text(d, 'status'),
+        statusRationale: text(d, 'statusRationale') || null,
+        basis: d.claim.basis,
+        alternatives: relations
+          .filter((rel) => rel.type === 'alternativeOf' && rel.to === d.id)
+          .flatMap((rel) => {
+            const alt = byId.get(rel.from)
+            if (!alt) return []
+            return [
+              {
+                id: alt.id,
+                title: text(alt, 'title'),
+                summary: text(alt, 'summary'),
+                status: text(alt, 'status'),
+                directChanges: relations
+                  .filter((i) => i.type === 'impacts' && i.from === alt.id)
+                  .map((i) => ({
+                    relationId: i.id,
+                    target: i.to,
+                    label: labelOf(i.to),
+                    change: typeof i.properties.change === 'string' ? i.properties.change : '',
+                  })),
+              },
+            ]
+          }),
+        decides: relations
+          .filter((rel) => rel.type === 'decides' && rel.from === d.id)
+          .map((rel) => ({ id: rel.to, label: labelOf(rel.to) })),
+      }))
+    return ok({ projectId: project.id, revision, decisions })
+  }
+
   describeTypes(caller: unknown): Result<ReturnType<TypeRegistry['describe']>> {
     const ctx = this.#context(caller)
     if (!ctx.ok) return ctx
     return ok(this.registry.describe())
+  }
+
+  // ---------- agent tokens (ADR 0011) ----------
+
+  /**
+   * Issues a bearer token for a new agent principal that may read and propose in one project.
+   * Only a person acting directly, with grant.manage, can issue one. The secret is returned once.
+   */
+  issueAgentToken(caller: unknown, input: unknown): Result<IssuedAgentToken> {
+    const who = this.#person(caller)
+    if (!who.ok) return who
+    const parsed = parse(IssueAgentTokenInput, input)
+    if (!parsed.ok) return parsed
+    const req = parsed.value
+    const project = this.store.getProject(req.projectId)
+    if (!project) return fail('not_found', `project ${req.projectId} does not exist`)
+    const denied = this.#authz.require(who.value, project.id, ['grant.manage'])
+    if (denied) return { ok: false, error: denied }
+    const now = this.#clock()
+    const expiresAt = new Date(Date.parse(now) + req.expiresInDays * 86_400_000).toISOString()
+    const token = `kalyth_at_${randomBytes(32).toString('base64url')}`
+    return ok(
+      this.store.writeTransaction(() => {
+        const principal = this.createPrincipal('agent', `Agent token: ${req.label}`)
+        this.grant(principal.id, AGENT_TOKEN_SCOPES, project.id, who.value.id, expiresAt)
+        const summary: AgentTokenSummary = {
+          id: this.#ids('agentToken'),
+          projectId: project.id,
+          principalId: principal.id,
+          label: req.label,
+          scopes: [...AGENT_TOKEN_SCOPES],
+          createdBy: who.value.id,
+          createdAt: now,
+          expiresAt,
+          revokedAt: null,
+        }
+        this.store.insertAgentToken(summary, sha256Hex(token))
+        return { token, summary }
+      }),
+    )
+  }
+
+  listAgentTokens(caller: unknown, input: unknown): Result<{ tokens: AgentTokenSummary[] }> {
+    const who = this.#person(caller)
+    if (!who.ok) return who
+    const parsed = parse(AgentTokenListQuery, input)
+    if (!parsed.ok) return parsed
+    const denied = this.#authz.require(who.value, parsed.value.projectId, ['grant.manage'])
+    if (denied) return { ok: false, error: denied }
+    return ok({
+      tokens: this.store
+        .agentTokens(parsed.value.projectId)
+        .map((t) => ({ ...t, scopes: [...AGENT_TOKEN_SCOPES] })),
+    })
+  }
+
+  revokeAgentToken(caller: unknown, input: unknown): Result<AgentTokenSummary> {
+    const who = this.#person(caller)
+    if (!who.ok) return who
+    const parsed = parse(RevokeAgentTokenInput, input)
+    if (!parsed.ok) return parsed
+    const token = this.store.agentToken(parsed.value.tokenId)
+    if (!token) return fail('not_found', `agent token ${parsed.value.tokenId} does not exist`)
+    const denied = this.#authz.require(who.value, token.projectId, ['grant.manage'])
+    if (denied) return { ok: false, error: denied }
+    this.store.revokeAgentToken(token.id, this.#clock())
+    const after = this.store.agentToken(token.id) ?? token
+    return ok({ ...after, scopes: [...AGENT_TOKEN_SCOPES] })
+  }
+
+  /**
+   * Resolves a presented bearer token to its agent principal, or undefined when it is malformed,
+   * unknown, revoked or expired. Requests made with it act with origin "agent".
+   */
+  authenticateAgentToken(token: string): { principalId: string; projectId: string } | undefined {
+    if (!/^kalyth_at_[A-Za-z0-9_-]{43}$/.test(token)) return undefined
+    const found = this.store.agentTokenByHash(sha256Hex(token))
+    if (!found || found.revokedAt !== null || found.expiresAt <= this.#clock()) return undefined
+    return { principalId: found.principalId, projectId: found.projectId }
+  }
+
+  /** A human principal acting directly (origin "human"). */
+  #person(caller: unknown): Result<Principal> {
+    const ctx = this.#context(caller)
+    if (!ctx.ok) return ctx
+    if (ctx.value.principal.kind !== 'human' || ctx.value.caller.origin !== 'human') {
+      return fail('unauthorized', 'agent tokens are managed by a person acting directly', {
+        requiredScopes: ['grant.manage'],
+      })
+    }
+    return ok(ctx.value.principal)
   }
 
   // ---------- proposals ----------
@@ -665,5 +825,8 @@ function parse<S extends z.ZodType>(schema: S, input: unknown): Result<z.output<
   }))
   return fail('invalid', 'input does not match the contract', { issues })
 }
+
+/** Agents connected with a token read and propose; people commit and decide (ADR 0011). */
+const AGENT_TOKEN_SCOPES: readonly Scope[] = ['project.read', 'proposal.create']
 
 export type { KernelError }

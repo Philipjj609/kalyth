@@ -1,0 +1,19 @@
+{
+  "name": "@kalyth/context",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic, content-addressed context packages for coding agents.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@kalyth/contracts": "workspace:*",
+    "@kalyth/core": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@kalyth/analyzer": "workspace:*"
+  }
+}

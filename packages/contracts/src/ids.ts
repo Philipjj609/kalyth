@@ -16,6 +16,8 @@ export const ID_PREFIX = {
   principal: 'pcp',
   grant: 'grt',
   navigatorRun: 'nav',
+  contextPackage: 'ctx',
+  agentToken: 'tok',
 } as const
 
 export type IdKind = keyof typeof ID_PREFIX
@@ -34,6 +36,9 @@ export const EventId = idSchema('event')
 export const PrincipalId = idSchema('principal')
 export const GrantId = idSchema('grant')
 export const NavigatorRunId = idSchema('navigatorRun')
+/** Content-addressed: the first 32 hex digits of the package's SHA-256 (ADR 0011). */
+export const ContextPackageId = idSchema('contextPackage')
+export const AgentTokenId = idSchema('agentToken')
 
 /** Claims are carried by objects and relations, so a claim id is either. */
 export const ClaimId = z.union([ObjectId, RelationId])

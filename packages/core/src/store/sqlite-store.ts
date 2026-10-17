@@ -1,4 +1,5 @@
 import type {
+  AgentTokenSummary,
   ChangeSetSummary,
   ContentRef,
   EvidenceRecord,
@@ -22,7 +23,7 @@ import {
   type RelationFilter,
   type StateView,
 } from '../kernel/state.ts'
-import { SCHEMA_V1, SCHEMA_VERSION } from './schema.ts'
+import { SCHEMA_V1, SCHEMA_V2, SCHEMA_VERSION } from './schema.ts'
 
 type Row = Record<string, unknown>
 const str = (v: unknown): string => v as string
@@ -56,9 +57,10 @@ export class SqliteStore {
     if (version > SCHEMA_VERSION) {
       throw new Error(`database schema ${version} is newer than this build (${SCHEMA_VERSION})`)
     }
-    if (version < 1) {
+    if (version < SCHEMA_VERSION) {
       this.db.transaction(() => {
-        this.db.exec(SCHEMA_V1)
+        if (version < 1) this.db.exec(SCHEMA_V1)
+        if (version < 2) this.db.exec(SCHEMA_V2)
         this.setMeta('schema_version', String(SCHEMA_VERSION))
       })()
     }
@@ -122,6 +124,52 @@ export class SqliteStore {
       g.expiresAt,
       g.grantedBy,
       g.createdAt,
+    )
+  }
+
+  // ---------- agent tokens (ADR 0011) ----------
+
+  insertAgentToken(t: AgentTokenSummary, tokenSha256: string): void {
+    this.#stmt(
+      `INSERT INTO agent_tokens (id, project_id, principal_id, token_sha256, label, created_by, created_at, expires_at, revoked_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    ).run(
+      t.id,
+      t.projectId,
+      t.principalId,
+      tokenSha256,
+      t.label,
+      t.createdBy,
+      t.createdAt,
+      t.expiresAt,
+    )
+  }
+
+  agentTokenByHash(tokenSha256: string): Omit<AgentTokenSummary, 'scopes'> | undefined {
+    const row = this.#stmt('SELECT * FROM agent_tokens WHERE token_sha256 = ?').get(tokenSha256) as
+      | Row
+      | undefined
+    return row ? toAgentToken(row) : undefined
+  }
+
+  agentToken(id: string): Omit<AgentTokenSummary, 'scopes'> | undefined {
+    const row = this.#stmt('SELECT * FROM agent_tokens WHERE id = ?').get(id) as Row | undefined
+    return row ? toAgentToken(row) : undefined
+  }
+
+  agentTokens(projectId: string): Omit<AgentTokenSummary, 'scopes'>[] {
+    const rows = this.#stmt(
+      'SELECT * FROM agent_tokens WHERE project_id = ? ORDER BY created_at DESC, id DESC',
+    ).all(projectId) as Row[]
+    return rows.map(toAgentToken)
+  }
+
+  revokeAgentToken(id: string, at: string): boolean {
+    return (
+      this.#stmt('UPDATE agent_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL').run(
+        at,
+        id,
+      ).changes === 1
     )
   }
 
@@ -729,5 +777,18 @@ function toProposal(r: Row): Proposal {
     decidedAt: nstr(r.decided_at),
     decidedBy: nstr(r.decided_by),
     decisionNote: nstr(r.decision_note),
+  }
+}
+
+function toAgentToken(r: Row): Omit<AgentTokenSummary, 'scopes'> {
+  return {
+    id: str(r.id),
+    projectId: str(r.project_id),
+    principalId: str(r.principal_id),
+    label: str(r.label),
+    createdBy: str(r.created_by),
+    createdAt: str(r.created_at),
+    expiresAt: str(r.expires_at),
+    revokedAt: nstr(r.revoked_at),
   }
 }

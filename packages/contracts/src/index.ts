@@ -1,5 +1,6 @@
 export * from './auth.ts'
 export * from './claims.ts'
+export * from './context.ts'
 export * from './events.ts'
 export * from './evidence.ts'
 export * from './ids.ts'
