@@ -172,7 +172,7 @@ function PackageSection({
               ) : (
                 <>
                   <p className="border-border border-b px-4 py-2 text-fg-muted text-xs">
-                    Pending proposals that name this package, then any others at r{pkg.revision}
+                    Pending proposals that name this package, then any others at r{pkg.revision}{' '}
                     that name none. Checked every 15 seconds.
                   </p>
                   <RoundTripList

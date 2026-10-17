@@ -79,6 +79,13 @@ pnpm ingest --repo https://github.com/fastapi/full-stack-fastapi-template --ref 
 The second run advances the project's source snapshot; claims whose evidence changed are refreshed
 or reported stale (`GET /api/v1/projects/:id/freshness`, MCP `assess_freshness`).
 
+### Demo
+
+`pnpm demo:setup` builds `.kalyth/demo.db` from scratch: the pinned FastAPI template analysed at tag
+0.12.0. [docs/demo/walkthrough.md](docs/demo/walkthrough.md) is the script for the video, from the
+change request to a person's decision, a coding agent's proposal over MCP, and the claims that go
+stale when the repository advances. `pnpm demo:agent` is a scripted stand-in agent for rehearsals.
+
 ### Navigator and model providers
 
 The Navigator uses a local mock provider by default: it is free, deterministic and labels everything

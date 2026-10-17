@@ -311,6 +311,7 @@ export class KalythServices {
         title: attr(d, 'title'),
         alternatives: relations
           .filter((rel) => rel.type === 'alternativeOf' && rel.to === d.id)
+          .sort((a, b) => (a.from < b.from ? -1 : 1))
           .flatMap((rel) => {
             const alt = byId.get(rel.from)
             return alt
@@ -389,6 +390,7 @@ export class KalythServices {
         basis: d.claim.basis,
         alternatives: relations
           .filter((rel) => rel.type === 'alternativeOf' && rel.to === d.id)
+          .sort((a, b) => (a.from < b.from ? -1 : 1))
           .flatMap((rel) => {
             const alt = byId.get(rel.from)
             if (!alt) return []
