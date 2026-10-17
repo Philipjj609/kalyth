@@ -1,4 +1,6 @@
 import type {
+  AgentTokenSummary,
+  ContextPackageResult,
   NavigatorRun,
   NavigatorStatus,
   ObjectVersion,
@@ -19,6 +21,7 @@ import { RUN_POLL_MS, runRefetchInterval } from '../model/navigator.ts'
 import {
   type Api,
   type ApiError,
+  type CompileContextBody,
   createApi,
   isApiError,
   PAGE_LIMIT,
@@ -71,6 +74,9 @@ export const keys = {
   navigatorRun: (runId: string) => ['navigator', 'run', runId] as const,
   impact: (projectId: string, revision: number | 'head', seeds: string) =>
     ['impact', projectId, revision, seeds] as const,
+  decisions: (projectId: string, status: string) => ['decisions', projectId, status] as const,
+  contextPackage: (packageId: string) => ['context', packageId] as const,
+  agentTokens: (projectId: string) => ['agentTokens', projectId] as const,
 }
 
 export function useProjects() {
@@ -400,5 +406,74 @@ export function useImpact(
     queryFn: () => api.impact(projectId, { seeds: key.split(','), ...IMPACT_LIMITS, revision }),
     enabled: enabled && key !== '',
     staleTime: Number.POSITIVE_INFINITY,
+  })
+}
+
+// ---------- handoff to agents (ADR 0011) ----------
+
+/** Accepted decisions with their alternatives and direct changes; null without the route. */
+export function useAcceptedDecisions(projectId: string | undefined) {
+  return useQuery({
+    queryKey: keys.decisions(projectId ?? '', 'accepted'),
+    queryFn: () => api.decisions(projectId as string, 'accepted'),
+    enabled: projectId !== undefined,
+    refetchInterval: 30_000,
+  })
+}
+
+/**
+ * One context package. Its body is content-addressed and never changes, so it is cached for good;
+ * only the caller's scopes beside it could, and those are informational.
+ */
+export function useContextPackage(packageId: string | undefined) {
+  return useQuery({
+    queryKey: keys.contextPackage(packageId ?? ''),
+    queryFn: () => api.contextPackage(packageId as string),
+    enabled: packageId !== undefined,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  })
+}
+
+/** Compiles a package at the head and caches it under its id, so opening it needs no request. */
+export function useCompileContext(projectId: string) {
+  const client = useQueryClient()
+  return useMutation<ContextPackageResult, ApiError, CompileContextBody>({
+    mutationFn: (input) => api.compileContext(projectId, input),
+    onSuccess: (result) => client.setQueryData(keys.contextPackage(result.package.id), result),
+    onError: (error) => {
+      if (error.status === 401) session.reject()
+    },
+  })
+}
+
+/** Agent token summaries; null while the server has no token routes. Secrets never appear here. */
+export function useAgentTokens(projectId: string | undefined) {
+  return useQuery({
+    queryKey: keys.agentTokens(projectId ?? ''),
+    queryFn: () => api.agentTokens(projectId as string),
+    enabled: projectId !== undefined,
+    refetchInterval: 60_000,
+  })
+}
+
+/** Puts a token summary into the cached list, replacing an earlier copy of it. */
+export function upsertTokenSummary(client: QueryClient, summary: AgentTokenSummary) {
+  client.setQueryData<{ tokens: AgentTokenSummary[] } | null>(
+    keys.agentTokens(summary.projectId),
+    (prev) =>
+      prev ? { tokens: [summary, ...prev.tokens.filter((t) => t.id !== summary.id)] } : prev,
+  )
+}
+
+export function useRevokeAgentToken(projectId: string) {
+  const client = useQueryClient()
+  return useMutation<AgentTokenSummary, ApiError, string>({
+    mutationFn: (tokenId) => api.revokeAgentToken(tokenId),
+    onSuccess: (summary) => upsertTokenSummary(client, summary),
+    onSettled: () => client.invalidateQueries({ queryKey: keys.agentTokens(projectId) }),
+    onError: (error) => {
+      if (error.status === 401) session.reject()
+    },
   })
 }

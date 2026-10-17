@@ -1,10 +1,16 @@
 import type {
+  AgentTokenSummary,
   CommitSuccess,
+  CompileContextInput,
+  ContextPackageResult,
+  DecisionsResult,
   EvidenceQueryResult,
   EvidenceView,
   HistoryResult,
   ImpactResult,
   Issue,
+  IssueAgentTokenInput,
+  IssuedAgentToken,
   NavigatorRun,
   NavigatorStatus,
   ObjectQueryResult,
@@ -123,6 +129,17 @@ export type StartRunBody = DistributiveOmit<StartNavigatorRunInput, 'projectId'>
 
 /** Body of POST /projects/:id/proposals: the project id is in the path. */
 export type ProposeBody = Omit<ProposeChangeInput, 'projectId'>
+
+/**
+ * Body of POST /projects/:id/context (ADR 0011). The project is in the path and packages are
+ * always compiled at the head, so neither is sent.
+ */
+export type CompileContextBody = Omit<CompileContextInput, 'projectId' | 'revision'>
+
+/** Body of POST /projects/:id/agent-tokens. */
+export type IssueAgentTokenBody = Omit<IssueAgentTokenInput, 'projectId'>
+
+export type DecisionStatusFilter = 'open' | 'accepted' | 'rejected' | 'deferred' | 'superseded'
 
 export interface ImpactParams {
   seeds: readonly string[]
@@ -307,6 +324,46 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
       request<NavigatorRun>('GET', `/api/v1/navigator/runs/${enc(runId)}`),
     impact: (projectId: string, params: ImpactParams) =>
       request<ImpactResult>('GET', impactUrl(projectId, params)),
+
+    // ---------- handoff to agents (ADR 0011) ----------
+
+    /** Decisions with alternatives and direct changes, or null while the route is missing (404). */
+    decisions: async (
+      projectId: string,
+      status?: DecisionStatusFilter,
+    ): Promise<DecisionsResult | null> => {
+      try {
+        return await request<DecisionsResult>(
+          'GET',
+          buildUrl(`${project(projectId)}/decisions`, { status }),
+        )
+      } catch (e) {
+        if (isApiError(e) && (e.status === 404 || e.status === 501)) return null
+        throw e
+      }
+    },
+    /** Compiles a context package at the head; answers 201, also when the package is blocked. */
+    compileContext: (projectId: string, input: CompileContextBody) =>
+      request<ContextPackageResult>('POST', `${project(projectId)}/context`, { ...input }),
+    contextPackage: (packageId: string) =>
+      request<ContextPackageResult>('GET', `/api/v1/context/${enc(packageId)}`),
+    /** Agent token summaries (never the secrets), or null while the route is missing (404). */
+    agentTokens: async (projectId: string): Promise<{ tokens: AgentTokenSummary[] } | null> => {
+      try {
+        return await request<{ tokens: AgentTokenSummary[] }>(
+          'GET',
+          `${project(projectId)}/agent-tokens`,
+        )
+      } catch (e) {
+        if (isApiError(e) && (e.status === 404 || e.status === 501)) return null
+        throw e
+      }
+    },
+    /** The only response that carries the token secret; the server keeps its hash. */
+    issueAgentToken: (projectId: string, input: IssueAgentTokenBody) =>
+      request<IssuedAgentToken>('POST', `${project(projectId)}/agent-tokens`, { ...input }),
+    revokeAgentToken: (tokenId: string) =>
+      request<AgentTokenSummary>('POST', `/api/v1/agent-tokens/${enc(tokenId)}/revoke`),
   }
 }
 
