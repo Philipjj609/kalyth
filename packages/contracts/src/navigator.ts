@@ -104,6 +104,7 @@ export const ModelCallOutcome = z.enum([
   'failed',
   'unknown_outcome',
 ])
+export type ModelCallOutcome = z.infer<typeof ModelCallOutcome>
 
 export const ModelCallRecord = z.object({
   purpose: z.string(),
@@ -126,6 +127,7 @@ export const GroundingRejection = z.object({
   reason: z.string(),
   ref: z.string().optional(),
 })
+export type GroundingRejection = z.infer<typeof GroundingRejection>
 
 /** What the grounding validator checked in one run (ADR 0010). */
 export const GroundingReport = z.object({
@@ -149,6 +151,7 @@ export const StartNavigatorRunInput = z.discriminatedUnion('kind', [
 export type StartNavigatorRunInput = z.input<typeof StartNavigatorRunInput>
 
 export const NavigatorRunStatus = z.enum(['running', 'completed', 'failed'])
+export type NavigatorRunStatus = z.infer<typeof NavigatorRunStatus>
 
 export const NavigatorRunOutput = z.object({
   assertions: z.int().min(0),
@@ -157,6 +160,7 @@ export const NavigatorRunOutput = z.object({
   questions: z.int().min(0),
   directImpacts: z.int().min(0),
 })
+export type NavigatorRunOutput = z.infer<typeof NavigatorRunOutput>
 
 export const NavigatorRun = z.object({
   id: NavigatorRunId,

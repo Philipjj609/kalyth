@@ -31,7 +31,9 @@ Phase 1, first vertical slice. What exists and is tested today:
 - **Workbench UI (first shell)**: project overview, a hierarchical graph of the model with claim
   basis and freshness shown on every node and edge, a records table, an inspector with pinned
   evidence, proposal review with commit and reject, and revision history. Light and dark themes,
-  keyboard navigation.
+  keyboard navigation. The Navigator view shows what needs attention, starts runs, reports each
+  run's model calls, cost and rejected citations, traces the impact of each alternative, and lets
+  a person accept one.
 
 - **Impact traversal**: from any elements, the elements a change may affect, each with a typed
   path, following the impact rule declared by each relation type (HTTP and MCP `analyze_impact`).
