@@ -21,6 +21,7 @@ export const ContextTask = z.object({
   title: z.string().trim().min(1).max(300),
   acceptanceCriteria: z.array(z.string().trim().min(1).max(1000)).max(20).default([]),
 })
+export type ContextTask = z.input<typeof ContextTask>
 
 export const CompileContextInput = z.object({
   projectId: ProjectId,
@@ -52,6 +53,7 @@ export const ContextEvidence = z.object({
   /** The pinned excerpt, null when redacted or not included. */
   excerpt: z.string().nullable(),
 })
+export type ContextEvidence = z.infer<typeof ContextEvidence>
 
 export const ContextItem = z.object({
   id: z.union([ObjectId, RelationId]),
@@ -82,12 +84,14 @@ export const ContextOmission = z.object({
   /** The first omitted ids, nearest first. */
   ids: z.array(z.string()),
 })
+export type ContextOmission = z.infer<typeof ContextOmission>
 
 export const RetrievalHint = z.object({
   tool: z.string(),
   arguments: JsonRecord,
   purpose: z.string(),
 })
+export type RetrievalHint = z.infer<typeof RetrievalHint>
 
 /** The content-addressed part of a package: identical input at one revision gives identical bytes. */
 export const ContextPackageBody = z.object({
