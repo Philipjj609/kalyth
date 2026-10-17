@@ -1,0 +1,244 @@
+{
+  "status": "draft",
+  "repository": "https://github.com/fastapi/full-stack-fastapi-template",
+  "commit": "b1125d8839482cb7bbae603ddc6d0081bf87532e",
+  "source": "Phase 0 research subagent, 2026-10-16: read the code and grepped at this commit, before Kalyth existed. Not yet reviewed.",
+  "unit": "repository-relative file paths of existing files a correct implementation changes; new files are listed separately and not scored",
+  "reviewedBy": null,
+  "frozenAt": null,
+  "scenarios": [
+    {
+      "id": "multi-tenancy",
+      "request": "Add multi-tenancy: organisations with memberships, and items scoped to an organisation.",
+      "impacted": [
+        {
+          "path": "backend/app/models.py",
+          "lines": "User 51-55, Item 87-93, ItemPublic 97-100, TokenPayload 120-121"
+        },
+        {
+          "path": "backend/app/api/deps.py",
+          "lines": "30-46"
+        },
+        {
+          "path": "backend/app/core/security.py",
+          "lines": "22-26"
+        },
+        {
+          "path": "backend/app/api/routes/login.py",
+          "lines": "23-42"
+        },
+        {
+          "path": "backend/app/api/routes/items.py",
+          "lines": "all five handlers; superuser bypasses at 21, 56, 89, 109"
+        },
+        {
+          "path": "backend/app/api/routes/users.py",
+          "lines": "list 37-51, signup 146-159, delete 228"
+        },
+        {
+          "path": "backend/app/crud.py",
+          "lines": "10-17, 63-68"
+        },
+        {
+          "path": "backend/app/core/db.py",
+          "lines": "15-33"
+        },
+        {
+          "path": "backend/tests/conftest.py",
+          "lines": "17-27"
+        },
+        {
+          "path": "backend/tests/utils/item.py"
+        },
+        {
+          "path": "backend/tests/utils/user.py"
+        },
+        {
+          "path": "backend/tests/api/routes/test_items.py"
+        },
+        {
+          "path": "backend/tests/api/routes/test_users.py"
+        },
+        {
+          "path": "frontend/src/client/sdk.gen.ts",
+          "lines": "regenerated"
+        },
+        {
+          "path": "frontend/src/client/types.gen.ts",
+          "lines": "regenerated"
+        },
+        {
+          "path": "frontend/src/hooks/useAuth.ts"
+        },
+        {
+          "path": "frontend/src/main.tsx",
+          "lines": "17-27"
+        },
+        {
+          "path": "frontend/src/components/Items/AddItem.tsx",
+          "lines": "expanded from Items/*.tsx"
+        },
+        {
+          "path": "frontend/src/components/Items/DeleteItem.tsx",
+          "lines": "expanded from Items/*.tsx"
+        },
+        {
+          "path": "frontend/src/components/Items/EditItem.tsx",
+          "lines": "expanded from Items/*.tsx"
+        },
+        {
+          "path": "frontend/src/components/Items/ItemActionsMenu.tsx",
+          "lines": "expanded from Items/*.tsx"
+        },
+        {
+          "path": "frontend/src/components/Items/columns.tsx",
+          "lines": "expanded from Items/*.tsx"
+        },
+        {
+          "path": "frontend/src/routes/_layout/items.tsx"
+        },
+        {
+          "path": "frontend/src/components/Sidebar/AppSidebar.tsx"
+        },
+        {
+          "path": "frontend/tests/items.spec.ts"
+        },
+        {
+          "path": "frontend/tests/admin.spec.ts"
+        }
+      ],
+      "newFiles": ["a new Alembic revision after fe56fa70289e"]
+    },
+    {
+      "id": "rbac",
+      "request": "Replace the is_superuser boolean with role-based access control.",
+      "impacted": [
+        {
+          "path": "backend/app/models.py",
+          "lines": "16, 35"
+        },
+        {
+          "path": "backend/app/api/deps.py",
+          "lines": "52-57 get_current_active_superuser"
+        },
+        {
+          "path": "backend/app/api/routes/users.py",
+          "lines": "34, 55, 137, 172, 184, 214"
+        },
+        {
+          "path": "backend/app/api/routes/login.py",
+          "lines": "102"
+        },
+        {
+          "path": "backend/app/api/routes/utils.py",
+          "lines": "13"
+        },
+        {
+          "path": "backend/app/api/routes/items.py",
+          "lines": "21, 56, 89, 109"
+        },
+        {
+          "path": "backend/app/core/db.py",
+          "lines": "31"
+        },
+        {
+          "path": "frontend/src/components/Admin/AddUser.tsx",
+          "lines": "45, 69, 189"
+        },
+        {
+          "path": "frontend/src/components/Admin/EditUser.tsx",
+          "lines": "44, 71, 191"
+        },
+        {
+          "path": "frontend/src/components/Admin/columns.tsx",
+          "lines": "43-47"
+        },
+        {
+          "path": "frontend/src/components/Sidebar/AppSidebar.tsx",
+          "lines": "23"
+        },
+        {
+          "path": "frontend/src/routes/_layout/admin.tsx",
+          "lines": "24"
+        },
+        {
+          "path": "frontend/src/routes/_layout/settings.tsx",
+          "lines": "28"
+        },
+        {
+          "path": "backend/tests/api/routes/test_users.py"
+        },
+        {
+          "path": "frontend/tests/admin.spec.ts"
+        }
+      ],
+      "newFiles": ["a new Alembic revision"]
+    },
+    {
+      "id": "refresh-token-cookie",
+      "request": "Replace the bearer JWT stored in localStorage with refresh-token rotation and an httpOnly cookie session.",
+      "impacted": [
+        {
+          "path": "backend/app/core/security.py",
+          "lines": "19-26"
+        },
+        {
+          "path": "backend/app/api/deps.py",
+          "lines": "16-18, 30-46"
+        },
+        {
+          "path": "backend/app/api/routes/login.py",
+          "lines": "23-42"
+        },
+        {
+          "path": "backend/app/core/config.py",
+          "lines": "25-27"
+        },
+        {
+          "path": "backend/app/main.py",
+          "lines": "27-33; CORS already sets allow_credentials=True"
+        },
+        {
+          "path": "backend/app/models.py",
+          "lines": "113-121"
+        },
+        {
+          "path": "frontend/src/hooks/useAuth.ts",
+          "lines": "14-15, 45, 57"
+        },
+        {
+          "path": "frontend/src/main.tsx",
+          "lines": "17-27"
+        },
+        {
+          "path": "frontend/src/routes/_layout.tsx",
+          "lines": "15"
+        },
+        {
+          "path": "frontend/src/routes/login.tsx",
+          "lines": "38"
+        },
+        {
+          "path": "frontend/src/routes/signup.tsx",
+          "lines": "45"
+        },
+        {
+          "path": "frontend/src/routes/recover-password.tsx",
+          "lines": "36"
+        },
+        {
+          "path": "frontend/src/routes/reset-password.tsx",
+          "lines": "53"
+        },
+        {
+          "path": "frontend/tests/login.spec.ts",
+          "lines": "112"
+        },
+        {
+          "path": "backend/tests/api/routes/test_login.py"
+        }
+      ],
+      "newFiles": ["a session model", "a new Alembic revision"]
+    }
+  ]
+}
