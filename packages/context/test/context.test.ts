@@ -311,7 +311,7 @@ describe('context packages (ADR 0011)', () => {
     const agent: Caller = { principalId: own.summary.principalId, origin: 'agent' }
     const read = unwrap(compiler.get(agent, { packageId: pkg.id }))
     expect(read.package).toEqual(pkg)
-    expect(read.callerScopes).toEqual(['project.read', 'proposal.create'])
+    expect(read.callerScopes).toEqual(['project.read', 'proposal.create', 'task.work'])
     const missing = compiler.get(owner, { packageId: 'ctx_00000000000000000000000000000000' })
     expect(missing.ok || missing.error.code).toBe('not_found')
   })

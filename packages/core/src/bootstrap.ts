@@ -2,7 +2,7 @@ import { type Principal, type PrincipalKind, Scope } from '@kalyth/contracts'
 import type { KalythServices } from './services/services.ts'
 
 export const OWNER_SCOPES: readonly Scope[] = Scope.options
-export const AGENT_SCOPES: readonly Scope[] = ['project.read', 'proposal.create']
+export const AGENT_SCOPES: readonly Scope[] = ['project.read', 'proposal.create', 'task.work']
 
 /**
  * Returns the principal registered under `key`, creating it with global grants on first use.

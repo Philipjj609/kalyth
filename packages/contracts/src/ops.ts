@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { Claim, ClaimInput, Lifecycle, Stance } from './claims.ts'
 import { Collector, ContentRef, EvidenceInput, EvidenceRecord, EvidenceSource } from './evidence.ts'
-import { EvidenceId, LocalRef, ObjectId, ObjectTarget, RelationId } from './ids.ts'
+import { EvidenceId, LocalRef, ObjectId, ObjectTarget, PrincipalId, RelationId } from './ids.ts'
 import { JsonRecord } from './json.ts'
 import { RelationTypeName, TypeName } from './registry.ts'
 
@@ -18,6 +18,40 @@ export const AnyDecisionStatus = z.enum([
 ])
 
 const reason = z.string().min(1).max(2000)
+
+/** Task lifecycle (ADR 0013). `running` always carries a lease. */
+export const TaskStatus = z.enum([
+  'proposed',
+  'ready',
+  'running',
+  'blocked',
+  'review',
+  'completed',
+  'failed',
+  'cancelled',
+  'unknown_outcome',
+])
+export type TaskStatus = z.infer<typeof TaskStatus>
+
+/** Transitions the kernel allows; `completed` and `cancelled` are final. */
+export const TASK_TRANSITIONS: Readonly<Record<TaskStatus, readonly TaskStatus[]>> = {
+  proposed: ['ready', 'cancelled'],
+  ready: ['running', 'blocked', 'cancelled'],
+  running: ['running', 'review', 'failed', 'unknown_outcome', 'ready', 'blocked'],
+  unknown_outcome: ['review', 'ready', 'failed', 'cancelled'],
+  review: ['completed', 'ready', 'failed'],
+  blocked: ['ready', 'cancelled'],
+  failed: ['ready', 'cancelled'],
+  completed: [],
+  cancelled: [],
+}
+
+export const TaskLease = z.object({
+  id: z.string().regex(/^lease_[0-9a-f]{32}$/),
+  holder: PrincipalId,
+  expiresAt: z.iso.datetime(),
+})
+export type TaskLease = z.infer<typeof TaskLease>
 
 // ---------- Operations as submitted (may use local refs) ----------
 
@@ -79,6 +113,18 @@ export const SetDecisionStatusOp = z.object({
   rationale: reason,
 })
 
+/**
+ * The only way to change a Task's status and lease (ADR 0013). `lease` is required for `running`;
+ * the kernel keeps the current lease on `unknown_outcome` and clears it otherwise.
+ */
+export const SetTaskStatusOp = z.object({
+  op: z.literal('setTaskStatus'),
+  id: ObjectId,
+  status: TaskStatus,
+  rationale: reason,
+  lease: TaskLease.nullable().default(null),
+})
+
 export const OperationInput = z.discriminatedUnion('op', [
   CreateObjectOp,
   UpdateObjectOp,
@@ -88,6 +134,7 @@ export const OperationInput = z.discriminatedUnion('op', [
   RetireRelationOp,
   RecordEvidenceOp,
   SetDecisionStatusOp,
+  SetTaskStatusOp,
 ])
 export type OperationInput = z.input<typeof OperationInput>
 export type OperationParsed = z.output<typeof OperationInput>
@@ -140,6 +187,13 @@ export const ResolvedOperation = z.discriminatedUnion('op', [
     id: ObjectId,
     status: AnyDecisionStatus,
     rationale: reason,
+  }),
+  z.object({
+    op: z.literal('setTaskStatus'),
+    id: ObjectId,
+    status: TaskStatus,
+    rationale: reason,
+    lease: TaskLease.nullable(),
   }),
 ])
 export type ResolvedOperation = z.infer<typeof ResolvedOperation>

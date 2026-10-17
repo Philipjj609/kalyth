@@ -21,6 +21,10 @@ export const Scope = z.enum([
   'decision.decide',
   'ingest.observed',
   'grant.manage',
+  /** Claim, renew, release and report on tasks (ADR 0013). */
+  'task.work',
+  /** The task coordinator's narrow commit right for task lifecycle records (ADR 0013). */
+  'task.coordinate',
 ])
 export type Scope = z.infer<typeof Scope>
 

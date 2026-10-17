@@ -211,7 +211,11 @@ describe('MCP over Streamable HTTP with agent tokens (ADR 0011)', () => {
       structuredContent?: Record<string, any>
     }
     expect(canonicalJson(read.structuredContent?.package)).toBe(canonicalJson(pkg))
-    expect(read.structuredContent?.callerScopes).toEqual(['project.read', 'proposal.create'])
+    expect(read.structuredContent?.callerScopes).toEqual([
+      'project.read',
+      'proposal.create',
+      'task.work',
+    ])
     const resource = await client.readResource({ uri: `kalyth://context/${pkg.id}` })
     expect((resource.contents[0] as { text: string }).text).toBe(canonicalJson(pkg))
 

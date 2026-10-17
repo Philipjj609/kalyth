@@ -109,6 +109,13 @@ export function describeOps(ops: readonly ResolvedOperation[], nameOf: NameOf): 
           detail: `→ ${op.status}: ${op.rationale}`,
           refs: [op.id],
         }
+      case 'setTaskStatus':
+        return {
+          verb: 'Set task status',
+          subject: name(op.id),
+          detail: `→ ${op.status}: ${op.rationale}`,
+          refs: [op.id],
+        }
       default:
         return unknownOp(op)
     }
@@ -144,6 +151,7 @@ export function opCounts(ops: readonly ResolvedOperation[]): [string, number][] 
     'retireRelation',
     'recordEvidence',
     'setDecisionStatus',
+    'setTaskStatus',
   ]
   const counts = new Map<string, number>()
   for (const op of ops) counts.set(op.op, (counts.get(op.op) ?? 0) + 1)
@@ -158,4 +166,5 @@ export const OP_LABEL: Record<string, string> = {
   retireRelation: 'retire relation',
   recordEvidence: 'evidence',
   setDecisionStatus: 'decision status',
+  setTaskStatus: 'task status',
 }

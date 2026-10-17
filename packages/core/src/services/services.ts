@@ -830,7 +830,10 @@ function parse<S extends z.ZodType>(schema: S, input: unknown): Result<z.output<
   return fail('invalid', 'input does not match the contract', { issues })
 }
 
-/** Agents connected with a token read and propose; people commit and decide (ADR 0011). */
-const AGENT_TOKEN_SCOPES: readonly Scope[] = ['project.read', 'proposal.create']
+/**
+ * Agents connected with a token read, propose and work on tasks; people commit and decide
+ * (ADRs 0011 and 0013).
+ */
+const AGENT_TOKEN_SCOPES: readonly Scope[] = ['project.read', 'proposal.create', 'task.work']
 
 export type { KernelError }

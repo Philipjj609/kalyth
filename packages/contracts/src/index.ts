@@ -11,6 +11,7 @@ export * from './proposals.ts'
 export * from './queries.ts'
 export * from './registry.ts'
 export * from './results.ts'
+export * from './tasks.ts'
 
 /** Version of the contracts package surface, exposed by the API and MCP server. */
 export const CONTRACTS_VERSION = '0.1.0'

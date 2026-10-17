@@ -1,4 +1,11 @@
-import { AlternativeStatus, DecisionStatus } from '@kalyth/contracts'
+import {
+  AlternativeStatus,
+  ContextPackageId,
+  DecisionStatus,
+  TaskLease,
+  TaskStatus,
+  TestRun,
+} from '@kalyth/contracts'
 import { z } from 'zod'
 import type { ObjectTypeDef, RelationTypeDef } from './types.ts'
 
@@ -89,6 +96,46 @@ export const corePack: ObjectTypeDef[] = [
       method: title,
       outcome: z.enum(['pass', 'fail', 'inconclusive']),
       summary: optionalText,
+    }),
+  },
+  {
+    type: 'core.Task',
+    version: 1,
+    pack: 'core',
+    description:
+      'Work for a person or coding agent. Status and lease change only through setTaskStatus (ADR 0013).',
+    attributes: z.strictObject({
+      title,
+      description: optionalText,
+      acceptanceCriteria: z.array(z.string().min(1).max(1000)).max(20).default([]),
+      status: TaskStatus.default('proposed'),
+      statusRationale: z.string().max(2000).optional(),
+      lease: TaskLease.nullable().default(null),
+      contextPackageId: ContextPackageId.optional(),
+      baseCommit: z
+        .string()
+        .regex(/^[0-9a-f]{40}$/)
+        .optional(),
+    }),
+    reserved: { status: 'proposed', lease: null },
+  },
+  {
+    type: 'core.ExecutionReport',
+    version: 1,
+    pack: 'core',
+    description:
+      'What an agent says it did for a task. Stated, not verified; a Verification records what git confirms.',
+    attributes: z.strictObject({
+      outcome: z.enum(['succeeded', 'failed', 'partial']),
+      summary: z.string().min(1).max(4000),
+      commit: z
+        .string()
+        .regex(/^[0-9a-f]{40}$/)
+        .optional(),
+      filesChanged: z.array(z.string().min(1).max(1000)).max(500).default([]),
+      tests: z.array(TestRun).max(20).default([]),
+      leaseId: z.string().min(1).max(100),
+      idempotencyKey: z.string().min(8).max(200),
     }),
   },
   {
@@ -299,6 +346,35 @@ export const relationTypes: RelationTypeDef[] = [
       'Choosing the alternative changes the target directly; properties.change says how. Propagated impact is computed by traversal, not stored (ADR 0010).',
     from: ['core.Alternative'],
     to: SOFTWARE_ELEMENTS,
+    impact: 'none',
+  },
+  {
+    ...base,
+    type: 'implements',
+    pack: 'core',
+    description: 'The task carries out the decision, alternative or requirement.',
+    from: ['core.Task'],
+    to: ['core.Decision', 'core.Alternative', 'core.Requirement'],
+    impact: 'none',
+  },
+  {
+    ...base,
+    type: 'requires',
+    pack: 'core',
+    description: 'The task can start only when the target task is completed or decision accepted.',
+    from: ['core.Task'],
+    to: ['core.Task', 'core.Decision'],
+    acyclic: true,
+    impact: 'none',
+  },
+  {
+    ...base,
+    type: 'reports',
+    pack: 'core',
+    description: 'The execution report is about the task.',
+    from: ['core.ExecutionReport'],
+    to: ['core.Task'],
+    maxOutgoingPerSource: 1,
     impact: 'none',
   },
   {

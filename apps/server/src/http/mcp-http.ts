@@ -56,7 +56,7 @@ export function registerMcpEndpoint(app: FastifyInstance, deps: McpDeps): void {
         authInfo: {
           token: 'redacted',
           clientId: agent.principalId,
-          scopes: ['project.read', 'proposal.create'],
+          scopes: ['project.read', 'proposal.create', 'task.work'],
         },
         ...(hasBody ? { parsedBody: req.body } : {}),
       })

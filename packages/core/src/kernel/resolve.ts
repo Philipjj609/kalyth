@@ -129,6 +129,8 @@ export function resolveOperations(
       case 'retireRelation':
       case 'setDecisionStatus':
         return op
+      case 'setTaskStatus':
+        return { ...op, lease: op.lease ?? null }
       case 'createRelation':
         return {
           op: 'createRelation',
@@ -166,7 +168,8 @@ export function writeSetOf(ops: readonly ResolvedOperation[]): string[] {
       op.op === 'retireObject' ||
       op.op === 'updateRelation' ||
       op.op === 'retireRelation' ||
-      op.op === 'setDecisionStatus'
+      op.op === 'setDecisionStatus' ||
+      op.op === 'setTaskStatus'
     )
       ids.add(op.id)
   }

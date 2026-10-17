@@ -5,8 +5,9 @@ import type {
   ObjectVersion,
   ResolvedOperation,
   ResolvedWrite,
+  TaskStatus,
 } from '@kalyth/contracts'
-import { AlternativeStatus, DecisionStatus } from '@kalyth/contracts'
+import { AlternativeStatus, DecisionStatus, TASK_TRANSITIONS } from '@kalyth/contracts'
 import type { TypeRegistry } from '../registry/registry.ts'
 import { validateClaim } from './claims.ts'
 import { OverlayState, type StateView } from './state.ts'
@@ -115,9 +116,8 @@ export function applyOperations(
         }
         const reserved = Object.keys(def.reserved ?? {}).filter((key) => key in op.set)
         if (reserved.length > 0) {
-          add('attribute.reserved', `use setDecisionStatus to change ${reserved.join(', ')}`, [
-            'set',
-          ])
+          const via = current.type === 'core.Task' ? 'setTaskStatus' : 'setDecisionStatus'
+          add('attribute.reserved', `use ${via} to change ${reserved.join(', ')}`, ['set'])
           break
         }
         const merged: Record<string, JsonValue> = { ...current.attributes }
@@ -248,6 +248,44 @@ export function applyOperations(
         write({
           kind: 'relation',
           version: { ...current, lifecycle: 'retired', retiredReason: op.reason, revision },
+        })
+        break
+      }
+
+      case 'setTaskStatus': {
+        const current = activeObject(overlay, op.id, add)
+        if (!current) break
+        if (current.type !== 'core.Task') {
+          add('task.not_a_task', `${current.type} has no task status`)
+          break
+        }
+        const from = current.attributes.status as TaskStatus
+        if (!TASK_TRANSITIONS[from]?.includes(op.status)) {
+          add('task.transition_invalid', `a task cannot go from ${from} to ${op.status}`)
+          break
+        }
+        if (op.status === 'running' && !op.lease) {
+          add('task.lease_required', 'a running task needs a lease')
+          break
+        }
+        const lease =
+          op.status === 'running'
+            ? op.lease
+            : op.status === 'unknown_outcome'
+              ? ((current.attributes.lease as JsonValue | undefined) ?? null)
+              : null
+        write({
+          kind: 'object',
+          version: {
+            ...current,
+            attributes: {
+              ...current.attributes,
+              status: op.status,
+              statusRationale: op.rationale,
+              lease,
+            },
+            revision,
+          },
         })
         break
       }

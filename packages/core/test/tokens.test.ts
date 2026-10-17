@@ -35,7 +35,7 @@ describe('agent tokens (ADR 0011)', () => {
     expect(issued.token).toMatch(/^kalyth_at_[A-Za-z0-9_-]{43}$/)
     expect(issued.summary).toMatchObject({
       projectId: project.id,
-      scopes: ['project.read', 'proposal.create'],
+      scopes: ['project.read', 'proposal.create', 'task.work'],
     })
     expect(
       JSON.stringify(unwrap(services.listAgentTokens(owner, { projectId: project.id }))),
