@@ -1,9 +1,22 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import type { Situation } from '../api/situation.ts'
 import { parseAlternativesProposal } from '../model/navigator.ts'
-import { alternativesOps, ITEM, impactResult, MODELS_PY } from '../test/navigator.ts'
+import {
+  ALT_A,
+  ALT_B,
+  alternativesOps,
+  DECISION,
+  ITEM,
+  id,
+  impactResult,
+  MODELS_PY,
+  PROJECT,
+  QUESTION,
+} from '../test/navigator.ts'
 import { AlternativesView, type ElementLookup, ImpactList } from './ProposedOutput.tsx'
 import { GroundingReportPanel, ModelCallsPanel } from './RunReport.tsx'
+import { SituationView } from './SituationPanel.tsx'
 
 /** Visible text of static markup, whitespace collapsed. */
 const textOf = (html: string) =>
@@ -188,6 +201,126 @@ describe('alternatives viewer', () => {
     const output = parseAlternativesProposal([])
     expect(textOf(renderToStaticMarkup(<AlternativesView output={output} lookup={lookup} />))).toBe(
       'The proposal holds no decision, alternatives or questions.',
+    )
+  })
+
+  it('shows the decision as accepted, with the accepted alternative highlighted', () => {
+    const output = parseAlternativesProposal(alternativesOps('nebius'))
+    const statuses: Record<string, string> = {
+      [DECISION]: 'accepted',
+      [ALT_A]: 'accepted',
+      [ALT_B]: 'rejected',
+    }
+    const html = renderToStaticMarkup(
+      <AlternativesView
+        output={output}
+        lookup={lookup}
+        statusOf={(i) => statuses[i]}
+        renderDecide={(alt) => <span>DECIDE {alt.title}</span>}
+        notice={<span>NOTICE</span>}
+      />,
+    )
+    const text = textOf(html)
+    expect(text).toContain('Decision status: Accepted')
+    expect(text).toContain('NOTICE')
+    const cards = html.split('<article').slice(1)
+    const card = (title: string) => cards.find((c) => c.includes(title)) ?? ''
+    expect(card('Tenant column')).toContain('tone-success')
+    expect(textOf(`<article${card('Tenant column')}`)).toContain('Decision status: Accepted')
+    expect(card('Database per tenant')).not.toContain('ring-2')
+    expect(textOf(`<article${card('Database per tenant')}`)).toContain('Decision status: Rejected')
+    expect(text).toContain('DECIDE Tenant column')
+    expect(text).toContain('DECIDE Database per tenant')
+  })
+})
+
+describe('situation', () => {
+  const situation: Situation = {
+    projectId: PROJECT,
+    revision: 13,
+    openDecisions: [
+      {
+        id: DECISION,
+        title: 'Tenancy model',
+        alternatives: [
+          { id: ALT_A, title: 'Tenant column', status: 'proposed' },
+          { id: ALT_B, title: 'Database per tenant', status: 'withdrawn' },
+        ],
+      },
+    ],
+    openQuestions: [
+      { id: QUESTION, text: 'Do tenants share users?', inquiryRole: 'blocking', concerns: [ITEM] },
+    ],
+    pendingProposals: [
+      {
+        id: id('prp', 5),
+        proposedBy: id('pcp', 9),
+        origin: 'model',
+        createdAt: '2026-10-16T10:00:00.000Z',
+        operations: 9,
+        rationale: 'Alternatives for: add multi-tenancy',
+      },
+    ],
+    freshness: { current: 40, stale: 3, 'derived-stale': 2 },
+    staleClaims: [
+      {
+        id: MODELS_PY,
+        kind: 'object',
+        type: 'software.Module',
+        basis: 'observed',
+        status: 'stale',
+        staleEvidence: [id('evd', 1)],
+        reason: 'models.py changed in the latest snapshot',
+      },
+    ],
+  }
+
+  it('lists open decisions with alternatives, questions, pending proposals and stale counts', () => {
+    const inspected: string[] = []
+    const text = textOf(
+      renderToStaticMarkup(
+        <SituationView
+          situation={situation}
+          nameOf={lookup.nameOf}
+          onInspect={(i) => inspected.push(i)}
+          reviewLink={(p) => <a href={`?proposal=${p}`}>Review</a>}
+        />,
+      ),
+    )
+    expect(text).toContain(
+      'Open decisions 1 Tenancy model Tenant column Decision status: Proposed Database per tenant Decision status: Withdrawn',
+    )
+    expect(text).toContain(
+      'Open questions 1 Inquiry role: Blocking Do tenants share users? about Item',
+    )
+    expect(text).toContain(
+      'Pending proposals 1 Alternatives for: add multi-tenancy Origin: Model 9 operations',
+    )
+    expect(text).toContain('Review')
+    expect(text).toContain('Stale claims 5')
+    expect(text).toContain('Freshness: Stale 3')
+    expect(text).toContain('Freshness: Derived stale 2')
+    expect(text).toContain('app/models.py models.py changed in the latest snapshot')
+  })
+
+  it('says when there is nothing open', () => {
+    const text = textOf(
+      renderToStaticMarkup(
+        <SituationView
+          situation={{
+            ...situation,
+            openDecisions: [],
+            openQuestions: [],
+            pendingProposals: [],
+            freshness: {},
+            staleClaims: [],
+          }}
+          nameOf={() => undefined}
+        />,
+      ),
+    )
+    expect(text).toBe(
+      'Open decisions 0 None open. Open questions 0 None open. Pending proposals 0 Nothing waiting for review. Stale claims 0 Freshness not reported.',
     )
   })
 })

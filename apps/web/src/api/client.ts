@@ -12,11 +12,14 @@ import type {
   ProjectOverview,
   ProjectSummary,
   Proposal,
+  ProposeChangeInput,
+  ProposeChangeOutput,
   RelationQueryResult,
   RelationTypeDescriptor,
   StartNavigatorRunInput,
 } from '@kalyth/contracts'
 import { type FreshnessReport, parseFreshness } from './freshness.ts'
+import type { Situation } from './situation.ts'
 
 /**
  * The API error envelope, {error: {code, message, issues, changedRefs?, currentRevision?, ...}}.
@@ -118,6 +121,9 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 /** Body of POST /navigator/runs: a run input without the project id, which is in the path. */
 export type StartRunBody = DistributiveOmit<StartNavigatorRunInput, 'projectId'>
 
+/** Body of POST /projects/:id/proposals: the project id is in the path. */
+export type ProposeBody = Omit<ProposeChangeInput, 'projectId'>
+
 export interface ImpactParams {
   seeds: readonly string[]
   maxDepth?: number
@@ -150,10 +156,12 @@ const enc = encodeURIComponent
 export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) {
   const doFetch: FetchLike = fetchImpl ?? ((input, init) => fetch(input, init))
 
+  /** `passStatuses`: error statuses whose body is returned instead of thrown. */
   async function request<T>(
     method: 'GET' | 'POST' | 'PUT',
     url: string,
     body?: Record<string, unknown>,
+    passStatuses: readonly number[] = [],
   ): Promise<T> {
     const headers: Record<string, string> = { accept: 'application/json' }
     const token = getToken()
@@ -182,7 +190,10 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
     } catch {
       payload = undefined
     }
-    if (!res.ok) throw new ApiError(res.status, toApiErrorBody(res.status, payload))
+    const isEnvelope = typeof payload === 'object' && payload !== null && 'error' in payload
+    if (!res.ok && (isEnvelope || !passStatuses.includes(res.status))) {
+      throw new ApiError(res.status, toApiErrorBody(res.status, payload))
+    }
     return payload as T
   }
 
@@ -254,6 +265,22 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
     },
     proposal: (proposalId: string) =>
       request<Proposal>('GET', `/api/v1/proposals/${enc(proposalId)}`),
+    /**
+     * Proposes a change for review. A proposal that fails validation is still stored and answered
+     * with 422 and the proposal (status "invalid" with its issues), not the error envelope; that
+     * body is returned so the caller sees the issues.
+     */
+    propose: (projectId: string, input: ProposeBody) =>
+      request<ProposeChangeOutput>('POST', `${project(projectId)}/proposals`, { ...input }, [422]),
+    /** What needs attention, or null while the server has no situation route (404). */
+    situation: async (projectId: string): Promise<Situation | null> => {
+      try {
+        return await request<Situation>('GET', `${project(projectId)}/situation`)
+      } catch (e) {
+        if (isApiError(e) && (e.status === 404 || e.status === 501)) return null
+        throw e
+      }
+    },
 
     // ---------- Navigator (ADR 0010) ----------
 

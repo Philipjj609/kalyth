@@ -74,6 +74,14 @@ provider carries a "Mock output" badge wherever it appears. Propagated impact is
 server's traversal on demand ("Show impact"), never stored. Amounts are integer micro-dollars,
 shown as USD with four decimals.
 
+The Situation panel at the top reads `GET /api/v1/projects/:id/situation` (open decisions with
+their alternatives, open questions, pending proposals, stale claim counts); its type lives in
+`src/api/situation.ts` until `Situation` is published in `@kalyth/contracts`. Once a run's proposal
+is committed, a person can accept one alternative: the UI proposes `setDecisionStatus` operations
+against the head (the decision and the chosen alternative accepted, the others rejected) and
+commits them (`src/api/decide.ts`). Stale or conflicting commits leave that proposal pending and
+show the error as the Proposals view does.
+
 The visual language for epistemic status is defined once in `src/model/semantics.ts`: every
 basis, freshness status, proposal status and origin has a text label, a description and a tone.
 Basis is also encoded as the edge dash pattern and node border (solid observed, dashed inferred,

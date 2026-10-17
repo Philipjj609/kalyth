@@ -24,6 +24,11 @@ import {
   PAGE_LIMIT,
   type StartRunBody,
 } from './client.ts'
+import {
+  type AcceptAlternativeInput,
+  type AcceptAlternativeOutcome,
+  acceptAlternative,
+} from './decide.ts'
 import { freshnessIndex } from './freshness.ts'
 
 export const api = createApi(() => session.token())
@@ -60,6 +65,7 @@ export const keys = {
   history: (projectId: string) => ['history', projectId] as const,
   proposals: (projectId: string) => ['proposals', projectId] as const,
   proposal: (proposalId: string) => ['proposal', proposalId] as const,
+  situation: (projectId: string) => ['situation', projectId] as const,
   navigatorStatus: (projectId: string) => ['navigator', 'status', projectId] as const,
   navigatorRuns: (projectId: string) => ['navigator', 'runs', projectId] as const,
   navigatorRun: (runId: string) => ['navigator', 'run', runId] as const,
@@ -197,6 +203,7 @@ function useInvalidateProject(projectId: string) {
       client.invalidateQueries({ queryKey: keys.history(projectId) }),
       client.invalidateQueries({ queryKey: keys.projects }),
       client.invalidateQueries({ queryKey: ['proposal'] }),
+      client.invalidateQueries({ queryKey: keys.situation(projectId) }),
     ])
 }
 
@@ -245,6 +252,7 @@ function refreshAfterRun(client: QueryClient, projectId: string, runs = true) {
     runs ? client.invalidateQueries({ queryKey: keys.navigatorRuns(projectId) }) : undefined,
     client.invalidateQueries({ queryKey: keys.proposals(projectId) }),
     client.invalidateQueries({ queryKey: ['overview', projectId] }),
+    client.invalidateQueries({ queryKey: keys.situation(projectId) }),
   ])
 }
 
@@ -347,6 +355,31 @@ export function useProposal(proposalId: string | null | undefined) {
     queryFn: () => api.proposal(proposalId as string),
     enabled: Boolean(proposalId),
     refetchInterval: (q) => (q.state.data?.status === 'pending' ? 15_000 : false),
+  })
+}
+
+/** Open decisions and questions, pending proposals and stale claims; null without the route. */
+export function useSituation(projectId: string | undefined) {
+  return useQuery({
+    queryKey: keys.situation(projectId ?? ''),
+    queryFn: () => api.situation(projectId as string),
+    enabled: projectId !== undefined,
+    refetchInterval: 15_000,
+  })
+}
+
+/** Proposes the chosen alternative's setDecisionStatus operations, then commits them. */
+export function useAcceptAlternative(projectId: string) {
+  const invalidate = useInvalidateProject(projectId)
+  return useMutation<AcceptAlternativeOutcome, ApiError, AcceptAlternativeInput>({
+    mutationFn: (input) => acceptAlternative(api, projectId, input),
+    onSuccess: (outcome) => {
+      if ('refused' in outcome && outcome.refused.status === 401) session.reject()
+    },
+    onSettled: invalidate,
+    onError: (error) => {
+      if (error.status === 401) session.reject()
+    },
   })
 }
 

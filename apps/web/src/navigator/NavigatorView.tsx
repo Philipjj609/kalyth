@@ -30,6 +30,7 @@ import { AppLink, ErrorNotice, RecordLink, ViewHeader } from '../views/shared.ts
 import { ElementPicker } from './ElementPicker.tsx'
 import { RunOutput } from './ProposedOutput.tsx'
 import { GroundingReportPanel, ModelCallsPanel, OutputCountsPanel, Usd } from './RunReport.tsx'
+import { SituationPanel } from './SituationPanel.tsx'
 
 const MAX_FOCUS = 20
 const REQUEST_MIN = 3
@@ -49,6 +50,7 @@ export function NavigatorView() {
         title="Navigator"
         description="Grounded summaries, and alternatives with typed impact for a change request. Everything a run produces is one pending proposal of inferred records that a person commits or rejects."
       />
+      <SituationPanel />
       {status.error ? (
         <ErrorNotice error={status.error} title="The Navigator status could not be loaded" />
       ) : status.isLoading ? (
@@ -449,9 +451,6 @@ function RecentRuns({
                 <th scope="col" className={head}>
                   Citations
                 </th>
-                <th scope="col" className={head}>
-                  Proposal
-                </th>
               </tr>
             </thead>
             <tbody>
@@ -474,6 +473,11 @@ function RecentRuns({
                           {relativeTime(run.startedAt)}
                         </time>
                         <span className="font-mono">{shortId(run.id)}</span>
+                        {run.proposalId && (
+                          <AppLink to={{ view: 'proposals', proposal: run.proposalId }}>
+                            proposal <span className="font-mono">{shortId(run.proposalId)}</span>
+                          </AppLink>
+                        )}
                         {isMockRun(run) && <MockBadge size="sm" />}
                       </span>
                     </td>
@@ -489,15 +493,6 @@ function RecentRuns({
                         <span className="tone-danger block font-medium text-tone-fg">
                           {rejected} rejected
                         </span>
-                      )}
-                    </td>
-                    <td className={cn(cell, 'whitespace-nowrap text-xs')}>
-                      {run.proposalId ? (
-                        <AppLink to={{ view: 'proposals', proposal: run.proposalId }}>
-                          {shortId(run.proposalId)}
-                        </AppLink>
-                      ) : (
-                        <span className="text-fg-subtle">none</span>
                       )}
                     </td>
                   </tr>

@@ -1,21 +1,24 @@
-import type { ImpactResult, NavigatorRun } from '@kalyth/contracts'
-import { ArrowRight, Network, TriangleAlert, Waypoints } from 'lucide-react'
-import { type ReactNode, useId, useMemo, useState } from 'react'
-import { MAX_IMPACT_SEEDS, useImpact, useProposal } from '../api/queries.ts'
+import type { ImpactResult, NavigatorRun, Proposal } from '@kalyth/contracts'
+import { ArrowRight, Check, Network, TriangleAlert, Waypoints } from 'lucide-react'
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { MAX_IMPACT_SEEDS, useAcceptAlternative, useImpact, useProposal } from '../api/queries.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import {
   BasisBadge,
   ConfidenceBadge,
+  DecisionStatusBadge,
   InquiryRoleBadge,
   MockBadge,
   ProposalStatusBadge,
   TypeLabel,
 } from '../components/badges.tsx'
+import { useToast } from '../components/toast.tsx'
 import { Button, Panel, Skeleton, Spinner } from '../components/ui.tsx'
 import { cn } from '../lib/cn.ts'
 import { plural, shortId } from '../model/format.ts'
 import {
   type AlternativesProposal,
+  decisionStatusOf,
   groupImpact,
   impactLabeller,
   impactPathText,
@@ -73,24 +76,34 @@ function AlternativeCard({
   index,
   lookup,
   onInspect,
+  status,
   impact,
+  decide,
 }: {
   alternative: ProposedAlternative
   index: number
   lookup: ElementLookup
   onInspect?: ((id: string) => void) | undefined
+  /** The alternative's current status, once its proposal is committed. */
+  status: string | undefined
   impact?: ReactNode
+  decide?: ReactNode
 }) {
   const titleId = useId()
   const confidence = alt.claim.confidence
+  const accepted = status === 'accepted'
   return (
     <article
       aria-labelledby={titleId}
-      className="flex h-full flex-col rounded-lg border border-border bg-surface shadow-panel"
+      className={cn(
+        'flex h-full flex-col rounded-lg border bg-surface shadow-panel',
+        accepted ? 'tone-success border-tone-bd ring-2 ring-tone-bd' : 'border-border',
+      )}
     >
       <header className="space-y-1.5 px-4 pt-3 pb-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="font-mono text-2xs text-fg-subtle">Alternative {index + 1}</span>
+          {status && status !== 'proposed' && <DecisionStatusBadge status={status} size="sm" />}
           {alt.mock && <MockBadge size="sm" />}
           <BasisBadge basis={alt.claim.basis} size="sm" />
           {confidence && <ConfidenceBadge level={confidence.level} size="sm" />}
@@ -146,7 +159,17 @@ function AlternativeCard({
           )}
         </div>
       </div>
-      {impact && <footer className="mt-auto border-border border-t px-4 py-2.5">{impact}</footer>}
+      {(impact || decide) && (
+        <footer
+          className={cn(
+            'mt-auto flex flex-wrap items-start justify-between gap-2 border-t px-4 py-2.5',
+            accepted ? 'border-tone-bd' : 'border-border',
+          )}
+        >
+          <div className="min-w-0 flex-1">{impact}</div>
+          {decide && <div className="shrink-0">{decide}</div>}
+        </footer>
+      )}
     </article>
   )
 }
@@ -160,11 +183,20 @@ export function AlternativesView({
   lookup,
   onInspect,
   renderImpact,
+  statusOf,
+  renderDecide,
+  notice,
 }: {
   output: AlternativesProposal
   lookup: ElementLookup
   onInspect?: (id: string) => void
   renderImpact?: (alternative: ProposedAlternative) => ReactNode
+  /** Current decision status of the decision or an alternative, when it exists in the model. */
+  statusOf?: ((id: string) => string | undefined) | undefined
+  /** The decide action (or why it is not available) for one alternative. */
+  renderDecide?: (alternative: ProposedAlternative) => ReactNode
+  /** Shown under the decision: the outcome of accepting an alternative. */
+  notice?: ReactNode
 }) {
   const { decision, alternatives, questions } = output
   if (!decision && alternatives.length === 0 && questions.length === 0) {
@@ -174,12 +206,14 @@ export function AlternativesView({
       </p>
     )
   }
+  const decisionStatus = decision ? statusOf?.(decision.id) : undefined
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-surface px-4 py-3 shadow-panel">
         <div className="flex flex-wrap items-center gap-1.5 text-fg-muted text-xs">
           <TypeLabel type="core.Decision" />
           <span className="text-fg-subtle">to-be</span>
+          {decisionStatus && <DecisionStatusBadge status={decisionStatus} size="sm" />}
           {output.mock && <MockBadge size="sm" />}
           {decision && <BasisBadge basis={decision.claim.basis} size="sm" />}
         </div>
@@ -189,6 +223,7 @@ export function AlternativesView({
         {decision?.title && decision.question && (
           <p className="mt-0.5 break-words text-fg-muted text-sm">{decision.title}</p>
         )}
+        {notice && <div className="mt-2">{notice}</div>}
       </div>
 
       {alternatives.length > 0 && (
@@ -200,7 +235,9 @@ export function AlternativesView({
                 index={i}
                 lookup={lookup}
                 onInspect={onInspect}
+                status={statusOf?.(alt.id)}
                 impact={renderImpact?.(alt)}
+                decide={renderDecide?.(alt)}
               />
             </li>
           ))}
@@ -458,16 +495,265 @@ export function RunOutput({ run }: { run: NavigatorRun }) {
         <ErrorNotice error={proposal.error} title="The proposal could not be loaded" />
       ) : !parsed ? (
         <Skeleton className="h-40" />
-      ) : parsed.kind === 'alternatives' ? (
-        <AlternativesView
-          output={parsed.output}
-          lookup={lookup}
-          onInspect={wb.select}
-          renderImpact={(alt) => <ImpactToggle alternative={alt} />}
-        />
-      ) : (
+      ) : parsed.kind === 'alternatives' && proposal.data ? (
+        <DecidableAlternatives output={parsed.output} proposal={proposal.data} lookup={lookup} />
+      ) : parsed.kind === 'summary' ? (
         <SummaryView assertions={parsed.assertions} lookup={lookup} onInspect={wb.select} />
-      )}
+      ) : null}
     </section>
+  )
+}
+
+/**
+ * The alternatives with the person's decision. Once the run's proposal is committed the decision
+ * and alternatives exist with the ids in its operations, and while the decision is open each
+ * alternative can be accepted: a proposal of setDecisionStatus operations, committed at once.
+ */
+function DecidableAlternatives({
+  output,
+  proposal,
+  lookup,
+}: {
+  output: AlternativesProposal
+  proposal: Proposal
+  lookup: ElementLookup
+}) {
+  const wb = useWorkbench()
+  const notify = useToast()
+  const accept = useAcceptAlternative(wb.projectId)
+  const [choosing, setChoosing] = useState<ProposedAlternative | null>(null)
+  const decision = output.decision
+  const alternativeIds = useMemo(
+    () =>
+      output.alternatives
+        .map((a) => a.id)
+        // An alternative missing at the head (for example retired) cannot change status.
+        .filter((id) => !wb.model || wb.model.objectById.has(id)),
+    [output.alternatives, wb.model],
+  )
+  const outcome = accept.data
+  const acceptedNow = outcome && 'committed' in outcome ? accept.variables?.chosenId : undefined
+
+  // The model can lag a moment behind a commit; the outcome of this tab's own commit is known.
+  const statusOf = (id: string): string | undefined => {
+    if (acceptedNow && decision) {
+      if (id === decision.id || id === acceptedNow) return 'accepted'
+      if (alternativeIds.includes(id)) return 'rejected'
+    }
+    return decisionStatusOf(wb.model?.objectById.get(id))
+  }
+  const decisionOpen = decision !== null && statusOf(decision.id) === 'open'
+
+  const renderDecide = (alt: ProposedAlternative): ReactNode => {
+    if (!decision) return null
+    if (proposal.status === 'pending') {
+      return (
+        <AppLink to={{ view: 'proposals', proposal: proposal.id }} className="text-xs">
+          Commit the proposal to decide
+        </AppLink>
+      )
+    }
+    if (proposal.status !== 'committed' || !decisionOpen) return null
+    return (
+      <Button
+        size="sm"
+        variant="primary"
+        disabled={accept.isPending || wb.isHistorical}
+        title={wb.isHistorical ? 'Return to the head to decide' : undefined}
+        onClick={() => {
+          accept.reset()
+          setChoosing(alt)
+        }}
+      >
+        <Check aria-hidden />
+        Accept this alternative
+      </Button>
+    )
+  }
+
+  const chosenTitle = output.alternatives.find((a) => a.id === accept.variables?.chosenId)?.title
+  let notice: ReactNode = null
+  if (outcome && 'committed' in outcome) {
+    notice = (
+      <p
+        role="status"
+        className="tone-success rounded-md border border-tone-bd bg-tone-bg px-3 py-2 text-tone-fg text-xs"
+      >
+        Accepted “{chosenTitle}”. Committed as revision r{outcome.committed.revision}
+        {outcome.committed.rebasedFrom !== null &&
+          `, rebased from r${outcome.committed.rebasedFrom}`}
+        .
+      </p>
+    )
+  } else if (outcome && 'refused' in outcome) {
+    notice = (
+      <div className="space-y-1.5">
+        <ErrorNotice
+          error={outcome.refused}
+          resolveName={(id) => wb.model?.nameOf(id)}
+          onSelect={wb.select}
+        />
+        <p className="text-fg-muted text-xs">
+          The decision proposal is still pending.{' '}
+          <AppLink to={{ view: 'proposals', proposal: outcome.proposalId }}>
+            Review it in Proposals
+          </AppLink>
+        </p>
+      </div>
+    )
+  } else if (
+    proposal.status === 'committed' &&
+    decision &&
+    !decisionOpen &&
+    statusOf(decision.id)
+  ) {
+    notice = (
+      <p className="text-fg-muted text-xs">
+        This decision is {statusOf(decision.id)}; it changes again only through a person.
+      </p>
+    )
+  }
+
+  return (
+    <>
+      <AlternativesView
+        output={output}
+        lookup={lookup}
+        onInspect={wb.select}
+        renderImpact={(alt) => <ImpactToggle alternative={alt} />}
+        statusOf={proposal.status === 'committed' ? statusOf : undefined}
+        renderDecide={renderDecide}
+        notice={notice}
+      />
+      <AcceptDialog
+        alternative={choosing}
+        question={decision?.question || decision?.title || ''}
+        headRevision={wb.headRevision}
+        pending={accept.isPending}
+        error={accept.error}
+        onClose={() => setChoosing(null)}
+        onSubmit={(rationale) => {
+          if (!decision || !choosing) return
+          const chosen = choosing
+          accept.mutate(
+            {
+              decisionId: decision.id,
+              chosenId: chosen.id,
+              alternativeIds,
+              rationale,
+              baseRevision: wb.headRevision,
+            },
+            {
+              onSuccess: (result) => {
+                setChoosing(null)
+                if ('committed' in result) {
+                  notify({
+                    tone: 'success',
+                    title: `Accepted: ${chosen.title}`,
+                    body: `Committed as r${result.committed.revision}. ${rationale}`,
+                  })
+                } else {
+                  notify({
+                    tone: result.refused.body.code === 'stale' ? 'caution' : 'danger',
+                    title: `Not committed: ${result.refused.body.code}`,
+                    body: result.refused.body.message,
+                  })
+                }
+              },
+            },
+          )
+        }}
+      />
+    </>
+  )
+}
+
+/** Asks for the person's rationale; the decision proposal carries it. */
+function AcceptDialog({
+  alternative,
+  question,
+  headRevision,
+  pending,
+  error,
+  onSubmit,
+  onClose,
+}: {
+  alternative: ProposedAlternative | null
+  question: string
+  headRevision: number
+  pending: boolean
+  error: unknown
+  onSubmit: (rationale: string) => void
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDialogElement>(null)
+  const [rationale, setRationale] = useState('')
+  const titleId = useId()
+  useEffect(() => {
+    const dialog = ref.current
+    if (!dialog) return
+    if (alternative && !dialog.open) {
+      setRationale('')
+      dialog.showModal()
+    } else if (!alternative && dialog.open) {
+      dialog.close()
+    }
+  }, [alternative])
+  const trimmed = rationale.trim()
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby={titleId}
+      onClose={onClose}
+      className="m-auto w-[min(540px,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-0 text-fg shadow-pop"
+    >
+      {alternative && (
+        <form
+          method="dialog"
+          className="space-y-3 p-5"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (trimmed && !pending) onSubmit(trimmed)
+          }}
+        >
+          <h2 id={titleId} className="font-semibold text-[15px]">
+            Accept “{alternative.title}”
+          </h2>
+          {question && <p className="text-fg-muted text-sm">{question}</p>}
+          <p className="text-fg-muted text-xs">
+            The decision and this alternative become accepted with your rationale, and the other
+            alternatives are rejected. This is proposed against the head,{' '}
+            <span className="font-mono">r{headRevision}</span>, and committed at once.
+          </p>
+          <label className="block space-y-1">
+            <span className="font-medium text-xs">Rationale (required)</span>
+            <textarea
+              autoFocus
+              required
+              maxLength={2000}
+              rows={3}
+              value={rationale}
+              onChange={(e) => setRationale(e.target.value)}
+              className="w-full resize-y rounded-md border border-border-strong bg-surface px-2.5 py-2 text-sm"
+              placeholder="Why this alternative?"
+            />
+          </label>
+          {error ? <ErrorNotice error={error} title="The decision was not recorded" /> : null}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button onClick={() => ref.current?.close()} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={!trimmed || pending}>
+              {pending ? (
+                <Spinner className="border-accent-fg/40 border-t-accent-fg" label="Accepting" />
+              ) : (
+                <Check aria-hidden />
+              )}
+              Accept alternative
+            </Button>
+          </div>
+        </form>
+      )}
+    </dialog>
   )
 }

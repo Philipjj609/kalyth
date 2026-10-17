@@ -7,6 +7,7 @@ import type {
   ModelCallRecord,
   NavigatorRun,
   NavigatorStatus,
+  OperationInput,
   ResolvedOperation,
 } from '@kalyth/contracts'
 import { shortId } from './format.ts'
@@ -406,6 +407,48 @@ export function parseSummaryProposal(ops: readonly ResolvedOperation[]): Propose
 /** Seeds for an alternative's propagated impact: the targets of its direct changes. */
 export function impactSeeds(alternative: Pick<ProposedAlternative, 'changes'>): string[] {
   return [...new Set(alternative.changes.map((c) => c.targetId))]
+}
+
+// ---------- deciding ----------
+
+export const OTHER_ALTERNATIVE_REJECTED = 'Another alternative was accepted.'
+
+type SetDecisionStatus = Extract<OperationInput, { op: 'setDecisionStatus' }>
+
+/**
+ * The operations that record a person's choice: the decision and the chosen alternative become
+ * accepted with the person's rationale, every other alternative is rejected. Status changes only
+ * through setDecisionStatus (ADR 0006).
+ */
+export function acceptAlternativeOps(input: {
+  decisionId: string
+  chosenId: string
+  alternativeIds: readonly string[]
+  rationale: string
+}): SetDecisionStatus[] {
+  const { decisionId, chosenId, rationale } = input
+  return [
+    { op: 'setDecisionStatus', id: decisionId, status: 'accepted', rationale },
+    { op: 'setDecisionStatus', id: chosenId, status: 'accepted', rationale },
+    ...[...new Set(input.alternativeIds)]
+      .filter((id) => id !== chosenId)
+      .map(
+        (id): SetDecisionStatus => ({
+          op: 'setDecisionStatus',
+          id,
+          status: 'rejected',
+          rationale: OTHER_ALTERNATIVE_REJECTED,
+        }),
+      ),
+  ]
+}
+
+/** A decision or alternative's current status, from its attributes. */
+export function decisionStatusOf(
+  object: { attributes: Record<string, unknown> } | undefined,
+): string | undefined {
+  const status = object?.attributes.status
+  return typeof status === 'string' ? status : undefined
 }
 
 export const INQUIRY_ROLE_META: Record<string, { tone: Tone; description: string }> = {
