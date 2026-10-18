@@ -7,6 +7,7 @@ import {
   CircleDashed,
   CircleQuestionMark,
   CircleX,
+  ClipboardCheck,
   Clock,
   ClockAlert,
   Component,
@@ -21,6 +22,7 @@ import {
   Import,
   Lightbulb,
   ListChecks,
+  ListTodo,
   type LucideIcon,
   MessageSquareQuote,
   Minus,
@@ -53,6 +55,8 @@ const TYPE_ICONS: Record<string, LucideIcon> = {
   'core.Question': CircleQuestionMark,
   'core.Assertion': Quote,
   'core.Verification': BadgeCheck,
+  'core.Task': ListTodo,
+  'core.ExecutionReport': ClipboardCheck,
 }
 
 export function typeIcon(type: string): LucideIcon {

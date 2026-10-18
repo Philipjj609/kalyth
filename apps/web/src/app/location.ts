@@ -1,7 +1,8 @@
 import { useCallback, useSyncExternalStore } from 'react'
 
 /**
- * Navigation state lives in the query string (?project=&view=&rev=&sel=&run=&proposal=&package=),
+ * Navigation state lives in the query string
+ * (?project=&view=&rev=&sel=&run=&proposal=&package=&task=),
  * so views are linkable and survive reloads. The fragment is reserved for the session token
  * handoff. Secrets never go here: agent tokens are held in component state only.
  */
@@ -13,6 +14,7 @@ export const VIEWS = [
   'history',
   'navigator',
   'handoff',
+  'tasks',
 ] as const
 export type View = (typeof VIEWS)[number]
 
@@ -29,10 +31,14 @@ export interface AppLocation {
   proposal?: string | undefined
   /** The context package shown (Handoff view only). */
   package?: string | undefined
+  /** The task shown in detail (Tasks view only). */
+  task?: string | undefined
 }
 
 /** Context package ids are content addresses: `ctx_` and 32 hex digits (ADR 0011). */
 const PACKAGE_ID = /^ctx_[0-9a-f]{32}$/
+/** Tasks are kernel objects (ADR 0013). */
+const OBJECT_ID = /^obj_[0-9a-f]{32}$/
 
 export function parseLocation(search: string): AppLocation {
   const q = new URLSearchParams(search)
@@ -47,6 +53,7 @@ export function parseLocation(search: string): AppLocation {
     run: q.get('run') ?? undefined,
     proposal: q.get('proposal') ?? undefined,
     package: PACKAGE_ID.test(q.get('package') ?? '') ? (q.get('package') as string) : undefined,
+    task: OBJECT_ID.test(q.get('task') ?? '') ? (q.get('task') as string) : undefined,
   }
 }
 
@@ -60,6 +67,7 @@ export function formatLocation(loc: AppLocation): string {
   if (loc.run && loc.view === 'navigator') q.set('run', loc.run)
   if (loc.proposal && loc.view === 'proposals') q.set('proposal', loc.proposal)
   if (loc.package && loc.view === 'handoff') q.set('package', loc.package)
+  if (loc.task && loc.view === 'tasks') q.set('task', loc.task)
   const s = q.toString()
   return s ? `?${s}` : ''
 }

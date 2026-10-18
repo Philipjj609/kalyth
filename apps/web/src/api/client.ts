@@ -24,6 +24,10 @@ import type {
   RelationQueryResult,
   RelationTypeDescriptor,
   StartNavigatorRunInput,
+  TaskList,
+  TaskRepositoryView,
+  TaskStatus,
+  TaskView,
 } from '@kalyth/contracts'
 import { type FreshnessReport, parseFreshness } from './freshness.ts'
 import type { Situation } from './situation.ts'
@@ -377,6 +381,31 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
       request<IssuedAgentToken>('POST', `${project(projectId)}/agent-tokens`, { ...input }),
     revokeAgentToken: (tokenId: string) =>
       request<AgentTokenSummary>('POST', `/api/v1/agent-tokens/${enc(tokenId)}/revoke`),
+
+    // ---------- tasks (ADR 0013) ----------
+
+    /** A project's tasks at the head, optionally of one status; null while the route is missing. */
+    tasks: async (projectId: string, status?: TaskStatus): Promise<TaskList | null> => {
+      try {
+        return await request<TaskList>('GET', buildUrl(`${project(projectId)}/tasks`, { status }))
+      } catch (e) {
+        if (isApiError(e) && (e.status === 404 || e.status === 501)) return null
+        throw e
+      }
+    },
+    /** One task. A 404 here means the task does not exist, so it is thrown. */
+    task: (taskId: string) => request<TaskView>('GET', `/api/v1/tasks/${enc(taskId)}`),
+    /** The git repository agents commit to, or null while the route is missing (404). */
+    taskRepository: async (projectId: string): Promise<TaskRepositoryView | null> => {
+      try {
+        return await request<TaskRepositoryView>('GET', `${project(projectId)}/task-repository`)
+      } catch (e) {
+        if (isApiError(e) && (e.status === 404 || e.status === 501)) return null
+        throw e
+      }
+    },
+    setTaskRepository: (projectId: string, path: string) =>
+      request<TaskRepositoryView>('PUT', `${project(projectId)}/task-repository`, { path }),
   }
 }
 

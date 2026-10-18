@@ -15,6 +15,7 @@ import {
   Network,
   PanelRightClose,
   PanelRightOpen,
+  SquareKanban,
   Sun,
   Table2,
 } from 'lucide-react'
@@ -35,6 +36,7 @@ import { cn } from '../lib/cn.ts'
 import { relativeTime } from '../model/format.ts'
 import { NavigatorIndicator } from '../navigator/NavigatorActions.tsx'
 import { NavigatorView } from '../navigator/NavigatorView.tsx'
+import { TasksView } from '../tasks/TasksView.tsx'
 import { HistoryView } from '../views/HistoryView.tsx'
 import { OverviewView } from '../views/OverviewView.tsx'
 import { ProjectsLanding } from '../views/ProjectsLanding.tsx'
@@ -60,6 +62,7 @@ const VIEW_META: Record<View, { label: string; icon: typeof Network }> = {
   history: { label: 'History', icon: HistoryIcon },
   navigator: { label: 'Navigator', icon: Compass },
   handoff: { label: 'Handoff', icon: Handshake },
+  tasks: { label: 'Tasks', icon: SquareKanban },
 }
 
 const INSPECTOR_KEY = 'kalyth.inspector'
@@ -326,6 +329,12 @@ function ProjectWorkbench({
               >
                 <HandoffView />
               </Tabs.Content>
+              <Tabs.Content
+                value="tasks"
+                className="relative min-h-0 flex-1 overflow-auto outline-none"
+              >
+                <TasksView />
+              </Tabs.Content>
             </main>
             {inspectorOpen && (
               <aside
@@ -471,6 +480,7 @@ function ProjectSwitcher({
                       run: undefined,
                       proposal: undefined,
                       package: undefined,
+                      task: undefined,
                     })
                   }}
                   className={cn(

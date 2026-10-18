@@ -5,6 +5,7 @@ import type {
   NavigatorStatus,
   ObjectVersion,
   RelationVersion,
+  TaskRepositoryView,
 } from '@kalyth/contracts'
 import {
   QueryCache,
@@ -31,8 +32,16 @@ import {
   type AcceptAlternativeInput,
   type AcceptAlternativeOutcome,
   acceptAlternative,
+  type ProposeCommitOutcome,
 } from './decide.ts'
 import { freshnessIndex } from './freshness.ts'
+import {
+  type ChangeTaskStatusInput,
+  type CreateTaskInput,
+  type CreateTaskOutcome,
+  changeTaskStatus,
+  createTask,
+} from './tasks.ts'
 
 export const api = createApi(() => session.token())
 
@@ -78,6 +87,9 @@ export const keys = {
   contextPackage: (packageId: string) => ['context', packageId] as const,
   contextPackages: (projectId: string) => ['contextPackages', projectId] as const,
   agentTokens: (projectId: string) => ['agentTokens', projectId] as const,
+  tasks: (projectId: string) => ['tasks', projectId] as const,
+  task: (taskId: string) => ['task', taskId] as const,
+  taskRepository: (projectId: string) => ['taskRepository', projectId] as const,
 }
 
 export function useProjects() {
@@ -211,6 +223,9 @@ function useInvalidateProject(projectId: string) {
       client.invalidateQueries({ queryKey: keys.projects }),
       client.invalidateQueries({ queryKey: ['proposal'] }),
       client.invalidateQueries({ queryKey: keys.situation(projectId) }),
+      // Any commit may create or move tasks, wherever it was made.
+      client.invalidateQueries({ queryKey: keys.tasks(projectId) }),
+      client.invalidateQueries({ queryKey: ['task'] }),
     ])
 }
 
@@ -485,6 +500,81 @@ export function useRevokeAgentToken(projectId: string) {
     mutationFn: (tokenId) => api.revokeAgentToken(tokenId),
     onSuccess: (summary) => upsertTokenSummary(client, summary),
     onSettled: () => client.invalidateQueries({ queryKey: keys.agentTokens(projectId) }),
+    onError: (error) => {
+      if (error.status === 401) session.reject()
+    },
+  })
+}
+
+// ---------- tasks (ADR 0013) ----------
+
+/**
+ * The project's tasks at the head; null while the server has no task routes. Polled, since agents
+ * claim and report over MCP and leases run out between a person's actions.
+ */
+export function useTasks(projectId: string) {
+  return useQuery({
+    queryKey: keys.tasks(projectId),
+    queryFn: () => api.tasks(projectId),
+    refetchInterval: 10_000,
+  })
+}
+
+/** One task by id, for a deep link to a task the list does not hold. */
+export function useTask(taskId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: keys.task(taskId ?? ''),
+    queryFn: () => api.task(taskId as string),
+    enabled: enabled && taskId !== undefined,
+    refetchInterval: 10_000,
+    retry: false,
+  })
+}
+
+/** The repository agents commit to; null while the server has no task routes. */
+export function useTaskRepository(projectId: string) {
+  return useQuery({
+    queryKey: keys.taskRepository(projectId),
+    queryFn: () => api.taskRepository(projectId),
+    staleTime: 30_000,
+  })
+}
+
+export function useSetTaskRepository(projectId: string) {
+  const client = useQueryClient()
+  return useMutation<TaskRepositoryView, ApiError, string>({
+    mutationFn: (path) => api.setTaskRepository(projectId, path),
+    onSuccess: (view) => client.setQueryData(keys.taskRepository(projectId), view),
+    onError: (error) => {
+      if (error.status === 401) session.reject()
+    },
+  })
+}
+
+/** Proposes and commits a person's status change (never to running: that is the coordinator's). */
+export function useChangeTaskStatus(projectId: string) {
+  const invalidate = useInvalidateProject(projectId)
+  return useMutation<ProposeCommitOutcome, ApiError, ChangeTaskStatusInput>({
+    mutationFn: (input) => changeTaskStatus(api, projectId, input),
+    onSuccess: (outcome) => {
+      if ('refused' in outcome && outcome.refused.status === 401) session.reject()
+    },
+    onSettled: invalidate,
+    onError: (error) => {
+      if (error.status === 401) session.reject()
+    },
+  })
+}
+
+/** Proposes and commits a new task with its implements and requires relations. */
+export function useCreateTask(projectId: string) {
+  const invalidate = useInvalidateProject(projectId)
+  return useMutation<CreateTaskOutcome, ApiError, CreateTaskInput>({
+    mutationFn: (input) => createTask(api, projectId, input),
+    onSuccess: (outcome) => {
+      if ('refused' in outcome && outcome.refused.status === 401) session.reject()
+    },
+    onSettled: invalidate,
     onError: (error) => {
       if (error.status === 401) session.reject()
     },
