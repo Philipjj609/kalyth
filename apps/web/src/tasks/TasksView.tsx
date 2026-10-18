@@ -1,6 +1,6 @@
 import type { TaskView } from '@kalyth/contracts'
-import { Plus, ScanSearch, SquareKanban, TriangleAlert, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Network, Plus, ScanSearch, SquareKanban, TriangleAlert, X } from 'lucide-react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   useAcceptedDecisions,
   useAgentTokens,
@@ -10,7 +10,7 @@ import {
 } from '../api/queries.ts'
 import { useAppLocation } from '../app/location.ts'
 import { useWorkbench } from '../app/workbench.ts'
-import { Button, EmptyState, Skeleton, Tip } from '../components/ui.tsx'
+import { Button, EmptyState, Segmented, Skeleton, Tip } from '../components/ui.tsx'
 import { shortId } from '../model/format.ts'
 import { tokenLabeller } from '../model/handoff.ts'
 import { draftFromDecision, EMPTY_TASK_DRAFT, type TaskDraft } from '../model/tasks.ts'
@@ -22,6 +22,9 @@ import { TaskActionsPanel } from './TaskActions.tsx'
 import { TaskBoard, type TaskLinks } from './TaskBoard.tsx'
 import { TaskDetailView } from './TaskDetail.tsx'
 import { TASK_REPOSITORY_INPUT_ID, TaskRepositoryPanel } from './TaskRepositoryPanel.tsx'
+
+// React Flow is only loaded when someone opens the graph.
+const TaskGraph = lazy(() => import('./TaskGraph.tsx'))
 
 /** Moves focus to the board card of a task, once it has rendered. */
 function focusCard(taskId: string) {
@@ -148,25 +151,56 @@ export function TasksView() {
               No tasks yet. Plan one from an accepted decision below, or with New task.
             </p>
           )}
-          <TaskBoard
-            tasks={tasks}
-            selectedId={loc.task}
-            links={links}
-            columnAction={(status) =>
-              status === 'proposed' ? (
-                <Tip label="New task">
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label="New task"
-                    onClick={() => openForm(EMPTY_TASK_DRAFT)}
-                  >
-                    <Plus aria-hidden />
-                  </Button>
-                </Tip>
-              ) : null
+          <Segmented
+            label="Show tasks as"
+            value={loc.taskLayout ?? 'board'}
+            options={[
+              {
+                value: 'board',
+                label: (
+                  <>
+                    <SquareKanban aria-hidden className="size-3.5" /> Board
+                  </>
+                ),
+              },
+              {
+                value: 'graph',
+                label: (
+                  <>
+                    <Network aria-hidden className="size-3.5" /> Graph
+                  </>
+                ),
+              },
+            ]}
+            onChange={(layout) =>
+              navigate({ taskLayout: layout === 'graph' ? 'graph' : undefined }, 'replace')
             }
           />
+          {loc.taskLayout === 'graph' ? (
+            <Suspense fallback={<Skeleton className="h-96" />}>
+              <TaskGraph tasks={tasks} />
+            </Suspense>
+          ) : (
+            <TaskBoard
+              tasks={tasks}
+              selectedId={loc.task}
+              links={links}
+              columnAction={(status) =>
+                status === 'proposed' ? (
+                  <Tip label="New task">
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label="New task"
+                      onClick={() => openForm(EMPTY_TASK_DRAFT)}
+                    >
+                      <Plus aria-hidden />
+                    </Button>
+                  </Tip>
+                ) : null
+              }
+            />
+          )}
         </>
       )}
 
