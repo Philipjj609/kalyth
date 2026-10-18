@@ -139,6 +139,28 @@ describe('projects and revisions', () => {
     expect(history.changeSets.map((c) => c.revision)).toEqual([2, 1])
   })
 
+  it('reads when objects were first written and when revisions were committed', () => {
+    const ctx = setup()
+    const { apiId, moduleId } = seedSystem(ctx)
+    commitAsOwner(ctx, [{ op: 'updateObject', id: moduleId, set: { language: 'python3' } }])
+    const unknown = `obj_${'0'.repeat(32)}`
+    expect(ctx.store.firstRevisions(ctx.project.id, [apiId, moduleId, unknown])).toEqual(
+      new Map([
+        [apiId, 1],
+        [moduleId, 1],
+      ]),
+    )
+    const changeSets = unwrap(
+      ctx.services.getHistory(ctx.owner, { projectId: ctx.project.id }),
+    ).changeSets
+    expect(changeSets[0]?.committedAt).not.toBe(changeSets[1]?.committedAt)
+    expect(ctx.store.commitTimes(ctx.project.id, [1, 2, 9])).toEqual(
+      new Map(changeSets.map((c) => [c.revision, c.committedAt])),
+    )
+    expect(ctx.store.firstRevisions(ctx.project.id, [])).toEqual(new Map())
+    expect(ctx.store.commitTimes(ctx.project.id, [])).toEqual(new Map())
+  })
+
   it('retires instead of deleting, and keeps the retired version readable', () => {
     const ctx = setup()
     const { apiId, moduleId } = seedSystem(ctx)

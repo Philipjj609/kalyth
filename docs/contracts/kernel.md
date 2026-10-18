@@ -109,6 +109,11 @@ A `core.Task` changes status and lease only through `setTaskStatus`, along `TASK
   descends from the task's base commit, and records the check as an observed `core.Verification`.
   A pass moves the task to `review`. Reported tests are recorded, not run.
 
+Each task view carries `createdAt` and `updatedAt`, and each of its reports `reportedAt`. They are
+the commit times, read from the project history, of the revisions that created the task, wrote its
+current version (its last status, lease or attribute change) and recorded the report. A new report
+alone does not change `updatedAt`. Nothing extra is stored for them.
+
 The task coordinator commits these lifecycle records and nothing else; only a person acting
 directly moves a task to `completed` or `cancelled`. The task repository, the local clone agents
 commit to, is registered per project by a person with `grant.manage`

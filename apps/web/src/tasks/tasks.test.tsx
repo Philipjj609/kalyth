@@ -118,6 +118,15 @@ describe('task board', () => {
     )
   })
 
+  it('shows when each card last changed, or when it was created if it has not changed', () => {
+    expect(text).toContain('Add tenant_id to Item Implements Tenancy model Updated 20 minutes ago')
+    expect(html).toContain('<time dateTime="2026-10-17T09:40:00.000Z" title="17 Oct 2026')
+    const fresh = taskView({ updatedAt: '2026-10-17T08:00:00.000Z' })
+    expect(
+      textOf(render(<TaskCard task={fresh} selected={false} links={links} now={NOW} />)),
+    ).toMatch(/Created 2 hours ago$/)
+  })
+
   it('renders task text as text, never as markup', () => {
     const hostile = render(
       <TaskBoard
@@ -165,10 +174,12 @@ describe('lease on a running task', () => {
 
 describe('execution reports', () => {
   it('shows outcome, summary, short commit, files, tests and the verification', () => {
-    const text = textOf(render(<ReportCard report={report()} number={1} />))
+    const html = render(<ReportCard report={report()} number={1} now={NOW} />)
+    const text = textOf(html)
     expect(text).toContain(
-      "Report 1 Agent's report: Succeeded Basis: Stated stated by the agent r12 Added tenant_id to Item and filtered the base query.",
+      "Report 1 Agent's report: Succeeded Basis: Stated stated by the agent 30 minutes ago · r12 Added tenant_id to Item and filtered the base query.",
     )
+    expect(html).toContain('<time dateTime="2026-10-17T09:30:00.000Z" title="17 Oct 2026')
     expect(text).toContain(`Commit ${COMMIT.slice(0, 8)}`)
     expect(text).toContain('Files changed 2 files app/models.py app/crud.py')
     expect(text).toContain(
@@ -239,6 +250,23 @@ describe('task detail', () => {
     <TaskDetailView task={task} links={links} now={NOW} actions={<p>ACTIONS</p>} />,
   )
   const text = textOf(html)
+
+  it('shows when the task was created and last changed, and when each report came', () => {
+    // textOf leaves a space where the closing time tag was, before the comma.
+    expect(text).toContain('r11 Created 2 hours ago , updated 20 minutes ago Filter the base query')
+    expect(html).toContain('</time>, updated <time dateTime="2026-10-17T09:40:00.000Z"')
+    expect(text).toContain('stated by the agent 30 minutes ago · r12')
+    const unchanged = textOf(
+      render(
+        <TaskDetailView
+          task={taskView({ updatedAt: '2026-10-17T08:00:00.000Z' })}
+          links={links}
+          now={NOW}
+        />,
+      ),
+    )
+    expect(unchanged).toContain('r9 Created 2 hours ago Add tenant_id to Item')
+  })
 
   it('shows the description, acceptance criteria and status rationale', () => {
     expect(text).toContain('Task status: Running')

@@ -99,6 +99,19 @@ describe('tasks over HTTP and MCP (ADR 0013)', () => {
         },
       ],
     })
+    // Times come from the commits that wrote the task and its report.
+    const history = (await h.http('GET', `/api/v1/projects/${projectId}/history`)).body
+      .changeSets as { revision: number; committedAt: string }[]
+    const committedAt = (revision: number) =>
+      history.find((c) => c.revision === revision)?.committedAt
+    expect(viaHttp.body.createdAt).toBe(committedAt(1))
+    expect(viaHttp.body.updatedAt).toBe(committedAt(viaHttp.body.revision))
+    expect(viaHttp.body.reports[0].reportedAt).toBe(committedAt(viaHttp.body.reports[0].revision))
+    const listed = await h.mcp('list_tasks', { projectId })
+    expect(listed.body.tasks[0]).toMatchObject({
+      createdAt: viaHttp.body.createdAt,
+      updatedAt: viaHttp.body.updatedAt,
+    })
 
     // The agent has no way to complete it; the owner, through the UI's API, does.
     const head = (await h.http('GET', `/api/v1/projects/${projectId}`)).body.project.headRevision

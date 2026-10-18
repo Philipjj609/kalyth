@@ -35,6 +35,8 @@ export function taskView(overrides: Partial<TaskView> = {}): TaskView {
     requires: [],
     reports: [],
     revision: 9,
+    createdAt: '2026-10-17T08:00:00.000Z',
+    updatedAt: '2026-10-17T09:40:00.000Z',
     ...overrides,
   }
 }
@@ -48,6 +50,7 @@ export function report(overrides: Partial<TaskReport> = {}): TaskReport {
     filesChanged: ['app/models.py', 'app/crud.py'],
     tests: [{ command: 'pytest -q', passed: 41, failed: 0 }],
     revision: 12,
+    reportedAt: '2026-10-17T09:30:00.000Z',
     verification: {
       id: VERIFICATION,
       outcome: 'pass',

@@ -646,6 +646,26 @@ export class SqliteStore {
     }))
   }
 
+  /** The revision at which each listed object was first written. */
+  firstRevisions(projectId: string, ids: readonly string[]): Map<string, number> {
+    if (ids.length === 0) return new Map()
+    const params: Record<string, unknown> = { p: projectId }
+    const sql = `SELECT id, min(rev_from) AS rev FROM object_versions
+      WHERE project_id = @p AND id IN (${placeholders('i', ids, params)}) GROUP BY id`
+    const rows = this.db.prepare(sql).all(params) as Row[]
+    return new Map(rows.map((r) => [str(r.id), num(r.rev)]))
+  }
+
+  /** When each listed revision was committed, from the project's change sets. */
+  commitTimes(projectId: string, revisions: readonly number[]): Map<number, string> {
+    if (revisions.length === 0) return new Map()
+    const params: Record<string, unknown> = { p: projectId }
+    const sql = `SELECT revision, committed_at FROM change_sets
+      WHERE project_id = @p AND revision IN (${placeholders('r', revisions, params)})`
+    const rows = this.db.prepare(sql).all(params) as Row[]
+    return new Map(rows.map((r) => [num(r.revision), str(r.committed_at)]))
+  }
+
   /** Canonical dump of revisioned state, used to prove that event replay reproduces it (R3). */
   dumpRevisionedState(projectId: string): unknown {
     const q = (sql: string) => this.db.prepare(sql).all(projectId)
@@ -695,7 +715,7 @@ class SqliteStateView implements StateView {
 
 function placeholders(
   prefix: string,
-  values: readonly string[],
+  values: readonly (string | number)[],
   params: Record<string, unknown>,
 ): string {
   return values

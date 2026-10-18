@@ -12,7 +12,7 @@ import {
 import { CopyButton, SectionTitle } from '../components/ui.tsx'
 import { plural, shortId, shortSha } from '../model/format.ts'
 import { reportsNewestFirst, type TaskReport, taskStatusMeta, taskTrailer } from '../model/tasks.ts'
-import { LeaseLine, type TaskLinks } from './TaskBoard.tsx'
+import { LeaseLine, type TaskLinks, When } from './TaskBoard.tsx'
 
 // ---------- execution reports ----------
 
@@ -102,7 +102,15 @@ export function VerificationBlock({ verification }: { verification: TaskReport['
   )
 }
 
-export function ReportCard({ report, number }: { report: TaskReport; number: number }) {
+export function ReportCard({
+  report,
+  number,
+  now,
+}: {
+  report: TaskReport
+  number: number
+  now?: number | undefined
+}) {
   const headingId = useId()
   return (
     <article
@@ -116,7 +124,11 @@ export function ReportCard({ report, number }: { report: TaskReport; number: num
         <ReportOutcomeBadge outcome={report.outcome} size="sm" />
         <BasisBadge basis="stated" size="sm" />
         <span className="text-fg-muted text-xs">stated by the agent</span>
-        <span className="ml-auto font-mono text-2xs text-fg-subtle">r{report.revision}</span>
+        <span className="ml-auto text-2xs text-fg-subtle">
+          <When iso={report.reportedAt} now={now} />
+          <span aria-hidden> · </span>
+          <span className="font-mono">r{report.revision}</span>
+        </span>
       </header>
       <p className="whitespace-pre-wrap break-words text-sm">{report.summary}</p>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
@@ -161,7 +173,13 @@ export function ReportCard({ report, number }: { report: TaskReport; number: num
 }
 
 /** Every report on a task, newest first, numbered in the order they came. */
-export function ReportList({ task }: { task: Pick<TaskView, 'reports'> }) {
+export function ReportList({
+  task,
+  now,
+}: {
+  task: Pick<TaskView, 'reports'>
+  now?: number | undefined
+}) {
   const reports = reportsNewestFirst(task)
   if (reports.length === 0) {
     return (
@@ -175,7 +193,7 @@ export function ReportList({ task }: { task: Pick<TaskView, 'reports'> }) {
     <ol className="space-y-3">
       {reports.map((report, i) => (
         <li key={report.id}>
-          <ReportCard report={report} number={reports.length - i} />
+          <ReportCard report={report} number={reports.length - i} now={now} />
         </li>
       ))}
     </ol>
@@ -286,6 +304,14 @@ export function TaskDetailView({
               {shortId(task.id)}
             </span>
             <span className="font-mono text-2xs text-fg-subtle">r{task.revision}</span>
+            <span className="text-2xs text-fg-subtle">
+              Created <When iso={task.createdAt} now={now} />
+              {task.updatedAt !== task.createdAt && (
+                <>
+                  , updated <When iso={task.updatedAt} now={now} />
+                </>
+              )}
+            </span>
           </div>
           <h2
             id={headingId}
@@ -342,7 +368,7 @@ export function TaskDetailView({
             )}
           </Section>
           <Section title={`Execution reports (${task.reports.length})`}>
-            <ReportList task={task} />
+            <ReportList task={task} now={now} />
           </Section>
         </div>
 
