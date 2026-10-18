@@ -52,6 +52,32 @@ export function HolderName({
   )
 }
 
+/** A time as "5 minutes ago", with the exact time on hover. */
+export function When({ iso, now }: { iso: string; now?: number | undefined }) {
+  return (
+    <time dateTime={iso} title={absoluteTime(iso)}>
+      {relativeTime(iso, now)}
+    </time>
+  )
+}
+
+/** When the task last changed, or when it was created if it has not changed since. */
+export function UpdatedLine({
+  task,
+  now,
+}: {
+  task: Pick<TaskView, 'createdAt' | 'updatedAt'>
+  now?: number | undefined
+}) {
+  const changed = task.updatedAt !== task.createdAt
+  return (
+    <p className="text-2xs text-fg-subtle">
+      {changed ? 'Updated' : 'Created'}{' '}
+      <When iso={changed ? task.updatedAt : task.createdAt} now={now} />
+    </p>
+  )
+}
+
 export function LeaseExpiredBadge() {
   return (
     <StatusBadge
@@ -79,11 +105,7 @@ export function LeaseLine({
 }) {
   const lease = task.lease
   if (!lease) return null
-  const expiry = (
-    <time dateTime={lease.expiresAt} title={absoluteTime(lease.expiresAt)}>
-      {relativeTime(lease.expiresAt, now)}
-    </time>
-  )
+  const expiry = <When iso={lease.expiresAt} now={now} />
   if (task.status !== 'running') {
     return (
       <p className="text-fg-muted text-xs">
@@ -172,6 +194,7 @@ export function TaskCard({
       )}
       <LeaseLine task={task} links={links} now={now} />
       <LatestReportLine task={task} />
+      <UpdatedLine task={task} now={now} />
     </article>
   )
 }

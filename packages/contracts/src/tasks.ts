@@ -27,6 +27,8 @@ export const TaskReportView = z.object({
   filesChanged: z.array(z.string()),
   tests: z.array(TestRun),
   revision: z.int().min(0),
+  /** When the revision that recorded the report was committed. */
+  reportedAt: z.iso.datetime(),
   verification: z
     .object({ id: ObjectId, outcome: VerificationOutcome, summary: z.string() })
     .nullable(),
@@ -52,6 +54,10 @@ export const TaskView = z.object({
   reports: z.array(TaskReportView),
   /** Revision of the task's current version. */
   revision: z.int().min(0),
+  /** When the revision that created the task was committed. */
+  createdAt: z.iso.datetime(),
+  /** When the task's current version was committed: its last status, lease or attribute change. */
+  updatedAt: z.iso.datetime(),
 })
 export type TaskView = z.infer<typeof TaskView>
 

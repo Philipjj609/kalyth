@@ -109,6 +109,11 @@ A `core.Task` changes status and lease only through `setTaskStatus`, along `TASK
   descends from the task's base commit, and records the check as an observed `core.Verification`.
   A pass moves the task to `review`. Reported tests are recorded, not run.
 
+Each task view carries `createdAt` and `updatedAt`, and each of its reports `reportedAt`. They are
+the commit times, read from the project history, of the revisions that created the task, wrote its
+current version (its last status, lease or attribute change) and recorded the report. A new report
+alone does not change `updatedAt`. Nothing extra is stored for them.
+
 The task coordinator commits these lifecycle records and nothing else; only a person acting
 directly moves a task to `completed` or `cancelled`. The task repository, the local clone agents
 commit to, is registered per project by a person with `grant.manage`
@@ -134,7 +139,11 @@ submission. Stale and conflicting are terminal: re-read and propose again. Rules
 
 ## Results
 
-Success: `{status: "committed", projectId, revision, changeSetId, eventId, rebasedFrom}`.
+Success: `{status: "committed", projectId, revision, changeSetId, eventId, rebasedFrom, refs}`.
+`refs` maps each local ref the proposal named to the id it resolved to, for example
+`{"$task": "obj_…"}`, so a client can open what it just created without reading the proposal back.
+It is empty when the proposal named no refs, and for results stored before refs were kept. In a
+stored proposal, each resolved create operation keeps its `ref` beside the id.
 Failure: `{code, message, issues[], requiredScopes?, currentRevision?, changedRefs?, retryAfterMs?}`
 with codes `invalid`, `unauthenticated`, `unauthorized`, `stale`, `conflicting`, `not_found`,
 `budget_exceeded`, `retryable`.

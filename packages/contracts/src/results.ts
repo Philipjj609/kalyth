@@ -1,6 +1,14 @@
 import { z } from 'zod'
 import { Scope } from './auth.ts'
-import { ChangeSetId, EventId, ProjectId } from './ids.ts'
+import {
+  ChangeSetId,
+  EventId,
+  EvidenceId,
+  LocalRef,
+  ObjectId,
+  ProjectId,
+  RelationId,
+} from './ids.ts'
 
 export const ErrorCode = z.enum([
   'invalid',
@@ -49,6 +57,11 @@ export const CommitSuccess = z.object({
   eventId: EventId,
   /** The proposal's base revision when it was applied on a newer head (automatic rebase). */
   rebasedFrom: z.int().min(0).nullable(),
+  /**
+   * The id each local ref in the proposal resolved to, e.g. `{"$task": "obj_…"}`. Empty when the
+   * proposal named no refs, and for proposals committed before refs were kept.
+   */
+  refs: z.record(LocalRef, z.union([ObjectId, RelationId, EvidenceId])),
 })
 export type CommitSuccess = z.infer<typeof CommitSuccess>
 

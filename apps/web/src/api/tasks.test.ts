@@ -5,6 +5,7 @@ import {
   createTaskRationale,
   draftFromDecision,
   statusChangeOps,
+  TASK_REF,
   TASK_TRANSITIONS,
   taskActions,
 } from '../model/tasks.ts'
@@ -236,14 +237,14 @@ describe('creating a task', () => {
     ],
   })
 
-  it('proposes the task with its implements and requires relations, commits, and reads back the new id', async () => {
-    const { calls, api } = scripted([pending(), json(200, committed), json(200, stored)])
+  it('proposes the task with its implements and requires relations, and takes the new id from the commit', async () => {
+    const withRefs = { ...committed, refs: { [TASK_REF]: NEW_TASK } }
+    const { calls, api } = scripted([pending(), json(200, withRefs)])
     const outcome = await createTask(api, PROJECT, { draft, baseRevision: 13 })
-    expect(outcome).toEqual({ proposalId: PROPOSAL, committed, taskId: NEW_TASK })
+    expect(outcome).toEqual({ proposalId: PROPOSAL, committed: withRefs, taskId: NEW_TASK })
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
       `POST /api/v1/projects/${PROJECT}/proposals`,
       `POST /api/v1/proposals/${PROPOSAL}/commit`,
-      `GET /api/v1/proposals/${PROPOSAL}`,
     ])
     expect(calls[0]?.body).toEqual({
       baseRevision: 13,
@@ -256,6 +257,20 @@ describe('creating a task', () => {
       'createObject core.Task',
       `createRelation implements → ${DECISION}`,
       `createRelation requires → ${TASK_B}`,
+    ])
+  })
+
+  it.each([
+    ['names no refs', committed],
+    ['names other refs only', { ...committed, refs: { $other: id('obj', 901) } }],
+  ])('reads the new id back from the proposal when the commit %s', async (_, answer) => {
+    const { calls, api } = scripted([pending(), json(200, answer), json(200, stored)])
+    const outcome = await createTask(api, PROJECT, { draft, baseRevision: 13 })
+    expect(outcome).toEqual({ proposalId: PROPOSAL, committed: answer, taskId: NEW_TASK })
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      `POST /api/v1/projects/${PROJECT}/proposals`,
+      `POST /api/v1/proposals/${PROPOSAL}/commit`,
+      `GET /api/v1/proposals/${PROPOSAL}`,
     ])
   })
 

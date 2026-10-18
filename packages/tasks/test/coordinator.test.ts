@@ -31,7 +31,7 @@ afterEach(() => {
 function world() {
   let now = Date.UTC(2026, 9, 17, 12, 0, 0)
   const clock = () => new Date(now).toISOString()
-  const services = new KalythServices({ store: new SqliteStore(':memory:') })
+  const services = new KalythServices({ store: new SqliteStore(':memory:'), clock })
   const owner: Caller = { principalId: ensureLocalOwner(services).id, origin: 'human' }
   const agent: Caller = { principalId: ensureLocalAgent(services).id, origin: 'agent' }
   const other: Caller = {
@@ -61,7 +61,7 @@ function world() {
   repo.write({ 'app/models.py': 'class Item:\n    pass\n' })
   const base = repo.commit('base')
 
-  commitOps([
+  const created = commitOps([
     {
       op: 'createObject',
       ref: '$req',
@@ -91,8 +91,7 @@ function world() {
       claim: stated,
     },
   ])
-  const taskId = unwrap(services.queryObjects(owner, { projectId, types: ['core.Task'] }))
-    .objects[0]?.id as string
+  const taskId = created.refs.$t as string
   commitOps([{ op: 'setTaskStatus', id: taskId, status: 'ready', rationale: 'scoped' }])
 
   const context = new ContextCompiler({ services, clock })
@@ -214,6 +213,7 @@ describe('task coordinator (ADR 0013)', () => {
       basis: 'observed',
       observation: { tool: 'kalyth-git-verifier' },
     })
+    expect(result.verification.id).toBe(verification?.id)
 
     // Retrying the same report is answered from the record, not written twice.
     const again = unwrap(
@@ -241,6 +241,51 @@ describe('task coordinator (ADR 0013)', () => {
     expect(errorOf(finish({ ...w.owner, origin: 'relayed' })).code).toBe('unauthorized')
     expect(finish(w.owner).ok).toBe(true)
     expect(w.view().status).toBe('completed')
+  })
+
+  it('dates the task and its reports by the commits that wrote them', () => {
+    const w = world()
+    expect(w.view()).toMatchObject({
+      createdAt: '2026-10-17T12:00:00.000Z',
+      updatedAt: '2026-10-17T12:00:00.000Z',
+    })
+    w.advance(10)
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    w.advance(20)
+    const result = unwrap(
+      w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, work(w)) }),
+    )
+    expect(result.task).toMatchObject({
+      status: 'review',
+      createdAt: '2026-10-17T12:00:00.000Z',
+      updatedAt: '2026-10-17T12:30:00.000Z',
+      reports: [expect.objectContaining({ reportedAt: '2026-10-17T12:30:00.000Z' })],
+    })
+    // The times are those of the change sets in the project history.
+    const history = unwrap(w.services.getHistory(w.owner, { projectId: w.projectId })).changeSets
+    expect(history.find((c) => c.revision === result.task.revision)?.committedAt).toBe(
+      result.task.updatedAt,
+    )
+
+    // A commit that leaves the task alone leaves its times alone; a status change moves updatedAt.
+    w.advance(5)
+    w.commitOps([
+      {
+        op: 'createObject',
+        type: 'core.Requirement',
+        stance: 'toBe',
+        attributes: { title: 'Audit log', statement: 'Every change is logged.' },
+        claim: stated,
+      },
+    ])
+    expect(w.view().updatedAt).toBe('2026-10-17T12:30:00.000Z')
+    w.advance(5)
+    w.commitOps([{ op: 'setTaskStatus', id: w.taskId, status: 'ready', rationale: 'redo' }])
+    expect(w.view()).toMatchObject({
+      createdAt: '2026-10-17T12:00:00.000Z',
+      updatedAt: '2026-10-17T12:40:00.000Z',
+      reports: [expect.objectContaining({ reportedAt: '2026-10-17T12:30:00.000Z' })],
+    })
   })
 
   it('fails verification without the trailer or with misreported files, and keeps the task running', () => {

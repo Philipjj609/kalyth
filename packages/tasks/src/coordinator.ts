@@ -6,6 +6,7 @@ import {
   Caller,
   type ClaimResult,
   ClaimTaskInput,
+  type CommitSuccess,
   fail,
   type KernelError,
   type ObjectVersion,
@@ -411,12 +412,11 @@ export class TaskCoordinator {
       ops,
     )
     if (!committed.ok) return committed
-    const task = this.#reread(caller, located.projectId, located.view.id) ?? located.view
-    const stored = this.#reportByKey(caller, located.projectId, task.id, report.idempotencyKey)
+    const { refs } = committed.value
     return ok({
-      task,
-      reportId: stored?.id ?? '',
-      verification: { id: stored?.verification?.id ?? null, outcome, checks },
+      task: this.#reread(caller, located.projectId, located.view.id) ?? located.view,
+      reportId: refs.$report ?? '',
+      verification: { id: refs.$verification ?? null, outcome, checks },
       duplicate: false,
     })
   }
@@ -442,7 +442,7 @@ export class TaskCoordinator {
     projectId: string,
     rationale: string,
     ops: OperationInput[],
-  ): Result<unknown> {
+  ): Result<CommitSuccess> {
     const overview = this.#services.getProjectOverview(agent, { projectId })
     if (!overview.ok) return overview
     const proposed = this.#services.proposeChange(agent, {
@@ -584,6 +584,19 @@ export class TaskCoordinator {
       const tasks = objects
         .filter((o) => o.type === 'core.Task' && (!only || only.includes(o.id)))
         .sort((a, b) => (a.id < b.id ? -1 : 1))
+      const reportsOf = new Map(
+        tasks.map((t) => [
+          t.id,
+          relations
+            .filter((r) => r.type === 'reports' && r.to === t.id)
+            .flatMap((r) => byId.get(r.from) ?? [])
+            .sort((x, y) => x.revision - y.revision || (x.id < y.id ? -1 : 1)),
+        ]),
+      )
+      const written = writtenAt(this.#services.store, projectId, [
+        ...tasks,
+        ...[...reportsOf.values()].flat(),
+      ])
       return ok(
         tasks.map((t): TaskView => {
           const a = t.attributes as Record<string, unknown>
@@ -591,32 +604,29 @@ export class TaskCoordinator {
           const status = a.status as TaskStatus
           const linked = (type: string) =>
             relations.filter((r) => r.type === type && r.from === t.id)
-          const reports = relations
-            .filter((r) => r.type === 'reports' && r.to === t.id)
-            .flatMap((r) => byId.get(r.from) ?? [])
-            .sort((x, y) => x.revision - y.revision || (x.id < y.id ? -1 : 1))
-            .map((rep) => {
-              const ra = rep.attributes as Record<string, unknown>
-              const verification = relations
-                .filter((r) => r.type === 'verifies' && r.to === rep.id)
-                .flatMap((r) => byId.get(r.from) ?? [])[0]
-              return {
-                id: rep.id,
-                outcome: ra.outcome as 'succeeded' | 'failed' | 'partial',
-                summary: text(rep, 'summary'),
-                commit: typeof ra.commit === 'string' ? ra.commit : null,
-                filesChanged: (ra.filesChanged as string[] | undefined) ?? [],
-                tests: (ra.tests as TaskView['reports'][number]['tests'] | undefined) ?? [],
-                revision: rep.revision,
-                verification: verification
-                  ? {
-                      id: verification.id,
-                      outcome: text(verification, 'outcome') as 'pass' | 'fail' | 'inconclusive',
-                      summary: text(verification, 'summary'),
-                    }
-                  : null,
-              }
-            })
+          const reports = (reportsOf.get(t.id) ?? []).map((rep) => {
+            const ra = rep.attributes as Record<string, unknown>
+            const verification = relations
+              .filter((r) => r.type === 'verifies' && r.to === rep.id)
+              .flatMap((r) => byId.get(r.from) ?? [])[0]
+            return {
+              id: rep.id,
+              outcome: ra.outcome as 'succeeded' | 'failed' | 'partial',
+              summary: text(rep, 'summary'),
+              commit: typeof ra.commit === 'string' ? ra.commit : null,
+              filesChanged: (ra.filesChanged as string[] | undefined) ?? [],
+              tests: (ra.tests as TaskView['reports'][number]['tests'] | undefined) ?? [],
+              revision: rep.revision,
+              reportedAt: written.created(rep),
+              verification: verification
+                ? {
+                    id: verification.id,
+                    outcome: text(verification, 'outcome') as 'pass' | 'fail' | 'inconclusive',
+                    summary: text(verification, 'summary'),
+                  }
+                : null,
+            }
+          })
           return {
             id: t.id,
             projectId,
@@ -654,6 +664,8 @@ export class TaskCoordinator {
             }),
             reports,
             revision: t.revision,
+            createdAt: written.created(t),
+            updatedAt: written.updated(t),
           }
         }),
       )
@@ -661,6 +673,33 @@ export class TaskCoordinator {
       if (error instanceof ViewError) return { ok: false, error: error.error }
       throw error
     }
+  }
+}
+
+/**
+ * Times from the project history: when each object's first version and its current version were
+ * committed. Every revision after 0 has a change set, so a missing time means a broken store.
+ */
+function writtenAt(
+  store: KalythServices['store'],
+  projectId: string,
+  objects: readonly ObjectVersion[],
+) {
+  const first = store.firstRevisions(
+    projectId,
+    objects.map((o) => o.id),
+  )
+  const times = store.commitTimes(projectId, [
+    ...new Set([...first.values(), ...objects.map((o) => o.revision)]),
+  ])
+  const at = (revision: number): string => {
+    const time = times.get(revision)
+    if (time === undefined) throw new Error(`revision ${revision} has no change set`)
+    return time
+  }
+  return {
+    created: (o: ObjectVersion) => at(first.get(o.id) ?? o.revision),
+    updated: (o: ObjectVersion) => at(o.revision),
   }
 }
 
