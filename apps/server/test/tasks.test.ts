@@ -25,7 +25,7 @@ async function readyTask() {
     })
     return h.http('POST', `/api/v1/proposals/${p.body.proposalId}/commit`)
   }
-  await commit(0, [
+  const created = await commit(0, [
     {
       op: 'createObject',
       ref: '$t',
@@ -39,8 +39,10 @@ async function readyTask() {
       claim: stated,
     },
   ])
+  // The commit names the id the task's local ref became.
+  const taskId = created.body.refs.$t as string
   const list = await h.http('GET', `/api/v1/projects/${projectId}/tasks`)
-  const taskId = list.body.tasks[0].id as string
+  expect(list.body.tasks.map((t: { id: string }) => t.id)).toEqual([taskId])
   await commit(1, [{ op: 'setTaskStatus', id: taskId, status: 'ready', rationale: 'scoped' }])
   return { projectId, taskId, commit, repo }
 }
@@ -89,7 +91,13 @@ describe('tasks over HTTP and MCP (ADR 0013)', () => {
     expect(viaHttp.body).toMatchObject({
       status: 'review',
       lease: null,
-      reports: [{ commit: sha, verification: { outcome: 'pass' } }],
+      reports: [
+        {
+          id: reported.body.reportId,
+          commit: sha,
+          verification: { id: reported.body.verification.id, outcome: 'pass' },
+        },
+      ],
     })
 
     // The agent has no way to complete it; the owner, through the UI's API, does.

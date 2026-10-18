@@ -61,7 +61,7 @@ function world() {
   repo.write({ 'app/models.py': 'class Item:\n    pass\n' })
   const base = repo.commit('base')
 
-  commitOps([
+  const created = commitOps([
     {
       op: 'createObject',
       ref: '$req',
@@ -91,8 +91,7 @@ function world() {
       claim: stated,
     },
   ])
-  const taskId = unwrap(services.queryObjects(owner, { projectId, types: ['core.Task'] }))
-    .objects[0]?.id as string
+  const taskId = created.refs.$t as string
   commitOps([{ op: 'setTaskStatus', id: taskId, status: 'ready', rationale: 'scoped' }])
 
   const context = new ContextCompiler({ services, clock })
@@ -214,6 +213,7 @@ describe('task coordinator (ADR 0013)', () => {
       basis: 'observed',
       observation: { tool: 'kalyth-git-verifier' },
     })
+    expect(result.verification.id).toBe(verification?.id)
 
     // Retrying the same report is answered from the record, not written twice.
     const again = unwrap(

@@ -6,6 +6,7 @@ import {
   Caller,
   type ClaimResult,
   ClaimTaskInput,
+  type CommitSuccess,
   fail,
   type KernelError,
   type ObjectVersion,
@@ -411,12 +412,11 @@ export class TaskCoordinator {
       ops,
     )
     if (!committed.ok) return committed
-    const task = this.#reread(caller, located.projectId, located.view.id) ?? located.view
-    const stored = this.#reportByKey(caller, located.projectId, task.id, report.idempotencyKey)
+    const { refs } = committed.value
     return ok({
-      task,
-      reportId: stored?.id ?? '',
-      verification: { id: stored?.verification?.id ?? null, outcome, checks },
+      task: this.#reread(caller, located.projectId, located.view.id) ?? located.view,
+      reportId: refs.$report ?? '',
+      verification: { id: refs.$verification ?? null, outcome, checks },
       duplicate: false,
     })
   }
@@ -442,7 +442,7 @@ export class TaskCoordinator {
     projectId: string,
     rationale: string,
     ops: OperationInput[],
-  ): Result<unknown> {
+  ): Result<CommitSuccess> {
     const overview = this.#services.getProjectOverview(agent, { projectId })
     if (!overview.ok) return overview
     const proposed = this.#services.proposeChange(agent, {

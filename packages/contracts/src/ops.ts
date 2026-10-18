@@ -141,10 +141,14 @@ export type OperationParsed = z.output<typeof OperationInput>
 
 // ---------- Resolved operations (ids assigned, refs resolved, content stored) ----------
 
+/** The local ref a created record was submitted with, kept beside the id it resolved to. */
+const createdRef = LocalRef.optional()
+
 export const ResolvedOperation = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('createObject'),
     id: ObjectId,
+    ref: createdRef,
     type: TypeName,
     stance: Stance,
     attributes: JsonRecord,
@@ -160,6 +164,7 @@ export const ResolvedOperation = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('createRelation'),
     id: RelationId,
+    ref: createdRef,
     type: RelationTypeName,
     from: ObjectId,
     to: ObjectId,
@@ -177,6 +182,7 @@ export const ResolvedOperation = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('recordEvidence'),
     id: EvidenceId,
+    ref: createdRef,
     source: EvidenceSource,
     excerpt: ContentRef.nullable(),
     collectedBy: Collector,

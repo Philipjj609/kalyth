@@ -1,6 +1,7 @@
 import type {
   AgentTokenSummary,
   ChangeSetSummary,
+  CommitSuccess,
   ContentRef,
   EvidenceRecord,
   EvidenceView,
@@ -775,12 +776,18 @@ function toProposal(r: Row): Proposal {
     contextPackageId: nstr(r.context_package_id),
     status: r.status as ProposalStatus,
     issues: json(r.issues),
-    result: r.result === null ? null : json(r.result),
+    result: r.result === null ? null : toCommitResult(r.result),
     createdAt: str(r.created_at),
     decidedAt: nstr(r.decided_at),
     decidedBy: nstr(r.decided_by),
     decisionNote: nstr(r.decision_note),
   }
+}
+
+/** Results stored before refs were kept have none. */
+function toCommitResult(v: unknown): CommitSuccess {
+  const stored = json<Omit<CommitSuccess, 'refs'> & Partial<Pick<CommitSuccess, 'refs'>>>(v)
+  return { ...stored, refs: stored.refs ?? {} }
 }
 
 function toAgentToken(r: Row): Omit<AgentTokenSummary, 'scopes'> {

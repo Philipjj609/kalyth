@@ -22,7 +22,8 @@ type RefKind = 'object' | 'relation' | 'evidence'
 /**
  * Turns submitted operations into resolved ones: assigns ids to created records, replaces local
  * refs with ids, and moves evidence excerpts into the content store. Only references are kept
- * in the proposal and, later, in events (R3).
+ * in the proposal and, later, in events (R3). A created record keeps its own ref beside its id,
+ * so the commit can say which id each ref became.
  */
 export function resolveOperations(
   ops: readonly OperationParsed[],
@@ -101,11 +102,13 @@ export function resolveOperations(
   const resolved = ops.map((op, index): ResolvedOperation => {
     const newId = (kind: RefKind) =>
       ('ref' in op && op.ref ? refs.get(op.ref)?.id : undefined) ?? ids(kind)
+    const keptRef = 'ref' in op && op.ref ? { ref: op.ref } : {}
     switch (op.op) {
       case 'createObject':
         return {
           op: 'createObject',
           id: newId('object'),
+          ...keptRef,
           type: op.type,
           stance: op.stance,
           attributes: op.attributes,
@@ -135,6 +138,7 @@ export function resolveOperations(
         return {
           op: 'createRelation',
           id: newId('relation'),
+          ...keptRef,
           type: op.type,
           from: resolve(op.from, ['object'], index, ['from']),
           to: resolve(op.to, ['object'], index, ['to']),
@@ -146,6 +150,7 @@ export function resolveOperations(
         return {
           op: 'recordEvidence',
           id: newId('evidence'),
+          ...keptRef,
           source: op.evidence.source,
           excerpt:
             op.evidence.excerpt === undefined ? null : content.putExcerpt(op.evidence.excerpt),
@@ -157,6 +162,19 @@ export function resolveOperations(
     }
   })
   return { ops: resolved, issues }
+}
+
+/** The id each local ref resolved to, for the commit result. */
+export function localRefsOf(ops: readonly ResolvedOperation[]): Record<string, string> {
+  const refs: Record<string, string> = {}
+  for (const op of ops) {
+    if (
+      (op.op === 'createObject' || op.op === 'createRelation' || op.op === 'recordEvidence') &&
+      op.ref
+    )
+      refs[op.ref] = op.id
+  }
+  return refs
 }
 
 /** Ids a proposal modifies. Overlap with changes since its base makes it stale. */

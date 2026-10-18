@@ -63,6 +63,47 @@ describe('projects and revisions', () => {
     expect(evidence[0]?.excerpt?.sha256).toMatch(/^[0-9a-f]{64}$/)
   })
 
+  it('names the id each local ref became, in the commit result and when it is asked again', () => {
+    const ctx = setup()
+    const { proposalId, commit } = commitAsOwner(ctx, [
+      evidenceOp('$ev'),
+      {
+        op: 'createObject',
+        ref: '$req',
+        type: 'core.Requirement',
+        stance: 'toBe',
+        attributes: { title: 'Named', statement: 'S' },
+        claim: stated,
+      },
+      {
+        op: 'createObject',
+        type: 'core.Requirement',
+        stance: 'toBe',
+        attributes: { title: 'Unnamed', statement: 'S' },
+        claim: stated,
+      },
+    ])
+    const objects = unwrap(
+      ctx.services.queryObjects(ctx.owner, { projectId: ctx.project.id }),
+    ).objects
+    const named = objects.find((o) => o.attributes.title === 'Named')?.id
+    expect(commit.refs).toEqual({ $ev: expect.stringMatching(/^evd_[0-9a-f]{32}$/), $req: named })
+
+    // The stored proposal keeps each created record's ref beside its id.
+    const stored = unwrap(ctx.services.getProposal(ctx.owner, { proposalId }))
+    expect(stored.ops[1]).toMatchObject({ op: 'createObject', id: named, ref: '$req' })
+    expect(stored.ops[2]).not.toHaveProperty('ref')
+    expect(stored.result?.refs).toEqual(commit.refs)
+    expect(unwrap(ctx.services.commitProposal(ctx.owner, { proposalId }))).toEqual(commit)
+
+    // A result stored before refs were kept reads back with an empty map.
+    const { refs: _refs, ...before } = commit
+    ctx.store.db
+      .prepare('UPDATE proposals SET result = ? WHERE id = ?')
+      .run(JSON.stringify(before), proposalId)
+    expect(ctx.store.getProposal(proposalId)?.result).toEqual({ ...before, refs: {} })
+  })
+
   it('reads historical revisions after later commits', () => {
     const ctx = setup()
     const { moduleId } = seedSystem(ctx)

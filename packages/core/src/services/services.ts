@@ -50,7 +50,7 @@ import { applyOperations } from '../kernel/apply.ts'
 import { assessFreshness } from '../kernel/freshness.ts'
 import { elementLabel, traceImpact } from '../kernel/impact.ts'
 import { predicateFingerprint } from '../kernel/predicates.ts'
-import { readSetOf, resolveOperations, writeSetOf } from '../kernel/resolve.ts'
+import { localRefsOf, readSetOf, resolveOperations, writeSetOf } from '../kernel/resolve.ts'
 import { findSecretRule } from '../kernel/secrets.ts'
 import { defaultRegistry, type TypeRegistry } from '../registry/registry.ts'
 import type { SqliteStore } from '../store/sqlite-store.ts'
@@ -743,6 +743,7 @@ export class KalythServices {
         changeSetId,
         eventId,
         rebasedFrom: head === proposal.baseRevision ? null : proposal.baseRevision,
+        refs: localRefsOf(proposal.ops),
       }
       decide('committed', { result })
       return ok(result)

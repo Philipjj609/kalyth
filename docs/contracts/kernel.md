@@ -134,7 +134,11 @@ submission. Stale and conflicting are terminal: re-read and propose again. Rules
 
 ## Results
 
-Success: `{status: "committed", projectId, revision, changeSetId, eventId, rebasedFrom}`.
+Success: `{status: "committed", projectId, revision, changeSetId, eventId, rebasedFrom, refs}`.
+`refs` maps each local ref the proposal named to the id it resolved to, for example
+`{"$task": "obj_…"}`, so a client can open what it just created without reading the proposal back.
+It is empty when the proposal named no refs, and for results stored before refs were kept. In a
+stored proposal, each resolved create operation keeps its `ref` beside the id.
 Failure: `{code, message, issues[], requiredScopes?, currentRevision?, changedRefs?, retryAfterMs?}`
 with codes `invalid`, `unauthenticated`, `unauthorized`, `stale`, `conflicting`, `not_found`,
 `budget_exceeded`, `retryable`.
