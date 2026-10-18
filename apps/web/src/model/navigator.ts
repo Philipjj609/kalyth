@@ -285,6 +285,8 @@ export interface ProposedAlternative extends ProposedRecord {
   summary: string
   tradeoffs: string
   changes: DirectChange[]
+  /** For a hybrid: the alternatives it combines, in this proposal or already in the model. */
+  combines: string[]
 }
 
 export interface ProposedQuestion extends ProposedRecord {
@@ -302,6 +304,11 @@ export interface ProposedDecision extends ProposedRecord {
 
 export interface AlternativesProposal {
   decision: ProposedDecision | null
+  /**
+   * The decision the alternatives answer: the one this proposal creates, or an open decision
+   * already in the model when a run explores it again (Journey 1).
+   */
+  decisionId: string | null
   alternatives: ProposedAlternative[]
   questions: ProposedQuestion[]
   /** Any record here came from the mock provider. */
@@ -336,10 +343,11 @@ export function parseAlternativesProposal(ops: readonly ResolvedOperation[]): Al
       }
     : null
 
+  const decisionId = decision?.id ?? relations.find((r) => r.type === 'alternativeOf')?.to ?? null
   const linkedToDecision = (type: string) =>
     new Set(
       relations
-        .filter((r) => r.type === type && decision !== null && r.to === decision.id)
+        .filter((r) => r.type === type && decisionId !== null && r.to === decisionId)
         .map((r) => r.from),
     )
   const alternativeOf = linkedToDecision('alternativeOf')
@@ -362,6 +370,9 @@ export function parseAlternativesProposal(ops: readonly ResolvedOperation[]): Al
             citations: citationCount(r.claim),
             mock: isMockClaim(r.claim),
           })),
+        combines: relations
+          .filter((r) => r.type === 'combines' && r.from === o.id)
+          .map((r) => r.to),
       }),
     )
     .sort((a, b) => Number(alternativeOf.has(b.id)) - Number(alternativeOf.has(a.id)))
@@ -380,6 +391,7 @@ export function parseAlternativesProposal(ops: readonly ResolvedOperation[]): Al
 
   return {
     decision,
+    decisionId,
     alternatives,
     questions,
     mock: hasMockOutput(ops),

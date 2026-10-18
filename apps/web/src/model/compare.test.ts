@@ -59,7 +59,10 @@ function lookup() {
   const q1 = obj('core.Question', {
     text: 'How many tenants in a year?',
     inquiryRole: 'decision-sensitive',
+    status: 'answered',
+    answer: 'About forty.',
   })
+  const hybrid = obj('core.Alternative', { title: 'Hybrid', summary: 'z' }, { id: id('obj', 205) })
   const q2 = obj('core.Question', {
     text: 'Does the ORM support schemas?',
     inquiryRole: 'blocking',
@@ -69,14 +72,17 @@ function lookup() {
     { text: 'Old question', inquiryRole: 'exploratory' },
     { lifecycle: 'retired' },
   )
-  const objects: ObjectVersion[] = [altA, altB, decision, q1, q2, retired]
+  const objects: ObjectVersion[] = [altA, altB, decision, q1, q2, retired, hybrid]
   return {
     objectById: new Map(objects.map((o) => [o.id, o])),
     relations: [
       rel('concerns', q1, decision, 'inferred'),
       rel('concerns', q2, altB, 'inferred'),
       rel('concerns', retired, altB, 'inferred'),
+      rel('combines', hybrid, altA, 'inferred'),
+      rel('combines', hybrid, altB, 'inferred'),
     ],
+    hybrid,
     q1,
     q2,
   }
@@ -98,7 +104,28 @@ describe('comparing alternatives', () => {
     expect(c.alternatives[1]?.questions.map((q) => q.text)).toEqual([
       'Does the ORM support schemas?',
     ])
-    expect(c.questions.map((q) => q.text)).toEqual(['How many tenants in a year?'])
+    expect(c.questions).toEqual([
+      expect.objectContaining({
+        text: 'How many tenants in a year?',
+        status: 'answered',
+        answer: 'About forty.',
+      }),
+    ])
+  })
+
+  it('names the alternatives a hybrid combines', () => {
+    const model = lookup()
+    const decision = openDecision()
+    decision.alternatives.push({
+      id: model.hybrid.id,
+      title: 'Hybrid',
+      summary: 'z',
+      status: 'proposed',
+      directChanges: [change(305, ITEM, 'Item', 'Both.')],
+    })
+    const c = compareAlternatives(decision, model)
+    expect(c.alternatives[2]?.combines).toEqual([ALT_A, ALT_B])
+    expect(c.alternatives[0]?.combines).toEqual([])
   })
 
   it('builds a change matrix with shared changes first', () => {

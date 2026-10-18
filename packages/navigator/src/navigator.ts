@@ -27,11 +27,14 @@ import { type Mapped, mapAlternatives, mapSummary } from './operations.ts'
 import {
   ALTERNATIVES_SYSTEM,
   alternativesUser,
+  REFINE_SYSTEM,
+  refineUser,
   SUMMARIZE_SYSTEM,
   summarizeUser,
 } from './prompts.ts'
+import { readDecisionToRefine } from './refine.ts'
 import { RunStore } from './runs.ts'
-import { AlternativesOutput, SummaryOutput } from './schemas.ts'
+import { AlternativesOutput, RefineOutput, SummaryOutput } from './schemas.ts'
 
 export interface NavigatorOptions {
   services: KalythServices
@@ -123,6 +126,21 @@ export class Navigator {
       return fail('unauthorized', 'starting a Navigator run requires proposal.create', {
         requiredScopes: ['proposal.create'],
       })
+    }
+    if (request.kind === 'alternatives' && request.decisionId) {
+      // Refuse at once, rather than in the run, when the decision cannot be explored again.
+      try {
+        readDecisionToRefine(
+          this.#services,
+          { principalId: who.value.id, origin: 'human' },
+          request.projectId,
+          read.value.project.headRevision,
+          request.decisionId,
+        )
+      } catch (error) {
+        if (error instanceof NavigatorError) return { ok: false, error: error.error }
+        throw error
+      }
     }
     const busy = this.#runs.running(request.projectId)
     if (busy) {
@@ -225,6 +243,29 @@ export class Navigator {
           reasoning: false,
         })
         map = (value, model) => mapSummary(value as SummaryOutput, context, input.elementId, model)
+      } else if (input.decisionId) {
+        const decision = readDecisionToRefine(
+          this.#services,
+          caller,
+          run.projectId,
+          run.baseRevision,
+          input.decisionId,
+        )
+        const focusIds = [...new Set([...(input.focus ?? []), ...decision.targets])].slice(0, 20)
+        context = alternativesContext(reader, focusIds)
+        generated = await this.#gateway.generate({
+          projectId: run.projectId,
+          purpose: 'navigator.refine',
+          model: this.#gateway.modelFor('alternatives'),
+          system: REFINE_SYSTEM,
+          user: refineUser(decision.prompt, renderContext(context, 700)),
+          schema: RefineOutput as z.ZodType<unknown>,
+          schemaName: 'kalyth_refine',
+          maxOutputTokens: 8000,
+          reasoning: true,
+        })
+        map = (value, model) =>
+          mapAlternatives(value as RefineOutput, context, model, decision.existing)
       } else {
         context = alternativesContext(reader, input.focus ?? [])
         const focus = (input.focus ?? [])
@@ -257,7 +298,9 @@ export class Navigator {
       const what =
         input.kind === 'summarize'
           ? `Navigator summary of ${context.elements.find((e) => e.id === input.elementId)?.label}`
-          : `Navigator alternatives for: ${input.request.slice(0, 300)}`
+          : input.decisionId
+            ? `Navigator: more alternatives for ${input.decisionId}, from the answers given: ${input.request.slice(0, 300)}`
+            : `Navigator alternatives for: ${input.request.slice(0, 300)}`
       const proposed = this.#services.proposeChange(caller, {
         projectId: run.projectId,
         baseRevision: run.baseRevision,

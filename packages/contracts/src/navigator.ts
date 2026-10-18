@@ -146,6 +146,11 @@ export const StartNavigatorRunInput = z.discriminatedUnion('kind', [
     request: z.string().trim().min(3).max(2000),
     /** Elements the person wants considered first. */
     focus: z.array(ObjectId).max(20).default([]),
+    /**
+     * An open decision to explore again (Tier B, Journey 1): the run sees its alternatives and the
+     * answers to its questions, and adds alternatives and questions to it instead of a new decision.
+     */
+    decisionId: ObjectId.optional(),
   }),
 ])
 export type StartNavigatorRunInput = z.input<typeof StartNavigatorRunInput>

@@ -34,6 +34,7 @@ import {
   type AcceptAlternativeOutcome,
   acceptAlternative,
   type ProposeCommitOutcome,
+  proposeAndCommit,
 } from './decide.ts'
 import { freshnessIndex } from './freshness.ts'
 import {
@@ -389,6 +390,32 @@ export function useSituation(projectId: string | undefined) {
     queryFn: () => api.situation(projectId as string),
     enabled: projectId !== undefined,
     refetchInterval: 15_000,
+  })
+}
+
+/** A person answers a question: the answer is proposed and committed at once (Journey 1). */
+export function useAnswerQuestion(projectId: string) {
+  const invalidate = useInvalidateProject(projectId)
+  return useMutation<
+    ProposeCommitOutcome,
+    ApiError,
+    { questionId: string; answer: string; baseRevision: number }
+  >({
+    mutationFn: ({ questionId, answer, baseRevision }) =>
+      proposeAndCommit(
+        api,
+        projectId,
+        {
+          baseRevision,
+          rationale: `Answer: ${answer.slice(0, 300)}`,
+          ops: [{ op: 'updateObject', id: questionId, set: { status: 'answered', answer } }],
+        },
+        'The answer',
+      ),
+    onSettled: invalidate,
+    onError: (error) => {
+      if (error.status === 401) session.reject()
+    },
   })
 }
 

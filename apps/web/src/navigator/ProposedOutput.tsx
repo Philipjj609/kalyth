@@ -80,10 +80,13 @@ function AlternativeCard({
   status,
   impact,
   decide,
+  nameOfAlternative,
 }: {
   alternative: ProposedAlternative
   index: number
   lookup: ElementLookup
+  /** How to name an alternative a hybrid combines. */
+  nameOfAlternative?: ((id: string) => string) | undefined
   onInspect?: ((id: string) => void) | undefined
   /** The alternative's current status, once its proposal is committed. */
   status: string | undefined
@@ -113,6 +116,11 @@ function AlternativeCard({
         <h4 id={titleId} className="break-words font-semibold text-[14px] text-fg leading-snug">
           {alt.title || 'Untitled alternative'}
         </h4>
+        {alt.combines.length > 0 && (
+          <p className="text-fg-muted text-xs">
+            Hybrid of {alt.combines.map((id) => nameOfAlternative?.(id) ?? shortId(id)).join(' + ')}
+          </p>
+        )}
       </header>
       <div className="space-y-3 px-4 pb-3 text-sm">
         {alt.summary && <p className="whitespace-pre-line break-words text-fg">{alt.summary}</p>}
@@ -208,6 +216,10 @@ export function AlternativesView({
     )
   }
   const decisionStatus = decision ? statusOf?.(decision.id) : undefined
+  const proposedNames = new Map(alternatives.map((a, i) => [a.id, `Alternative ${i + 1}`] as const))
+  const nameOfAlternative = (id: string) =>
+    proposedNames.get(id) ?? `“${lookup.nameOf(id) ?? shortId(id)}”`
+  const existingDecision = !decision && output.decisionId ? output.decisionId : null
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-surface px-4 py-3 shadow-panel">
@@ -219,8 +231,19 @@ export function AlternativesView({
           {decision && <BasisBadge basis={decision.claim.basis} size="sm" />}
         </div>
         <h3 className="mt-1 break-words font-semibold text-[16px] text-fg leading-snug">
-          {decision?.question || decision?.title || 'No decision in this proposal'}
+          {decision?.question ||
+            decision?.title ||
+            (existingDecision
+              ? `More for: ${lookup.nameOf(existingDecision) ?? shortId(existingDecision)}`
+              : 'No decision in this proposal')}
         </h3>
+        {existingDecision && (
+          <p className="mt-0.5 text-fg-muted text-xs">
+            This run explored an open decision again, with the answers given so far. Once the
+            proposal is committed, compare all its alternatives and decide in{' '}
+            <AppLink to={{ view: 'decisions', decision: existingDecision }}>Decisions</AppLink>.
+          </p>
+        )}
         {decision?.title && decision.question && (
           <p className="mt-0.5 break-words text-fg-muted text-sm">{decision.title}</p>
         )}
@@ -239,6 +262,7 @@ export function AlternativesView({
                 status={statusOf?.(alt.id)}
                 impact={renderImpact?.(alt)}
                 decide={renderDecide?.(alt)}
+                nameOfAlternative={nameOfAlternative}
               />
             </li>
           ))}

@@ -138,7 +138,7 @@ describe('Navigator over HTTP', () => {
       await new Promise((resolve) => setTimeout(resolve, 5))
       run = (await h.http('GET', `/api/v1/navigator/runs/${runId}`)).body
     }
-    expect(run).toMatchObject({ status: 'completed', output: { alternatives: 3 } })
+    expect(run).toMatchObject({ status: 'completed', output: { alternatives: 4 } })
     const proposal = await h.http('GET', `/api/v1/proposals/${run.proposalId}`)
     expect(proposal.body).toMatchObject({
       status: 'pending',
@@ -159,7 +159,7 @@ describe('Navigator over HTTP', () => {
     const after = await h.http('GET', `/api/v1/projects/${pid}/situation`)
     expect(after.body.pendingProposals).toEqual([])
     expect(after.body.openDecisions).toHaveLength(1)
-    expect(after.body.openDecisions[0].alternatives).toHaveLength(3)
+    expect(after.body.openDecisions[0].alternatives).toHaveLength(4)
     expect(after.body.openQuestions).toEqual([
       expect.objectContaining({
         inquiryRole: 'decision-sensitive',

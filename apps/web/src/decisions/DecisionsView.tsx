@@ -1,7 +1,13 @@
 import type { DecisionSummary } from '@kalyth/contracts'
-import { Check, GitCompareArrows, Scale } from 'lucide-react'
+import { Check, Compass, GitCompareArrows, MessageSquareReply, Scale } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
-import { useAcceptAlternative, useDecisions, useImpacts } from '../api/queries.ts'
+import {
+  useAcceptAlternative,
+  useAnswerQuestion,
+  useDecisions,
+  useImpacts,
+  useStartNavigatorRun,
+} from '../api/queries.ts'
 import { useAppLocation } from '../app/location.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import {
@@ -139,6 +145,14 @@ function DecisionComparison({ decision }: { decision: DecisionSummary }) {
   const reach = compareReach(impacts.map((q) => q.data))
   const open = decision.status === 'open'
   const alternativeIds = decision.alternatives.map((a) => a.id)
+  const nameOf = (id: string) => {
+    const i = comparison.alternatives.findIndex((a) => a.id === id)
+    return i === -1 ? (wb.model?.nameOf(id) ?? 'an alternative') : `Alternative ${i + 1}`
+  }
+  const answered = [
+    ...comparison.questions,
+    ...comparison.alternatives.flatMap((a) => a.questions),
+  ].filter((q) => q.status === 'answered').length
   const columns = `repeat(${Math.max(comparison.alternatives.length, 1)}, minmax(240px, 1fr))`
 
   return (
@@ -158,6 +172,7 @@ function DecisionComparison({ decision }: { decision: DecisionSummary }) {
             <span className="font-medium text-fg">Rationale:</span> {decision.statusRationale}
           </p>
         )}
+        {open && atHead && <ExploreAgain decision={decision} answered={answered} />}
         {!atHead && (
           <p className="tone-warning mt-2 rounded border border-tone-bd bg-tone-bg px-2 py-1 text-tone-fg text-xs">
             You are viewing an older revision. Decisions are compared at the head; return to the
@@ -183,6 +198,8 @@ function DecisionComparison({ decision }: { decision: DecisionSummary }) {
                     index={i}
                     reach={reach[i]}
                     reachError={impacts[i]?.error ?? null}
+                    hybridOf={alt.combines.map(nameOf)}
+                    answerable={open && atHead}
                     decide={
                       open ? (
                         <Button
@@ -211,7 +228,7 @@ function DecisionComparison({ decision }: { decision: DecisionSummary }) {
 
       {comparison.questions.length > 0 && (
         <Panel title="Questions about the decision" aside={comparison.questions.length}>
-          <QuestionList questions={comparison.questions} />
+          <QuestionList questions={comparison.questions} answerable={open && atHead} />
         </Panel>
       )}
 
@@ -264,12 +281,17 @@ function AlternativeColumn({
   reach,
   reachError,
   decide,
+  hybridOf,
+  answerable,
 }: {
   alternative: ComparedAlternative
   index: number
   reach: Reach | undefined
   reachError: unknown
   decide: ReactNode
+  /** Names of the alternatives this hybrid combines; empty for others. */
+  hybridOf: string[]
+  answerable: boolean
 }) {
   const accepted = alt.status === 'accepted'
   return (
@@ -290,6 +312,9 @@ function AlternativeColumn({
         <h3 className="break-words font-semibold text-[14px] leading-snug">
           <RecordLink id={alt.id}>{alt.title || 'Untitled alternative'}</RecordLink>
         </h3>
+        {hybridOf.length > 0 && (
+          <p className="text-fg-muted text-xs">Hybrid of {hybridOf.join(' + ')}</p>
+        )}
       </header>
       <dl className="space-y-3 px-4 pb-3 text-sm">
         <Row label="Summary">
@@ -313,7 +338,7 @@ function AlternativeColumn({
           {alt.questions.length === 0 ? (
             <p className="text-fg-subtle text-xs">None recorded.</p>
           ) : (
-            <QuestionList questions={alt.questions} compact />
+            <QuestionList questions={alt.questions} compact answerable={answerable} />
           )}
         </Row>
       </dl>
@@ -373,22 +398,139 @@ function ReachSummary({
 function QuestionList({
   questions,
   compact,
+  answerable = false,
 }: {
   questions: readonly ComparedQuestion[]
   compact?: boolean
+  /** A person may answer the open ones (the decision is open and shown at the head). */
+  answerable?: boolean
 }) {
   return (
     <ul className={compact ? 'space-y-1.5' : 'divide-y divide-border'}>
       {questions.map((q) => (
-        <li key={q.id} className={cn('flex items-start gap-2', !compact && 'px-4 py-2.5')}>
-          <InquiryRoleBadge role={q.inquiryRole} size="sm" className="mt-0.5" />
-          <span className="min-w-0 flex-1 break-words text-sm">
-            {q.text}
-            {q.status !== 'open' && <span className="text-fg-subtle text-xs"> ({q.status})</span>}
-          </span>
+        <li key={q.id} className={cn('space-y-1', !compact && 'px-4 py-2.5')}>
+          <div className="flex items-start gap-2">
+            <InquiryRoleBadge role={q.inquiryRole} size="sm" className="mt-0.5" />
+            <span className="min-w-0 flex-1 whitespace-pre-line break-words text-sm">
+              {q.text}
+              {q.status !== 'open' && <span className="text-fg-subtle text-xs"> ({q.status})</span>}
+            </span>
+          </div>
+          {q.answer && (
+            <p className="ml-1 border-border border-l-2 pl-2 text-fg-muted text-xs">
+              <span className="font-medium text-fg">Answer:</span> {q.answer}
+            </p>
+          )}
+          {answerable && q.status === 'open' && <AnswerForm questionId={q.id} />}
         </li>
       ))}
     </ul>
+  )
+}
+
+/** A person's answer to an open question, proposed and committed at once. */
+function AnswerForm({ questionId }: { questionId: string }) {
+  const wb = useWorkbench()
+  const answer = useAnswerQuestion(wb.projectId)
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const trimmed = text.trim()
+  if (!open) {
+    return (
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        <MessageSquareReply aria-hidden />
+        Answer
+      </Button>
+    )
+  }
+  const refused = answer.data && 'refused' in answer.data ? answer.data.refused : null
+  return (
+    <form
+      className="space-y-1.5"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!trimmed || answer.isPending) return
+        answer.mutate(
+          { questionId, answer: trimmed, baseRevision: wb.headRevision },
+          {
+            onSuccess: (result) => {
+              if ('committed' in result) {
+                setOpen(false)
+                setText('')
+              }
+            },
+          },
+        )
+      }}
+    >
+      <label className="block space-y-1">
+        <span className="sr-only">Your answer</span>
+        <textarea
+          rows={2}
+          maxLength={2000}
+          required
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Your answer; the Navigator uses it when you explore again"
+          className="w-full resize-y rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-sm"
+        />
+      </label>
+      {answer.error ? <ErrorNotice error={answer.error} title="The answer was not saved" /> : null}
+      {refused ? <ErrorNotice error={refused} title="The answer was not committed" /> : null}
+      <div className="flex gap-2">
+        <Button size="sm" type="submit" variant="primary" disabled={!trimmed || answer.isPending}>
+          Save answer
+        </Button>
+        <Button size="sm" onClick={() => setOpen(false)} disabled={answer.isPending}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+/**
+ * Journey 1: a Navigator run that sees this decision's alternatives and the answers given so far,
+ * and proposes more alternatives and hybrids for it. People start runs; the output is a proposal
+ * to review like any other.
+ */
+function ExploreAgain({ decision, answered }: { decision: DecisionSummary; answered: number }) {
+  const wb = useWorkbench()
+  const start = useStartNavigatorRun(wb.projectId)
+  const run = start.data
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <Button
+        size="sm"
+        disabled={start.isPending}
+        onClick={() =>
+          start.mutate({
+            kind: 'alternatives',
+            request: (decision.question || decision.title).slice(0, 2000),
+            focus: [],
+            decisionId: decision.id,
+          })
+        }
+      >
+        <Compass aria-hidden />
+        Explore again with the answers
+      </Button>
+      <span className="text-fg-muted text-xs">
+        {answered === 0
+          ? 'No questions answered yet; answering them first gives the Navigator more to go on.'
+          : `The Navigator sees the alternatives above and ${answered} answer${answered === 1 ? '' : 's'}.`}
+      </span>
+      {run && (
+        <p role="status" className="w-full text-xs">
+          Run started.{' '}
+          <AppLink to={{ view: 'navigator', run: run.id }}>Follow it in the Navigator</AppLink>; its
+          proposal adds alternatives here once a person commits it.
+        </p>
+      )}
+      {start.error ? (
+        <ErrorNotice error={start.error} title="The run did not start" className="w-full" />
+      ) : null}
+    </div>
   )
 }
 

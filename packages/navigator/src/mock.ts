@@ -1,6 +1,6 @@
 import type { ChatRequest } from '@kalyth/gateway'
 import { MIN_QUOTE_CHARS } from './grounding.ts'
-import type { AlternativesOutput, SummaryOutput } from './schemas.ts'
+import type { AlternativesOutput, RefineOutput, SummaryOutput } from './schemas.ts'
 
 interface Element {
   handle: string
@@ -43,7 +43,11 @@ export function navigatorMockResponder(request: ChatRequest): string {
   }))
   const task = /^TASK: (\w+)/m.exec(user)?.[1]
   return JSON.stringify(
-    task === 'summarize' ? summary(evidence) : alternatives(user, elements, evidence),
+    task === 'summarize'
+      ? summary(evidence)
+      : task === 'refine'
+        ? refine(user, elements, evidence)
+        : alternatives(user, elements, evidence),
   )
 }
 
@@ -105,6 +109,7 @@ function alternatives(user: string, elements: Element[], evidence: Evidence[]): 
         tradeoffs: 'Mock output. Touches every query on the changed entities; needs a migration.',
         confidence: 'low',
         rationale: 'Mock output; not a model inference.',
+        combines: [],
         directChanges: changes(entities.length > 0 ? entities : first, 'extend'),
       },
       {
@@ -113,6 +118,7 @@ function alternatives(user: string, elements: Element[], evidence: Evidence[]): 
         tradeoffs: 'Mock output. Smaller change, but every new endpoint must remember it.',
         confidence: 'low',
         rationale: 'Mock output; not a model inference.',
+        combines: [],
         directChanges: changes(endpoints.length > 0 ? endpoints : first, 'guard'),
       },
       {
@@ -121,6 +127,7 @@ function alternatives(user: string, elements: Element[], evidence: Evidence[]): 
         tradeoffs: 'Mock output. Least code change, most operational cost.',
         confidence: 'low',
         rationale: 'Mock output; not a model inference.',
+        combines: [],
         directChanges: [
           ...changes(containers.length > 0 ? containers : first, 'deploy separately'),
           {
@@ -131,6 +138,19 @@ function alternatives(user: string, elements: Element[], evidence: Evidence[]): 
           },
         ],
       },
+      {
+        title: 'Mock alternative D: hybrid of A and C',
+        summary:
+          'Mock output. Extend the data model, and deploy the most sensitive cases separately.',
+        tradeoffs: 'Mock output. Two kinds of change to run; isolation where it matters most.',
+        confidence: 'low',
+        rationale: 'Mock output; not a model inference.',
+        combines: ['A1', 'A3'],
+        directChanges: changes(
+          [...(entities.length > 0 ? entities : first).slice(0, 1), ...containers.slice(0, 1)],
+          'combine changes for',
+        ),
+      },
     ],
     questions: [
       {
@@ -140,4 +160,51 @@ function alternatives(user: string, elements: Element[], evidence: Evidence[]): 
       },
     ],
   }
+}
+
+/** Exploring a decision again: one refined alternative and a hybrid of the first two existing. */
+function refine(user: string, elements: Element[], evidence: Evidence[]): RefineOutput {
+  const existing = [...user.matchAll(/^A(\d+) \| /gm)].length
+  const answers = [...user.matchAll(/^A: /gm)].length
+  const about = (handle: string) => evidence.find((e) => e.about === handle)
+  const pick = elements.filter((e) => e.type === 'software.DataEntity').slice(0, 1)
+  const target = pick.length > 0 ? pick : elements.slice(0, 1)
+  const changes = (picked: Element[], verb: string) =>
+    picked.map((e) => ({
+      element: e.handle,
+      change: `Mock: ${verb} ${e.label}.`,
+      citations: citation(about(e.handle)),
+    }))
+  const out: RefineOutput = {
+    alternatives: [
+      {
+        title: `Mock alternative: refined with ${answers} answer${answers === 1 ? '' : 's'}`,
+        summary: 'Mock output. A variant that follows the answers given so far.',
+        tradeoffs: 'Mock output. Depends on the answers holding.',
+        confidence: 'low',
+        rationale: `Mock output; relies on ${answers} answered question(s).`,
+        combines: [],
+        directChanges: changes(target, 'refine'),
+      },
+    ],
+    questions: [
+      {
+        text: 'Mock question: does anything in the answers rule out an alternative?',
+        inquiryRole: 'exploratory',
+        options: [],
+      },
+    ],
+  }
+  if (existing >= 2) {
+    out.alternatives.push({
+      title: 'Mock hybrid of A1 and A2',
+      summary: 'Mock output. Combine the first two alternatives on the table.',
+      tradeoffs: 'Mock output. More moving parts than either alone.',
+      confidence: 'low',
+      rationale: 'Mock output; not a model inference.',
+      combines: ['A1', 'A2'],
+      directChanges: changes(target, 'combine changes for'),
+    })
+  }
+  return out
 }

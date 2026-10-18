@@ -16,6 +16,7 @@ export interface ComparedQuestion {
   text: string
   inquiryRole: string
   status: string
+  answer: string | null
 }
 
 export interface ComparedAlternative {
@@ -29,6 +30,8 @@ export interface ComparedAlternative {
   /** Ids of the elements it changes directly; the seeds of its impact. */
   targets: string[]
   questions: ComparedQuestion[]
+  /** For a hybrid: the alternatives it combines. */
+  combines: string[]
 }
 
 export interface ChangeRow {
@@ -66,6 +69,7 @@ export function compareAlternatives(decision: DecisionSummary, model: ModelLooku
             text: String(a.text ?? ''),
             inquiryRole: String(a.inquiryRole ?? 'exploratory'),
             status: String(a.status ?? 'open'),
+            answer: typeof a.answer === 'string' && a.answer ? a.answer : null,
           },
         ]
       })
@@ -85,6 +89,9 @@ export function compareAlternatives(decision: DecisionSummary, model: ModelLooku
       confidence: confidence ? { level: confidence.level, rationale: confidence.rationale } : null,
       targets: [...new Set(alt.directChanges.map((c) => c.target))],
       questions: questionsAbout(alt.id),
+      combines: model.relations
+        .filter((r) => r.type === 'combines' && r.from === alt.id && r.lifecycle === 'active')
+        .map((r) => r.to),
     }
   })
 

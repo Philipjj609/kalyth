@@ -20,3 +20,4 @@ cite those entries where a decision came from review.
 | [0012](0012-evaluation-harness.md) | Evaluation harness | Accepted |
 | [0013](0013-tasks-leases-and-verified-execution-reports.md) | Tasks, leases and execution reports verified against git | Accepted, commit-policy addition pending review |
 | [0014](0014-project-export-and-import.md) | Project export and import | Accepted |
+| [0015](0015-guided-exploration-hybrids-and-comparison.md) | Guided exploration, hybrid alternatives and comparison | Accepted |

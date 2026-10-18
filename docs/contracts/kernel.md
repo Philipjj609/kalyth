@@ -143,6 +143,12 @@ principal, which may only read and propose:
 Every claim is `inferred`, with model provenance, confidence and validated citations as support
 (ADR 0010).
 
+A hybrid alternative is linked by `combines` to each alternative it combines; a link to an
+alternative not listed before it is rejected in the grounding report. A run that names an open
+decision (`decisionId`) explores it again: it sees the decision's alternatives and the answers to
+its questions, and its proposal adds alternatives and questions to that decision rather than
+creating one (ADR 0015).
+
 ## Proposal lifecycle
 
 `pending` → `committed` | `rejected` | `stale` | `conflicting`; `invalid` when validation fails at

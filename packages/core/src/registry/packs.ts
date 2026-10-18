@@ -340,6 +340,16 @@ export const relationTypes: RelationTypeDef[] = [
   },
   {
     ...base,
+    type: 'combines',
+    pack: 'core',
+    description: 'The alternative is a hybrid that combines the target alternative with others.',
+    from: ['core.Alternative'],
+    to: ['core.Alternative'],
+    acyclic: true,
+    impact: 'none',
+  },
+  {
+    ...base,
     type: 'impacts',
     pack: 'core',
     description:

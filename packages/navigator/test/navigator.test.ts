@@ -26,6 +26,7 @@ import { FixtureRepo, V1 } from '../../analyzer/test/fixture-repo.ts'
 import {
   type ContextEvidence,
   checkCitations,
+  mapAlternatives,
   Navigator,
   navigatorMockResponder,
   RunStore,
@@ -96,7 +97,7 @@ describe('Navigator alternatives (mock provider)', () => {
     const { services, owner, projectId, navigator, run } = await setup()
     const result = await run({ kind: 'alternatives', request: 'Add multi-tenancy' })
     expect(result.status).toBe('completed')
-    expect(result.output).toMatchObject({ decisions: 1, alternatives: 3, questions: 1 })
+    expect(result.output).toMatchObject({ decisions: 1, alternatives: 4, questions: 1 })
     expect(result.grounding?.itemsRejected).toEqual([
       expect.objectContaining({
         item: expect.stringMatching(/^alternative 3, change \d$/),
@@ -116,7 +117,18 @@ describe('Navigator alternatives (mock provider)', () => {
     const kinds = proposal.ops.map((op) =>
       op.op === 'createObject' ? op.type : op.op === 'createRelation' ? op.type : op.op,
     )
-    expect(kinds.filter((k) => k === 'core.Alternative')).toHaveLength(3)
+    expect(kinds.filter((k) => k === 'core.Alternative')).toHaveLength(4)
+    // The hybrid (alternative 4) is linked to the two alternatives it combines.
+    const combines = proposal.ops.flatMap((op) =>
+      op.op === 'createRelation' && op.type === 'combines' ? [op] : [],
+    )
+    const altIds = proposal.ops.flatMap((op) =>
+      op.op === 'createObject' && op.type === 'core.Alternative' ? [op.id] : [],
+    )
+    expect(combines.map((op) => [op.from, op.to])).toEqual([
+      [altIds[3], altIds[0]],
+      [altIds[3], altIds[2]],
+    ])
     expect(kinds).toContain('impacts')
     expect(kinds).not.toContain('setDecisionStatus')
     for (const op of proposal.ops) {
@@ -307,3 +319,132 @@ function normaliseIds(value: unknown): string {
     return seen.get(id) as string
   })
 }
+
+describe('guided exploration (Journey 1)', () => {
+  it('explores an open decision again with the answers given, adding to the same decision', async () => {
+    const { services, owner, projectId, run } = await setup()
+    const first = await run({ kind: 'alternatives', request: 'Add multi-tenancy' })
+    unwrap(services.commitProposal(owner, { proposalId: first.proposalId as string }))
+    const head = () =>
+      unwrap(services.getProjectOverview(owner, { projectId })).project.headRevision
+    const decision = unwrap(services.queryObjects(owner, { projectId, types: ['core.Decision'] }))
+      .objects[0]
+    const question = unwrap(services.queryObjects(owner, { projectId, types: ['core.Question'] }))
+      .objects[0]
+    if (!decision || !question) throw new Error('no decision or question')
+    const before = unwrap(
+      services.queryObjects(owner, { projectId, types: ['core.Alternative'] }),
+    ).objects.sort((a, b) => (a.id < b.id ? -1 : 1))
+
+    // A person answers the question.
+    const answered = unwrap(
+      services.proposeChange(owner, {
+        projectId,
+        baseRevision: head(),
+        rationale: 'answer',
+        ops: [
+          {
+            op: 'updateObject',
+            id: question.id,
+            set: { status: 'answered', answer: 'Lowest operating cost' },
+          },
+        ],
+      }),
+    )
+    unwrap(services.commitProposal(owner, { proposalId: answered.proposalId }))
+
+    const again = await run({
+      kind: 'alternatives',
+      request: 'Explore again with the answers',
+      decisionId: decision.id,
+    })
+    expect(again.status).toBe('completed')
+    expect(again.output).toMatchObject({ decisions: 0, alternatives: 2, questions: 1 })
+    const proposal = proposalOf(services, owner, again)
+    expect(proposal.ops.some((op) => op.op === 'createObject' && op.type === 'core.Decision')).toBe(
+      false,
+    )
+    const created = proposal.ops.flatMap((op) =>
+      op.op === 'createObject' && op.type === 'core.Alternative' ? [op] : [],
+    )
+    // The answer reached the prompt: the mock says how many answers it saw.
+    expect(created[0]?.attributes.title).toBe('Mock alternative: refined with 1 answer')
+    const links = proposal.ops.flatMap((op) => (op.op === 'createRelation' ? [op] : []))
+    expect(links.filter((l) => l.type === 'alternativeOf').map((l) => l.to)).toEqual([
+      decision.id,
+      decision.id,
+    ])
+    expect(links.filter((l) => l.type === 'combines').map((l) => l.to)).toEqual([
+      before[0]?.id,
+      before[1]?.id,
+    ])
+    expect(links.filter((l) => l.type === 'concerns').map((l) => l.to)).toEqual([decision.id])
+    unwrap(services.commitProposal(owner, { proposalId: proposal.id }))
+    const after = unwrap(
+      services.queryRelations(owner, { projectId, types: ['alternativeOf'] }),
+    ).relations.filter((r) => r.to === decision.id)
+    expect(after).toHaveLength(before.length + 2)
+  })
+
+  it('refuses to explore a decision that is no longer open', async () => {
+    const { services, owner, projectId, navigator, run } = await setup()
+    const first = await run({ kind: 'alternatives', request: 'Add multi-tenancy' })
+    unwrap(services.commitProposal(owner, { proposalId: first.proposalId as string }))
+    const decision = unwrap(services.queryObjects(owner, { projectId, types: ['core.Decision'] }))
+      .objects[0]
+    if (!decision) throw new Error('no decision')
+    const head = unwrap(services.getProjectOverview(owner, { projectId })).project.headRevision
+    const deferred = unwrap(
+      services.proposeChange(owner, {
+        projectId,
+        baseRevision: head,
+        rationale: 'later',
+        ops: [{ op: 'setDecisionStatus', id: decision.id, status: 'deferred', rationale: 'later' }],
+      }),
+    )
+    unwrap(services.commitProposal(owner, { proposalId: deferred.proposalId }))
+    const refused = navigator.start(owner, {
+      projectId,
+      kind: 'alternatives',
+      request: 'Explore again',
+      decisionId: decision.id,
+    })
+    expect(refused.ok).toBe(false)
+    if (!refused.ok) expect(refused.error.code).toBe('conflicting')
+  })
+
+  it('rejects a hybrid link to an alternative that is not listed before it', () => {
+    const element = {
+      handle: 'N1',
+      id: `obj_${'1'.repeat(32)}`,
+      type: 'software.Module',
+      label: 'm',
+    }
+    const alt = (title: string, combines: string[]) => ({
+      title,
+      summary: 's',
+      tradeoffs: 't',
+      confidence: 'low' as const,
+      rationale: 'r',
+      combines,
+      directChanges: [{ element: 'N1', change: 'c', citations: [] }],
+    })
+    const mapped = mapAlternatives(
+      {
+        decision: { title: 'd', question: 'q' },
+        alternatives: [alt('one', ['A2']), alt('two', ['A1', 'A1']), alt('three', ['A9'])],
+        questions: [],
+      },
+      { revision: 1, elements: [element], evidence: [], omissions: [] },
+      { provider: 'mock', model: 'mock' },
+    )
+    const combines = mapped.ops.flatMap((op) =>
+      op.op === 'createRelation' && op.type === 'combines' ? [[op.from, op.to]] : [],
+    )
+    expect(combines).toEqual([['$alt2', '$alt1']])
+    expect(mapped.grounding.itemsRejected.map((r) => r.item)).toEqual([
+      'alternative 1, combines A2',
+      'alternative 3, combines A9',
+    ])
+  })
+})

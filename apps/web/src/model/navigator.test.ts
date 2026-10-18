@@ -232,7 +232,50 @@ describe('reading a run’s proposal', () => {
 
   it('tolerates a proposal without a decision', () => {
     const parsed = parseAlternativesProposal([])
-    expect(parsed).toEqual({ decision: null, alternatives: [], questions: [], mock: false })
+    expect(parsed).toEqual({
+      decision: null,
+      decisionId: null,
+      alternatives: [],
+      questions: [],
+      mock: false,
+    })
+  })
+
+  it('reads a refinement: alternatives for a decision already in the model, and hybrids', () => {
+    const hybrid = id('obj', 205)
+    const first = alternativesOps()[0]
+    if (first?.op !== 'createObject') throw new Error('fixture changed')
+    const claim = first.claim
+    const link = (n: number, type: string, to: string): ResolvedOperation => ({
+      op: 'createRelation',
+      id: id('rel', n),
+      type,
+      from: hybrid,
+      to,
+      stance: 'toBe',
+      properties: {},
+      claim,
+    })
+    const ops: ResolvedOperation[] = [
+      ...alternativesOps().filter((o) => !(o.op === 'createObject' && o.type === 'core.Decision')),
+      {
+        op: 'createObject',
+        id: hybrid,
+        type: 'core.Alternative',
+        stance: 'toBe',
+        attributes: { title: 'Column, with big tenants apart', summary: 's', tradeoffs: 't' },
+        claim,
+      },
+      link(306, 'alternativeOf', DECISION),
+      link(307, 'combines', ALT_A),
+      link(308, 'combines', ALT_B),
+    ]
+    const parsed = parseAlternativesProposal(ops)
+    expect(parsed.decision).toBeNull()
+    expect(parsed.decisionId).toBe(DECISION)
+    expect(parsed.alternatives.find((a) => a.id === hybrid)?.combines).toEqual([ALT_A, ALT_B])
+    expect(parsed.alternatives.find((a) => a.id === ALT_A)?.combines).toEqual([])
+    expect(parsed.questions[0]?.linked).toBe(true)
   })
 
   it('reads summary statements and what they concern', () => {

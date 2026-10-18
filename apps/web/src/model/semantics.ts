@@ -222,6 +222,7 @@ const RELATION_DESCRIPTIONS: Record<string, string> = {
   constrains: 'The constraint limits the target',
   decides: 'The decision determines the target',
   alternativeOf: 'A candidate answer to the decision',
+  combines: 'A hybrid alternative that combines the target alternative with others',
   supersedes: 'Replaces the target decision',
   contradicts: 'The two claims cannot both hold',
   precedes: 'Temporal order',

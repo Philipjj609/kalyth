@@ -1,7 +1,7 @@
 import type { GroundingReport, OperationInput } from '@kalyth/contracts'
 import type { ContextEvidence, ModelContext } from './context.ts'
 import { checkCitations } from './grounding.ts'
-import type { AlternativesOutput, SummaryOutput } from './schemas.ts'
+import type { AlternativesOutput, RefineOutput, SummaryOutput } from './schemas.ts'
 
 export interface ModelIdentity {
   provider: string
@@ -107,15 +107,24 @@ export function mapSummary(
   }
 }
 
+/** An open decision being explored again: its id and its alternatives in handle order (A1 first). */
+export interface ExistingDecision {
+  id: string
+  alternatives: readonly string[]
+}
+
 /**
- * A decision with its alternatives, each alternative's direct changes (`impacts`) and the open
- * questions. A direct change naming an unknown element or with any invalid citation is rejected;
- * the alternative itself is a to-be design and stays.
+ * A decision with its alternatives, each alternative's direct changes (`impacts`), the hybrids'
+ * `combines` links and the open questions. With `existing`, the alternatives and questions are
+ * added to that open decision instead (Journey 1). A direct change naming an unknown element or
+ * with any invalid citation is rejected, and so is a hybrid link to an alternative that is not
+ * listed before it; the alternative itself is a to-be design and stays.
  */
 export function mapAlternatives(
-  out: AlternativesOutput,
+  out: AlternativesOutput | RefineOutput,
   context: ModelContext,
   model: ModelIdentity,
+  existing?: ExistingDecision,
 ): Mapped {
   const evidence = evidenceIndex(context)
   const elements = new Map(context.elements.map((e) => [e.handle, e]))
@@ -126,23 +135,39 @@ export function mapAlternatives(
     itemsKept: 0,
     itemsRejected: [],
   }
-  const method = 'navigator.alternatives'
+  const method = existing ? 'navigator.refine' : 'navigator.alternatives'
   const framing = {
     level: 'medium' as const,
-    rationale: 'Framed by the Navigator from the change request.',
+    rationale: existing
+      ? 'Raised by the Navigator while exploring the decision again.'
+      : 'Framed by the Navigator from the change request.',
   }
   let directImpacts = 0
 
-  ops.push({
-    op: 'createObject',
-    ref: '$decision',
-    type: 'core.Decision',
-    stance: 'toBe',
-    attributes: { title: out.decision.title, question: out.decision.question },
-    claim: inferred(model, method, framing),
+  const decision = existing ? existing.id : '$decision'
+  if (!existing && 'decision' in out) {
+    ops.push({
+      op: 'createObject',
+      ref: '$decision',
+      type: 'core.Decision',
+      stance: 'toBe',
+      attributes: { title: out.decision.title, question: out.decision.question },
+      claim: inferred(model, method, framing),
+    })
+  }
+  // A1..Ak are the decision's existing alternatives; the new ones continue the numbering.
+  const offset = existing?.alternatives.length ?? 0
+  const byHandle = new Map<string, string>()
+  existing?.alternatives.forEach((id, i) => {
+    byHandle.set(`A${i + 1}`, id)
   })
+  out.alternatives.forEach((_, a) => {
+    byHandle.set(`A${offset + a + 1}`, `$alt${a + 1}`)
+  })
+
   out.alternatives.forEach((alt, a) => {
     const ref = `$alt${a + 1}`
+    const own = offset + a + 1
     const confidence = { level: alt.confidence, rationale: alt.rationale }
     ops.push(
       {
@@ -157,12 +182,32 @@ export function mapAlternatives(
         op: 'createRelation',
         type: 'alternativeOf',
         from: ref,
-        to: '$decision',
+        to: decision,
         stance: 'toBe',
         properties: {},
         claim: inferred(model, method, confidence),
       },
     )
+    for (const handle of new Set(alt.combines)) {
+      const target = byHandle.get(handle)
+      if (!target || Number(handle.slice(1)) >= own) {
+        grounding.itemsRejected.push({
+          item: `alternative ${a + 1}, combines ${handle}`,
+          reason: 'combines an alternative that is not listed before it',
+          ref: handle,
+        })
+        continue
+      }
+      ops.push({
+        op: 'createRelation',
+        type: 'combines',
+        from: ref,
+        to: target,
+        stance: 'toBe',
+        properties: {},
+        claim: inferred(model, method, confidence),
+      })
+    }
     const targets = new Set<string>()
     alt.directChanges.forEach((change, c) => {
       const item = `alternative ${a + 1}, change ${c + 1}`
@@ -214,7 +259,7 @@ export function mapAlternatives(
         op: 'createRelation',
         type: 'concerns',
         from: ref,
-        to: '$decision',
+        to: decision,
         stance: 'toBe',
         properties: {},
         claim: inferred(model, method, framing),
@@ -226,7 +271,7 @@ export function mapAlternatives(
     grounding,
     output: {
       assertions: 0,
-      decisions: 1,
+      decisions: existing ? 0 : 1,
       alternatives: out.alternatives.length,
       questions: out.questions.length,
       directImpacts,
