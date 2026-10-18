@@ -112,7 +112,8 @@ A `core.Task` changes status and lease only through `setTaskStatus`, along `TASK
 Each task view carries `createdAt` and `updatedAt`, and each of its reports `reportedAt`. They are
 the commit times, read from the project history, of the revisions that created the task, wrote its
 current version (its last status, lease or attribute change) and recorded the report. A new report
-alone does not change `updatedAt`. Nothing extra is stored for them.
+alone does not change `updatedAt`. Nothing extra is stored for them, and a replay from events
+gives the same times, because each change set's commit time is its event's time.
 
 The task coordinator commits these lifecycle records and nothing else; only a person acting
 directly moves a task to `completed` or `cancelled`. The task repository, the local clone agents
@@ -143,7 +144,9 @@ Success: `{status: "committed", projectId, revision, changeSetId, eventId, rebas
 `refs` maps each local ref the proposal named to the id it resolved to, for example
 `{"$task": "obj_…"}`, so a client can open what it just created without reading the proposal back.
 It is empty when the proposal named no refs, and for results stored before refs were kept. In a
-stored proposal, each resolved create operation keeps its `ref` beside the id.
+stored proposal, each resolved create operation keeps its `ref` beside the id. Events carry the
+applied writes rather than the operations, so refs never reach the event log, and an automatic
+rebase keeps the proposal's ids, so `refs` stays correct.
 Failure: `{code, message, issues[], requiredScopes?, currentRevision?, changedRefs?, retryAfterMs?}`
 with codes `invalid`, `unauthenticated`, `unauthorized`, `stale`, `conflicting`, `not_found`,
 `budget_exceeded`, `retryable`.
