@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApi, type FetchLike } from '../api/client.ts'
 import { keys } from '../api/queries.ts'
 import { formatLocation, parseLocation } from '../app/location.ts'
+import { CriteriaEditor } from '../components/CriteriaEditor.tsx'
 import { TooltipProvider } from '../components/ui.tsx'
 import {
   agentPrompt,
@@ -45,7 +46,7 @@ import {
 } from '../test/handoff.ts'
 import { ALT_A, ALT_B, CRUD_PY, DECISION, ITEM, id, MODELS_PY, PROJECT } from '../test/navigator.ts'
 import { IssuedTokenView, SetupSnippets, TokenList } from './AgentConnect.tsx'
-import { CriteriaEditor, DecisionChoiceList } from './HandoffSource.tsx'
+import { DecisionChoiceList } from './HandoffSource.tsx'
 import { issueAgentToken } from './issue-token.ts'
 import { type PackageLookup, PackageView } from './PackageView.tsx'
 import { AgentPromptPanel, RoundTripList } from './RoundTrip.tsx'
