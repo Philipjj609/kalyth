@@ -12,6 +12,7 @@ import {
   QueryClient,
   queryOptions,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
@@ -226,6 +227,7 @@ function useInvalidateProject(projectId: string) {
       // Any commit may create or move tasks, wherever it was made.
       client.invalidateQueries({ queryKey: keys.tasks(projectId) }),
       client.invalidateQueries({ queryKey: ['task'] }),
+      client.invalidateQueries({ queryKey: ['decisions', projectId] }),
     ])
 }
 
@@ -428,6 +430,35 @@ export function useImpact(
 // ---------- handoff to agents (ADR 0011) ----------
 
 /** Accepted decisions with their alternatives and direct changes; null without the route. */
+/** Propagated impact from several seed sets at one revision, one traversal each, in order. */
+export function useImpacts(
+  projectId: string,
+  seedSets: readonly (readonly string[])[],
+  revision: number,
+) {
+  return useQueries({
+    queries: seedSets.map((seeds) => {
+      const key = [...new Set(seeds)].sort().slice(0, MAX_IMPACT_SEEDS).join(',')
+      return {
+        queryKey: keys.impact(projectId, revision, key),
+        queryFn: () => api.impact(projectId, { seeds: key.split(','), ...IMPACT_LIMITS, revision }),
+        enabled: key !== '',
+        staleTime: Number.POSITIVE_INFINITY,
+      }
+    }),
+  })
+}
+
+/** Every decision of the project at the head, whatever its status, or null without the route. */
+export function useDecisions(projectId: string | undefined) {
+  return useQuery({
+    queryKey: keys.decisions(projectId ?? '', 'all'),
+    queryFn: () => api.decisions(projectId as string),
+    enabled: projectId !== undefined,
+    refetchInterval: 30_000,
+  })
+}
+
 export function useAcceptedDecisions(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.decisions(projectId ?? '', 'accepted'),

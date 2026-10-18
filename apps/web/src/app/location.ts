@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from 'react'
 
 /**
  * Navigation state lives in the query string
- * (?project=&view=&rev=&sel=&run=&proposal=&package=&task=&layout=),
+ * (?project=&view=&rev=&sel=&run=&proposal=&package=&task=&layout=&decision=),
  * so views are linkable and survive reloads. The fragment is reserved for the session token
  * handoff. Secrets never go here: agent tokens are held in component state only.
  */
@@ -15,6 +15,7 @@ export const VIEWS = [
   'navigator',
   'handoff',
   'tasks',
+  'decisions',
 ] as const
 export type View = (typeof VIEWS)[number]
 
@@ -35,6 +36,8 @@ export interface AppLocation {
   task?: string | undefined
   /** How the Tasks view draws tasks: the board (default) or the graph of their dependencies. */
   taskLayout?: 'board' | 'graph' | undefined
+  /** The decision whose alternatives are compared (Decisions view only). */
+  decision?: string | undefined
 }
 
 /** Context package ids are content addresses: `ctx_` and 32 hex digits (ADR 0011). */
@@ -57,6 +60,7 @@ export function parseLocation(search: string): AppLocation {
     package: PACKAGE_ID.test(q.get('package') ?? '') ? (q.get('package') as string) : undefined,
     task: OBJECT_ID.test(q.get('task') ?? '') ? (q.get('task') as string) : undefined,
     taskLayout: q.get('layout') === 'graph' ? 'graph' : undefined,
+    decision: OBJECT_ID.test(q.get('decision') ?? '') ? (q.get('decision') as string) : undefined,
   }
 }
 
@@ -72,6 +76,7 @@ export function formatLocation(loc: AppLocation): string {
   if (loc.package && loc.view === 'handoff') q.set('package', loc.package)
   if (loc.task && loc.view === 'tasks') q.set('task', loc.task)
   if (loc.taskLayout === 'graph' && loc.view === 'tasks') q.set('layout', 'graph')
+  if (loc.decision && loc.view === 'decisions') q.set('decision', loc.decision)
   const s = q.toString()
   return s ? `?${s}` : ''
 }

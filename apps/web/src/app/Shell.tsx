@@ -15,6 +15,7 @@ import {
   Network,
   PanelRightClose,
   PanelRightOpen,
+  Scale,
   SquareKanban,
   Sun,
   Table2,
@@ -30,6 +31,7 @@ import {
 } from '../api/queries.ts'
 import { FreshnessBadge } from '../components/badges.tsx'
 import { Button, Kbd, Spinner, Tip } from '../components/ui.tsx'
+import { DecisionsView } from '../decisions/DecisionsView.tsx'
 import { HandoffView } from '../handoff/HandoffView.tsx'
 import { Inspector } from '../inspector/Inspector.tsx'
 import { cn } from '../lib/cn.ts'
@@ -63,6 +65,7 @@ const VIEW_META: Record<View, { label: string; icon: typeof Network }> = {
   navigator: { label: 'Navigator', icon: Compass },
   handoff: { label: 'Handoff', icon: Handshake },
   tasks: { label: 'Tasks', icon: SquareKanban },
+  decisions: { label: 'Decisions', icon: Scale },
 }
 
 const INSPECTOR_KEY = 'kalyth.inspector'
@@ -161,7 +164,7 @@ function ProjectWorkbench({
     [navigate],
   )
 
-  // Keyboard shortcuts: 1-6 switch views, "/" focuses the view's search, "i" toggles the
+  // Keyboard shortcuts: 1-9 switch views, "/" focuses the view's search, "i" toggles the
   // Inspector, Escape clears the selection.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -335,6 +338,12 @@ function ProjectWorkbench({
               >
                 <TasksView />
               </Tabs.Content>
+              <Tabs.Content
+                value="decisions"
+                className="relative min-h-0 flex-1 overflow-auto outline-none"
+              >
+                <DecisionsView />
+              </Tabs.Content>
             </main>
             {inspectorOpen && (
               <aside
@@ -481,6 +490,7 @@ function ProjectSwitcher({
                       proposal: undefined,
                       package: undefined,
                       task: undefined,
+                      decision: undefined,
                     })
                   }}
                   className={cn(

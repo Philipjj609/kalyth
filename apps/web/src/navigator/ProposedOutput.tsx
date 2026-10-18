@@ -681,7 +681,7 @@ function DecidableAlternatives({
 }
 
 /** Asks for the person's rationale; the decision proposal carries it. */
-function AcceptDialog({
+export function AcceptDialog({
   alternative,
   question,
   headRevision,
@@ -690,7 +690,7 @@ function AcceptDialog({
   onSubmit,
   onClose,
 }: {
-  alternative: ProposedAlternative | null
+  alternative: { title: string } | null
   question: string
   headRevision: number
   pending: boolean
