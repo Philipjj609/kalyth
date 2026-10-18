@@ -406,6 +406,21 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
     },
     setTaskRepository: (projectId: string, path: string) =>
       request<TaskRepositoryView>('PUT', `${project(projectId)}/task-repository`, { path }),
+    /**
+     * The whole project as one file (ADR 0014): the bundle, serialised as the server sent it, and
+     * the name to save it under. `pnpm project:import` rebuilds the project from it.
+     */
+    exportProject: async (projectId: string): Promise<{ fileName: string; text: string }> => {
+      const bundle = await request<{ project: { id: string; headRevision: number } }>(
+        'GET',
+        `${project(projectId)}/export`,
+      )
+      return {
+        fileName: `kalyth-${bundle.project.id}-r${bundle.project.headRevision}.json`,
+        text: `${JSON.stringify(bundle)}
+`,
+      }
+    },
   }
 }
 

@@ -132,6 +132,19 @@ export function buildHttpApp(
       services.getHistory(caller, { projectId: params(req).projectId, ...limitOf(query(req)) }),
     ),
   )
+  // A whole project as one file (ADR 0014). Only this first-party UI, acting for the owner, can
+  // ask; MCP has no export tool. Import is a local command (`pnpm project:import`).
+  app.get('/api/v1/projects/:projectId/export', async (req, reply) => {
+    const result = services.exportProject(caller, { projectId: params(req).projectId })
+    if (result.ok) {
+      const { id, headRevision } = result.value.project
+      reply.header(
+        'content-disposition',
+        `attachment; filename="kalyth-${id}-r${headRevision}.json"`,
+      )
+    }
+    return send(reply, result)
+  })
   app.get('/api/v1/projects/:projectId/freshness', async (req, reply) =>
     send(
       reply,

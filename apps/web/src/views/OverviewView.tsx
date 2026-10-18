@@ -1,8 +1,8 @@
 import type { Basis } from '@kalyth/contracts'
-import { ArrowRight } from 'lucide-react'
-import { type ReactNode, useMemo } from 'react'
+import { ArrowRight, Download } from 'lucide-react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { FRESHNESS_STATUSES } from '../api/freshness.ts'
-import { useHistory } from '../api/queries.ts'
+import { api, useHistory } from '../api/queries.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import {
   BasisBadge,
@@ -16,6 +16,7 @@ import { cn } from '../lib/cn.ts'
 import { absoluteTime, relativeTime, shortId } from '../model/format.ts'
 import { BASIS_META, BASIS_ORDER, compareTypes, relationMeta } from '../model/semantics.ts'
 import { useProposalIndex } from './HistoryView.tsx'
+import { ErrorNotice } from './shared.tsx'
 
 export function OverviewView() {
   const wb = useWorkbench()
@@ -32,6 +33,8 @@ export function OverviewView() {
     return counts
   }, [wb.model])
 
+  const [exportError, setExportError] = useState<unknown>(null)
+
   return (
     <div className="mx-auto w-full max-w-[1200px] space-y-5 p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -43,16 +46,20 @@ export function OverviewView() {
             <p className="mt-0.5 max-w-3xl text-fg-muted">{overview.project.description}</p>
           )}
         </div>
-        <p className="text-fg-subtle text-xs">
-          <span className="font-mono">{shortId(overview.project.id)}</span> · created{' '}
-          <time
-            dateTime={overview.project.createdAt}
-            title={absoluteTime(overview.project.createdAt)}
-          >
-            {relativeTime(overview.project.createdAt)}
-          </time>
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-fg-subtle text-xs">
+            <span className="font-mono">{shortId(overview.project.id)}</span> · created{' '}
+            <time
+              dateTime={overview.project.createdAt}
+              title={absoluteTime(overview.project.createdAt)}
+            >
+              {relativeTime(overview.project.createdAt)}
+            </time>
+          </p>
+          <ExportButton projectId={overview.project.id} onError={setExportError} />
+        </div>
       </div>
+      {exportError !== null && <ErrorNotice error={exportError} title="Export refused" />}
 
       <dl className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat
@@ -341,5 +348,47 @@ function RecentChanges() {
         </ol>
       )}
     </Panel>
+  )
+}
+
+/**
+ * Downloads the whole project as one file (ADR 0014): its events, the evidence content they refer
+ * to and the principals in its history. `pnpm project:import` rebuilds it in another store.
+ */
+export function ExportButton({
+  projectId,
+  onError,
+}: {
+  projectId: string
+  onError: (error: unknown) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const download = async () => {
+    setBusy(true)
+    onError(null)
+    try {
+      const { fileName, text } = await api.exportProject(projectId)
+      const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) {
+      onError(error)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Button
+      size="sm"
+      onClick={download}
+      disabled={busy}
+      title="Download the project's history and evidence as one file; pnpm project:import rebuilds it in another store"
+    >
+      <Download aria-hidden />
+      <span className="ml-1.5">{busy ? 'Exporting…' : 'Export'}</span>
+    </Button>
   )
 }

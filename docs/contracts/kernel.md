@@ -120,6 +120,16 @@ directly moves a task to `completed` or `cancelled`. The task repository, the lo
 commit to, is registered per project by a person with `grant.manage`
 (`PUT /projects/:id/task-repository`); Kalyth only reads it.
 
+## Project export and import
+
+`exportProject` (HTTP `GET /projects/:id/export`, `pnpm project:export`; a person acting directly
+with `project.read`; no MCP tool) returns one file, `kalyth.project-export` format 1: the project,
+its events as stored, the content its evidence refers to (redacted bodies as null), the principals
+its history names, and `stateSha256`, the hash of the revisioned state with JSON columns compared by
+content. `pnpm project:import <file>` replays it into another store in one transaction and refuses
+it unless it validates, is consistent, is new to the store and rebuilds `stateSha256`. The file is
+not signed; import only files you trust (ADR 0014).
+
 ## Navigator output
 
 A Navigator run (HTTP only, started by a person) ends in one pending proposal by the Navigator

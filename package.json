@@ -19,6 +19,8 @@
     "mcp:stdio": "pnpm --filter @kalyth/server mcp:stdio",
     "dev:server": "pnpm --filter @kalyth/server dev",
     "ingest": "node apps/server/src/cli/ingest.ts",
+    "project:export": "node apps/server/src/cli/export.ts",
+    "project:import": "node apps/server/src/cli/import.ts",
     "dev:web": "pnpm --filter @kalyth/web dev",
     "dev:seed": "pnpm --filter @kalyth/server exec node src/dev/seed.ts",
     "budget": "node apps/server/src/cli/budget.ts",

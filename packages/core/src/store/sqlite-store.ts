@@ -5,6 +5,7 @@ import type {
   ContentRef,
   EvidenceRecord,
   EvidenceView,
+  ExportedContent,
   Grant,
   InstructionOrigin,
   Issue,
@@ -483,6 +484,39 @@ export class SqliteStore {
       'SELECT body, redacted_at FROM content WHERE project_id = ? AND id = ?',
     ).get(projectId, id) as Row | undefined
     return row ? { body: nstr(row.body), redacted: row.redacted_at !== null } : undefined
+  }
+
+  /** Every content row of a project, in id order, for export (ADR 0014). */
+  listContent(projectId: string): ExportedContent[] {
+    const rows = this.#stmt('SELECT * FROM content WHERE project_id = ? ORDER BY id').all(
+      projectId,
+    ) as Row[]
+    return rows.map((r) => ({
+      id: str(r.id),
+      sha256: str(r.sha256),
+      mediaType: str(r.media_type),
+      body: nstr(r.body),
+      redactedAt: nstr(r.redacted_at),
+      redactionReason: nstr(r.redaction_reason),
+      createdAt: str(r.created_at),
+    }))
+  }
+
+  /** Inserts an exported content row as it was, redaction included (ADR 0014). */
+  importContent(projectId: string, c: ExportedContent): void {
+    this.#stmt(
+      `INSERT INTO content (project_id, id, sha256, media_type, body, redacted_at, redaction_reason, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      projectId,
+      c.id,
+      c.sha256,
+      c.mediaType,
+      c.body,
+      c.redactedAt,
+      c.redactionReason,
+      c.createdAt,
+    )
   }
 
   redactContent(projectId: string, id: string, reason: string, at: string): boolean {

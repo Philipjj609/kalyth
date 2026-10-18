@@ -11,6 +11,7 @@ import {
   type DecisionsResult,
   EvidenceQuery,
   type EvidenceQueryResult,
+  ExportProjectInput,
   FreshnessQuery,
   type FreshnessResult,
   fail,
@@ -29,6 +30,7 @@ import {
   ok,
   type Principal,
   type PrincipalKind,
+  type ProjectExport,
   type ProjectOverview,
   ProjectRef,
   type ProjectSummary,
@@ -46,6 +48,7 @@ import {
   SituationQuery,
 } from '@kalyth/contracts'
 import type { z } from 'zod'
+import { buildProjectExport } from '../export.ts'
 import { applyOperations } from '../kernel/apply.ts'
 import { assessFreshness } from '../kernel/freshness.ts'
 import { elementLabel, traceImpact } from '../kernel/impact.ts'
@@ -242,6 +245,29 @@ export class KalythServices {
       headRevision: project.headRevision,
       changeSets: this.store.history(project.id, q.limit),
     })
+  }
+
+  /**
+   * The whole project as one bundle (ADR 0014), for a person acting directly: an export copies
+   * everything at once, so no agent or relayed instruction can trigger it.
+   */
+  exportProject(caller: unknown, input: unknown): Result<ProjectExport> {
+    const ctx = this.#context(caller)
+    if (!ctx.ok) return ctx
+    if (ctx.value.principal.kind !== 'human' || ctx.value.caller.origin !== 'human') {
+      return fail('unauthorized', 'a person, acting directly, exports a project')
+    }
+    const parsed = parse(ExportProjectInput, input)
+    if (!parsed.ok) return parsed
+    const project = this.store.getProject(parsed.value.projectId)
+    if (!project) return fail('not_found', `project ${parsed.value.projectId} does not exist`)
+    const denied = this.#authz.require(ctx.value.principal, project.id, ['project.read'])
+    if (denied) return { ok: false, error: denied }
+    // One transaction, so the events, the content and the state hash describe the same moment.
+    const bundle = this.store.writeTransaction(() =>
+      buildProjectExport(this.store, project.id, ctx.value.principal.id, this.#clock()),
+    )
+    return bundle ? ok(bundle) : fail('not_found', `project ${project.id} does not exist`)
   }
 
   /** Freshness of every active claim at a revision; a read model, nothing is written (ADR 0009). */

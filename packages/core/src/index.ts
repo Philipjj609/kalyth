@@ -5,6 +5,7 @@ export {
   ensurePrincipal,
   OWNER_SCOPES,
 } from './bootstrap.ts'
+export { buildProjectExport, importProjectExport, stateSha256 } from './export.ts'
 export { type ApplyOutcome, applyOperations } from './kernel/apply.ts'
 export { isClaimSupported, validateClaim } from './kernel/claims.ts'
 export { assessFreshness, type SnapshotState } from './kernel/freshness.ts'
