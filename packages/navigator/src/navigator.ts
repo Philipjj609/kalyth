@@ -261,7 +261,7 @@ export class Navigator {
           user: refineUser(decision.prompt, renderContext(context, 700)),
           schema: RefineOutput as z.ZodType<unknown>,
           schemaName: 'kalyth_refine',
-          maxOutputTokens: 8000,
+          maxOutputTokens: 12_000,
           reasoning: true,
         })
         map = (value, model) =>
@@ -279,7 +279,7 @@ export class Navigator {
           user: alternativesUser(input.request, renderContext(context, 700), focus),
           schema: AlternativesOutput as z.ZodType<unknown>,
           schemaName: 'kalyth_alternatives',
-          maxOutputTokens: 8000,
+          maxOutputTokens: 12_000,
           reasoning: true,
         })
         map = (value, model) => mapAlternatives(value as AlternativesOutput, context, model)

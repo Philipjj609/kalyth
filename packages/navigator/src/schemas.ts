@@ -48,7 +48,7 @@ const AlternativeItem = z.strictObject({
       }),
     )
     .min(1)
-    .max(15),
+    .max(8),
 })
 
 const Questions = z
