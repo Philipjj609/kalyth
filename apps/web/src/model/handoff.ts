@@ -7,6 +7,14 @@ import type {
   Proposal,
 } from '@kalyth/contracts'
 import type { CompileContextBody } from '../api/client.ts'
+import {
+  type CriterionAction,
+  criteriaReducer,
+  filledCriteria as filled,
+  isCriterionAction,
+  MAX_CRITERIA,
+  MAX_CRITERION,
+} from './criteria.ts'
 import { plural, shortId } from './format.ts'
 import { impactPathText } from './navigator.ts'
 import type { Tone } from './semantics.ts'
@@ -23,8 +31,7 @@ import type { Tone } from './semantics.ts'
 export const MAX_CHARS = { min: 4_000, max: 400_000, default: 60_000, step: 1_000 } as const
 export const MAX_FOCUS = 50
 export const MAX_TITLE = 300
-export const MAX_CRITERIA = 20
-export const MAX_CRITERION = 1_000
+export { MAX_CRITERIA, MAX_CRITERION }
 export const TOKEN_LABEL_MAX = 120
 export const TOKEN_DAYS = { min: 1, max: 30, default: 7 } as const
 
@@ -66,13 +73,13 @@ export type DraftAction =
   | { type: 'chooseDecision'; decision: Pick<DecisionSummary, 'id' | 'title'> }
   | { type: 'elements'; elements: string[] }
   | { type: 'title'; title: string }
-  | { type: 'addCriterion'; text: string }
-  | { type: 'editCriterion'; index: number; text: string }
-  | { type: 'removeCriterion'; index: number }
-  | { type: 'moveCriterion'; index: number; by: -1 | 1 }
+  | CriterionAction
   | { type: 'maxChars'; value: number }
 
 export function draftReducer(draft: HandoffDraft, action: DraftAction): HandoffDraft {
+  if (isCriterionAction(action)) {
+    return { ...draft, criteria: criteriaReducer(draft.criteria, action) }
+  }
   switch (action.type) {
     case 'mode':
       return { ...draft, mode: action.mode }
@@ -90,26 +97,6 @@ export function draftReducer(draft: HandoffDraft, action: DraftAction): HandoffD
       return { ...draft, elements: [...new Set(action.elements)].slice(0, MAX_FOCUS) }
     case 'title':
       return { ...draft, title: action.title }
-    case 'addCriterion': {
-      const text = action.text.trim()
-      if (!text || draft.criteria.length >= MAX_CRITERIA) return draft
-      return { ...draft, criteria: [...draft.criteria, text.slice(0, MAX_CRITERION)] }
-    }
-    case 'editCriterion':
-      return {
-        ...draft,
-        criteria: draft.criteria.map((c, i) => (i === action.index ? action.text : c)),
-      }
-    case 'removeCriterion':
-      return { ...draft, criteria: draft.criteria.filter((_, i) => i !== action.index) }
-    case 'moveCriterion': {
-      const to = action.index + action.by
-      if (to < 0 || to >= draft.criteria.length) return draft
-      const criteria = [...draft.criteria]
-      const [moved] = criteria.splice(action.index, 1)
-      criteria.splice(to, 0, moved as string)
-      return { ...draft, criteria }
-    }
     case 'maxChars':
       return { ...draft, maxChars: action.value }
   }
@@ -121,8 +108,7 @@ export function draftFocus(draft: HandoffDraft): string[] {
   return draft.elements
 }
 
-const filledCriteria = (draft: HandoffDraft) =>
-  draft.criteria.map((c) => c.trim()).filter((c) => c !== '')
+const filledCriteria = (draft: HandoffDraft) => filled(draft.criteria)
 
 /** Why the draft cannot be compiled yet, as sentences; empty when it can. */
 export function draftProblems(draft: HandoffDraft): string[] {

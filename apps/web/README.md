@@ -1,7 +1,7 @@
 # @kalyth/web
 
-The Kalyth workbench: one app shell with Overview, Graph, Records, Proposals, History, Navigator
-and Handoff views and an Inspector. React 19, Vite 8, Tailwind CSS 4, TanStack Query, React Flow 12 with dagre layout.
+The Kalyth workbench: one app shell with Overview, Graph, Records, Proposals, History, Navigator,
+Handoff and Tasks views and an Inspector. React 19, Vite 8, Tailwind CSS 4, TanStack Query, React Flow 12 with dagre layout.
 It talks only to the local HTTP API (`/api/v1`) and imports its types from `@kalyth/contracts`.
 
 Screenshots against the sample seed (1440x900): [overview](docs/screenshots/01-overview-light.png),
@@ -62,8 +62,11 @@ src/navigator  Navigator view (ADR 0010): provider, budget and consent strip, ch
                the Inspector's "Summarise with Navigator"
 src/handoff    Handoff view (ADR 0011): choose a decision or elements, the context package, agent
                tokens and setup, the prompt and the round trip
+src/tasks      Tasks view (ADR 0013): the board by status, a task's detail with its execution
+               reports and verification, status actions, the task form, the task repository
 src/views      Overview, Records, Proposals, History, project list
-src/app        shell, URL state (?project=&view=&rev=&sel=&run=&proposal=&package=), session, theme
+src/app        shell, URL state (?project=&view=&rev=&sel=&run=&proposal=&package=&task=), session,
+               theme
 ```
 
 ## Navigator
@@ -107,6 +110,24 @@ state: never in the URL, `localStorage`, `sessionStorage` or the TanStack Query 
 not a react-query mutation for this reason), and it is dropped when the person leaves the view.
 "What came back" lists pending proposals whose base revision is the package revision, with a link
 to review each in Proposals.
+
+## Tasks
+
+The Tasks view (key `8`, `?view=tasks&task=obj_…`) reads `GET /api/v1/projects/:id/tasks` (polled
+every 10 seconds), `GET /api/v1/tasks/:taskId` for a deep-linked task the list does not hold, and
+`GET`/`PUT /api/v1/projects/:id/task-repository`. A 404 on the list or repository route means the
+server has no task routes, and the view says so. The board has one column per status; empty columns
+after the first four fold to a rail when the board is narrower than all nine.
+
+A person changes tasks only through ordinary proposals, proposed then committed at once
+(`src/api/tasks.ts`, on `proposeAndCommit` in `src/api/decide.ts`): a new task is a stated `core.Task`
+with an `implements` relation to an accepted decision or alternative and `requires` relations to
+other tasks; a status change is one `setTaskStatus` operation with the person's rationale. The view
+never offers `running`, `review` or `unknown_outcome`: a lease is the coordinator's, review means the
+git verifier found the work, and an unknown outcome marks a lease that ran out. Agents claim, renew,
+release and report over MCP only. Reported tests are shown as stated by the agent, not run by Kalyth;
+the verification is shown as observed by Kalyth's git verifier. The transition table is mirrored in
+`src/model/tasks.ts` so zod stays out of the bundle; a test keeps it equal to the contract.
 
 ## Freshness
 

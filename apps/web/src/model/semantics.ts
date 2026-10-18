@@ -227,6 +227,9 @@ const RELATION_DESCRIPTIONS: Record<string, string> = {
   precedes: 'Temporal order',
   verifies: 'The verification checked the target',
   concerns: 'The question or assertion is about the target',
+  implements: 'The task carries out the target decision, alternative or requirement',
+  requires: 'The task can start only when the target is completed or accepted',
+  reports: 'The execution report is about the target task',
 }
 
 const KNOWN_RELATION_COLORS = new Set([
@@ -269,6 +272,8 @@ const OBJECT_TYPE_ORDER = [
   'core.Question',
   'core.Assertion',
   'core.Verification',
+  'core.Task',
+  'core.ExecutionReport',
 ]
 
 const OBJECT_TYPE_ACCENT: Record<string, string> = {

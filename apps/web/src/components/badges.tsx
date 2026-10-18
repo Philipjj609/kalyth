@@ -7,11 +7,22 @@ import type {
   Stance,
 } from '@kalyth/contracts'
 import {
+  Ban,
+  CircleAlert,
   CircleCheck,
+  CircleDashed,
+  CircleDot,
+  CirclePlay,
+  CircleSlash,
   CircleX,
+  ClockAlert,
   FlaskConical,
   LoaderCircle,
   type LucideIcon,
+  ScanSearch,
+  ShieldCheck,
+  ShieldQuestionMark,
+  ShieldX,
   TriangleAlert,
 } from 'lucide-react'
 import type { FreshnessStatus } from '../api/freshness.ts'
@@ -29,6 +40,7 @@ import {
   STANCE_META,
   type Tone,
 } from '../model/semantics.ts'
+import { reportOutcomeMeta, taskStatusMeta, verificationMeta } from '../model/tasks.ts'
 import { BASIS_ICONS, FRESHNESS_ICONS, ORIGIN_ICONS, PROPOSAL_ICONS, typeIcon } from './icons.tsx'
 
 /**
@@ -251,6 +263,80 @@ export function InquiryRoleBadge({ role, ...rest }: { role: string } & Size) {
       label={humanize(role || 'unclassified')}
       description={meta.description}
       prefix="Inquiry role:"
+      {...rest}
+    />
+  )
+}
+
+const TASK_STATUS_ICONS: Record<string, LucideIcon> = {
+  proposed: CircleDashed,
+  ready: CirclePlay,
+  running: CircleDot,
+  review: ScanSearch,
+  blocked: Ban,
+  unknown_outcome: ClockAlert,
+  failed: CircleX,
+  completed: CircleCheck,
+  cancelled: CircleSlash,
+}
+
+export const taskStatusIcon = (status: string): LucideIcon | undefined => TASK_STATUS_ICONS[status]
+
+/** A task's status (ADR 0013). Only a person reaches completed or cancelled. */
+export function TaskStatusBadge({ status, ...rest }: { status: string } & Size) {
+  const meta = taskStatusMeta(status)
+  return (
+    <StatusBadge
+      tone={meta.tone}
+      icon={TASK_STATUS_ICONS[status]}
+      label={meta.label}
+      description={meta.description}
+      prefix="Task status:"
+      {...rest}
+    />
+  )
+}
+
+const REPORT_OUTCOME_ICONS: Record<string, LucideIcon> = {
+  succeeded: CircleCheck,
+  partial: CircleAlert,
+  failed: CircleX,
+}
+
+/** What an agent says it did: a stated claim, never verified by this badge. */
+export function ReportOutcomeBadge({ outcome, ...rest }: { outcome: string } & Size) {
+  const meta = reportOutcomeMeta(outcome)
+  return (
+    <StatusBadge
+      tone={meta.tone}
+      icon={REPORT_OUTCOME_ICONS[outcome]}
+      label={meta.label}
+      description={meta.description}
+      prefix="Agent's report:"
+      {...rest}
+    />
+  )
+}
+
+const VERIFICATION_ICONS: Record<string, LucideIcon> = {
+  pass: ShieldCheck,
+  fail: ShieldX,
+  inconclusive: ShieldQuestionMark,
+}
+
+/**
+ * What Kalyth's git verifier observed about a reported commit. Observed in the repository, within
+ * the checks it states; it says nothing about how the code behaves when run.
+ */
+export function VerificationBadge({ outcome, ...rest }: { outcome: string } & Size) {
+  const meta = verificationMeta(outcome)
+  return (
+    <StatusBadge
+      tone={meta.tone}
+      icon={VERIFICATION_ICONS[outcome]}
+      label={meta.label}
+      description={meta.description}
+      prefix="Git verification:"
       {...rest}
     />
   )
