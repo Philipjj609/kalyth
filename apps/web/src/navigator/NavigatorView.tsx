@@ -277,9 +277,18 @@ function ConsentRow({ status }: { status: NavigatorStatus }) {
           {consent.granted ? 'Revoke consent' : 'Grant consent'}
         </Button>
       </div>
+      {PROVIDER_NOTES[provider.id] && (
+        <p className="mt-1.5 text-fg-muted text-xs">{PROVIDER_NOTES[provider.id]}</p>
+      )}
       {set.isError && <ErrorNotice error={set.error} className="mt-2" />}
     </div>
   )
+}
+
+/** What a person should know before consenting to a provider (ADR 0016). */
+const PROVIDER_NOTES: Record<string, string> = {
+  openrouter:
+    'OpenRouter’s free endpoints may log prompts or use them for training. Consent only for projects built from public repositories or synthetic data. Nebius remains the provider for competition work.',
 }
 
 // ---------- change request ----------
@@ -351,8 +360,9 @@ function ChangeRequestForm({
             className="w-full resize-y rounded-md border border-border-strong bg-surface px-2.5 py-2 text-sm placeholder:text-fg-subtle disabled:bg-surface-2"
           />
           <p id={hintId} className="text-fg-muted text-xs">
-            The model proposes two to four alternatives, the elements each one changes directly, and
-            open questions. Kalyth computes the propagated impact itself.
+            The model proposes two to four alternatives, possibly with a hybrid of two of them, the
+            elements each one changes directly, and open questions. Kalyth computes the propagated
+            impact itself.
           </p>
         </div>
         <fieldset className="space-y-1.5">

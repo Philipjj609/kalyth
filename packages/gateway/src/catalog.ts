@@ -50,6 +50,19 @@ export const MODEL_CATALOG: readonly ModelSpec[] = [
     priceCheckedAt: '2026-10-16',
   },
   {
+    // OpenRouter's free endpoint, for public and synthetic tests only (ADR 0016). The free Ultra
+    // endpoint lacks structured outputs, so Super serves every role there.
+    id: 'nvidia/nemotron-3-super-120b-a12b:free',
+    provider: 'openrouter',
+    inputMicroUsdPerMTok: 0,
+    outputMicroUsdPerMTok: 0,
+    contextTokens: 262_144,
+    reasoningOff: { reasoning: { enabled: false } },
+    priceSource:
+      'OpenRouter public model list (free variant); a reported charge stops the provider',
+    priceCheckedAt: '2026-10-18',
+  },
+  {
     id: 'mock',
     provider: 'mock',
     inputMicroUsdPerMTok: 0,
@@ -67,6 +80,11 @@ export const DEFAULT_ROLE_MODELS: Readonly<Record<string, Readonly<Record<string
     alternatives: 'nvidia/Nemotron-3-Ultra-550b-a55b',
     /** One model for both evaluation conditions (ADR 0012). */
     evaluate: 'nvidia/nemotron-3-super-120b-a12b',
+  },
+  openrouter: {
+    summarize: 'nvidia/nemotron-3-super-120b-a12b:free',
+    alternatives: 'nvidia/nemotron-3-super-120b-a12b:free',
+    evaluate: 'nvidia/nemotron-3-super-120b-a12b:free',
   },
   mock: { summarize: 'mock', alternatives: 'mock', evaluate: 'mock' },
 }

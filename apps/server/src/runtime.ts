@@ -7,6 +7,7 @@ import {
   defaultLedgerPath,
   MockProvider,
   NebiusProvider,
+  OpenRouterProvider,
   type Provider,
   ProviderGateway,
   RecordingProvider,
@@ -30,7 +31,9 @@ export function openLocalServices(): KalythServices {
 /**
  * The provider the Navigator uses (ADR 0010). The mock is the default. Nebius needs
  * KALYTH_PROVIDER=nebius and KALYTH_NEBIUS_API_KEY, and still spends nothing until a cap is set
- * in the ledger. KALYTH_RECORD_DIR records real exchanges; KALYTH_PROVIDER=replay replays them.
+ * in the ledger. OpenRouter's free endpoints (ADR 0016) need KALYTH_PROVIDER=openrouter and
+ * KALYTH_OPENROUTER_API_KEY, for public and synthetic tests only. KALYTH_RECORD_DIR records real
+ * exchanges; KALYTH_PROVIDER=replay replays them.
  */
 export function providerFromEnv(env: NodeJS.ProcessEnv = process.env): {
   provider: Provider
@@ -52,6 +55,15 @@ export function providerFromEnv(env: NodeJS.ProcessEnv = process.env): {
         : nebius
       return { provider, family: 'nebius' }
     }
+    case 'openrouter': {
+      const apiKey = env.KALYTH_OPENROUTER_API_KEY
+      if (!apiKey) throw new Error('KALYTH_PROVIDER=openrouter needs KALYTH_OPENROUTER_API_KEY')
+      const openrouter = new OpenRouterProvider({ apiKey })
+      const provider = env.KALYTH_RECORD_DIR
+        ? new RecordingProvider(openrouter, resolve(env.KALYTH_RECORD_DIR))
+        : openrouter
+      return { provider, family: 'openrouter' }
+    }
     case 'replay': {
       const dir = env.KALYTH_REPLAY_DIR
       if (!dir) throw new Error('KALYTH_PROVIDER=replay needs KALYTH_REPLAY_DIR')
@@ -59,7 +71,7 @@ export function providerFromEnv(env: NodeJS.ProcessEnv = process.env): {
       return { provider: ReplayProvider.fromDirectory(source, resolve(dir)), family: source }
     }
     default:
-      throw new Error(`unknown KALYTH_PROVIDER ${kind}; use mock, nebius or replay`)
+      throw new Error(`unknown KALYTH_PROVIDER ${kind}; use mock, nebius, openrouter or replay`)
   }
 }
 

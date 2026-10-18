@@ -31,6 +31,17 @@ export {
 export { MockProvider, type MockResponder } from './providers/mock.ts'
 export { NEBIUS_BASE_URL, type NebiusOptions, NebiusProvider } from './providers/nebius.ts'
 export {
+  type ChatCompletion,
+  OpenAICompatibleClient,
+  type OpenAICompatibleOptions,
+} from './providers/openai-compatible.ts'
+export {
+  OPENROUTER_BASE_URL,
+  OPENROUTER_MODELS_URL,
+  type OpenRouterOptions,
+  OpenRouterProvider,
+} from './providers/openrouter.ts'
+export {
   type Recording,
   RecordingProvider,
   ReplayProvider,
