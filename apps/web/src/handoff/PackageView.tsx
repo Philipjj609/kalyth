@@ -10,7 +10,7 @@ import {
   StatusBadge,
   TypeLabel,
 } from '../components/badges.tsx'
-import { CopyButton, Panel } from '../components/ui.tsx'
+import { CopyButton, Panel, ScrollRegion } from '../components/ui.tsx'
 import { cn } from '../lib/cn.ts'
 import { plural, shortId, shortSha } from '../model/format.ts'
 import {
@@ -67,9 +67,13 @@ function EvidenceList({ evidence }: { evidence: ContextItem['evidence'] }) {
         <li key={e.id} className="min-w-0 text-xs">
           <code className="break-all font-mono text-[11px] text-fg-muted">{e.location}</code>
           {e.excerpt !== null && (
-            <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-mono text-[11.5px] text-fg leading-relaxed scrollbar-thin">
+            <ScrollRegion
+              as="pre"
+              label={`Excerpt from ${e.location}`}
+              className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-mono text-[11.5px] text-fg leading-relaxed scrollbar-thin"
+            >
               {e.excerpt}
-            </pre>
+            </ScrollRegion>
           )}
         </li>
       ))}
@@ -665,9 +669,13 @@ export function RetrievalHints({ pkg }: { pkg: ContextPackage }) {
                   <span className="min-w-0 flex-1 text-fg-muted text-xs">{hint.purpose}</span>
                   <CopyButton text={args} label={`Copy the arguments for ${hint.tool}`} />
                 </div>
-                <pre className="max-h-48 overflow-auto rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-mono text-[11.5px] text-fg leading-relaxed scrollbar-thin">
+                <ScrollRegion
+                  as="pre"
+                  label={`Arguments for ${hint.tool}`}
+                  className="max-h-48 overflow-auto rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-mono text-[11.5px] text-fg leading-relaxed scrollbar-thin"
+                >
                   {args}
-                </pre>
+                </ScrollRegion>
               </li>
             )
           })}

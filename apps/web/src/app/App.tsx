@@ -3,7 +3,7 @@ import { KeyRound } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import { createQueryClient } from '../api/queries.ts'
 import { ToastProvider } from '../components/toast.tsx'
-import { Button, Spinner, TooltipProvider } from '../components/ui.tsx'
+import { Button, ScrollRegion, Spinner, TooltipProvider } from '../components/ui.tsx'
 import { Shell } from './Shell.tsx'
 import { type SessionState, session, useSessionState } from './session.ts'
 
@@ -82,9 +82,13 @@ function SessionScreen({ state }: { state: SessionState }) {
             : 'The local server prints a link with a session token when it starts.'}{' '}
           Open the link it printed:
         </p>
-        <pre className="mt-3 overflow-x-auto rounded-md border border-border bg-surface-2 px-3 py-2 font-mono text-xs">
+        <ScrollRegion
+          as="pre"
+          label="The server link"
+          className="mt-3 overflow-x-auto rounded-md border border-border bg-surface-2 px-3 py-2 font-mono text-xs"
+        >
           kalyth ui: {window.location.origin}/#token=…
-        </pre>
+        </ScrollRegion>
         <form
           className="mt-5 space-y-2"
           onSubmit={(e) => {

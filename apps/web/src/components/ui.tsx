@@ -134,6 +134,36 @@ export function SectionTitle({ children, aside }: { children: ReactNode; aside?:
   )
 }
 
+/**
+ * A box whose content may scroll, reachable by keyboard: it takes focus, so arrow keys scroll it
+ * (WCAG 2.1.1). It is named, because a focusable region must say what it holds. Boxes that hold
+ * links or buttons do not need it; focus reaches their content anyway. Rendered as a labelled
+ * section (a region), or as a pre for code and excerpts.
+ */
+export function ScrollRegion({
+  label,
+  as = 'section',
+  className,
+  children,
+}: {
+  label: string
+  as?: 'section' | 'pre'
+  className?: string
+  children: ReactNode
+}) {
+  const Tag = as
+  return (
+    <Tag
+      aria-label={label}
+      {...(as === 'pre' ? { role: 'region' } : {})}
+      tabIndex={0}
+      className={cn('focus-visible:-outline-offset-2', className)}
+    >
+      {children}
+    </Tag>
+  )
+}
+
 export function Panel({
   className,
   children,

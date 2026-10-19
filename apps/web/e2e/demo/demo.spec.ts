@@ -125,3 +125,13 @@ test('the Handoff and Tasks views explain what runs only locally', async ({ page
   await expect(page.getByRole('main')).toContainText('The hosted demo has none')
   expect(await axeViolations(page)).toEqual([])
 })
+
+test('at the narrowest supported width, a run report passes the same checks', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await open(page, 'view=navigator')
+  await panel(page, 'Try a change request')
+    .getByRole('button', { name: 'Summarise the backend' })
+    .click()
+  await expect(page.getByRole('main')).toContainText('Recorded Nemotron run', { timeout: 15_000 })
+  expect(await axeViolations(page)).toEqual([])
+})

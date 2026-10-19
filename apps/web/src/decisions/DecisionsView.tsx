@@ -17,7 +17,7 @@ import {
   InquiryRoleBadge,
 } from '../components/badges.tsx'
 import { useToast } from '../components/toast.tsx'
-import { Button, EmptyState, Panel, Skeleton } from '../components/ui.tsx'
+import { Button, EmptyState, Panel, ScrollRegion, Skeleton } from '../components/ui.tsx'
 import { cn } from '../lib/cn.ts'
 import {
   type ComparedAlternative,
@@ -547,7 +547,7 @@ function ChangeMatrix({ comparison }: { comparison: Comparison }) {
       }
       aside={plural(comparison.changes.length, 'element')}
     >
-      <div className="overflow-x-auto">
+      <ScrollRegion label="What each alternative changes" className="overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse text-sm">
           <caption className="sr-only">
             Elements the alternatives change directly; each cell is the change one alternative makes
@@ -591,7 +591,7 @@ function ChangeMatrix({ comparison }: { comparison: Comparison }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollRegion>
     </Panel>
   )
 }

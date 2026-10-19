@@ -9,7 +9,7 @@ import {
   TypeLabel,
   VerificationBadge,
 } from '../components/badges.tsx'
-import { CopyButton, SectionTitle } from '../components/ui.tsx'
+import { CopyButton, ScrollRegion, SectionTitle } from '../components/ui.tsx'
 import { plural, shortId, shortSha } from '../model/format.ts'
 import { reportsNewestFirst, type TaskReport, taskStatusMeta, taskTrailer } from '../model/tasks.ts'
 import { LeaseLine, type TaskLinks, When } from './TaskBoard.tsx'
@@ -29,7 +29,10 @@ export function ReportedTests({ tests }: { tests: TaskReport['tests'] }) {
       {tests.length === 0 ? (
         <p className="text-fg-subtle text-xs">None reported.</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border scrollbar-thin">
+        <ScrollRegion
+          label="Reported tests"
+          className="overflow-x-auto rounded-md border border-border scrollbar-thin"
+        >
           <table aria-describedby={captionId} className="w-full text-left text-xs">
             <thead className="bg-surface-2 text-fg-muted">
               <tr>
@@ -66,7 +69,7 @@ export function ReportedTests({ tests }: { tests: TaskReport['tests'] }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollRegion>
       )}
     </div>
   )

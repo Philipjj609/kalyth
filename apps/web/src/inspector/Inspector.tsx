@@ -15,7 +15,15 @@ import {
   StanceBadge,
   TypeLabel,
 } from '../components/badges.tsx'
-import { Button, CopyButton, EmptyState, SectionTitle, Skeleton, Tip } from '../components/ui.tsx'
+import {
+  Button,
+  CopyButton,
+  EmptyState,
+  ScrollRegion,
+  SectionTitle,
+  Skeleton,
+  Tip,
+} from '../components/ui.tsx'
 import { cn } from '../lib/cn.ts'
 import { absoluteTime, humanize, plural, shortId, shortSha } from '../model/format.ts'
 import { objectLabel } from '../model/labels.ts'
@@ -514,9 +522,13 @@ function EvidenceCard({
           </span>
         </p>
       ) : evidence.excerptText !== null ? (
-        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words border-border border-t bg-surface-2 px-2.5 py-1.5 font-mono text-[11.5px] text-fg leading-relaxed scrollbar-thin">
+        <ScrollRegion
+          as="pre"
+          label="Source excerpt"
+          className="max-h-40 overflow-auto whitespace-pre-wrap break-words border-border border-t bg-surface-2 px-2.5 py-1.5 font-mono text-[11.5px] text-fg leading-relaxed scrollbar-thin"
+        >
           {evidence.excerptText}
-        </pre>
+        </ScrollRegion>
       ) : (
         <p className="border-border border-t px-2.5 py-1.5 text-fg-subtle text-xs">
           No excerpt recorded.

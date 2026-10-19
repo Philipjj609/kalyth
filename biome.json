@@ -9,6 +9,7 @@
       "!**/test-results",
       "!**/playwright-report",
       "!pnpm-lock.yaml",
+      "!deploy/demo/template.json",
       "!.claude"
     ]
   },

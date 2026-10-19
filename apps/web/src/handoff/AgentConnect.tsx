@@ -6,7 +6,15 @@ import { useSessionMode } from '../app/session.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import { StatusBadge } from '../components/badges.tsx'
 import { useToast } from '../components/toast.tsx'
-import { Button, CopyButton, EmptyState, Panel, Skeleton, Spinner } from '../components/ui.tsx'
+import {
+  Button,
+  CopyButton,
+  EmptyState,
+  Panel,
+  ScrollRegion,
+  Skeleton,
+  Spinner,
+} from '../components/ui.tsx'
 import { cn } from '../lib/cn.ts'
 import { absoluteTime, relativeTime } from '../model/format.ts'
 import {
@@ -51,14 +59,16 @@ export function Snippet({
         </span>
       </div>
       {children}
-      <pre
+      <ScrollRegion
+        as="pre"
+        label={title}
         className={cn(
           'overflow-x-auto rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-mono text-[11.5px] text-fg leading-relaxed scrollbar-thin',
           wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'whitespace-pre',
         )}
       >
         {text}
-      </pre>
+      </ScrollRegion>
     </div>
   )
 }

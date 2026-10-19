@@ -16,3 +16,16 @@ for (const colorScheme of ['light', 'dark'] as const) {
     }
   })
 }
+
+// At the narrowest width the workbench supports, wide tables and code scroll; each scrolling box
+// must still be reachable by keyboard.
+test.describe('narrowest supported width', () => {
+  test.use({ viewport: { width: 1024, height: 768 } })
+  for (const view of VIEWS) {
+    test(`${view} view`, async ({ page }) => {
+      await open(page, `view=${view}`)
+      await page.waitForLoadState('networkidle')
+      expect(await axeViolations(page)).toEqual([])
+    })
+  }
+})

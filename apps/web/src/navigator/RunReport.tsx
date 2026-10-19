@@ -2,7 +2,7 @@ import type { GroundingReport, ModelCallRecord, NavigatorRun } from '@kalyth/con
 import { ShieldCheck, ShieldX } from 'lucide-react'
 import { type ReactNode, useId } from 'react'
 import { CallOutcomeBadge } from '../components/badges.tsx'
-import { Panel } from '../components/ui.tsx'
+import { Panel, ScrollRegion } from '../components/ui.tsx'
 import { cn } from '../lib/cn.ts'
 import { plural } from '../model/format.ts'
 import {
@@ -267,7 +267,7 @@ export function ModelCallsPanel({
       {calls.length === 0 ? (
         <p className="p-4 text-fg-muted text-sm">No model call was made.</p>
       ) : (
-        <div className="overflow-x-auto scrollbar-thin">
+        <ScrollRegion label="Model calls" className="overflow-x-auto scrollbar-thin">
           <table className="w-full border-separate border-spacing-0 text-sm">
             <caption className="sr-only">
               Model calls in order, with outcome, usage and cost
@@ -348,7 +348,7 @@ export function ModelCallsPanel({
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollRegion>
       )}
     </Panel>
   )
