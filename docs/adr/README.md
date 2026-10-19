@@ -25,3 +25,4 @@ cite those entries where a decision came from review.
 | [0017](0017-bounded-citation-normalisation.md) | Bounded citation normalisation | Accepted |
 | [0018](0018-citations-by-evidence-span.md) | Citations by evidence span | Proposed |
 | [0019](0019-hosted-demo.md) | Hosted demo: per-visitor sandboxes, recorded runs first, capped live inference | Accepted with amendments (D7, KAL-20261019-029) |
+| [0020](0020-product-direction-workspace-and-change-thread.md) | Product direction: one workspace, change threads and the Drafting Table language | Accepted (KAL-20261019-034) |
