@@ -3,6 +3,8 @@ import type { TypeRegistry } from '../registry/registry.ts'
 
 /** Element types a module defines; changing one changes its module (ADR 0010). */
 const DEFINED_IN_MODULE = new Set(['software.Endpoint', 'software.DataEntity'])
+/** Relations that say which code uses a data entity (ADR 0021). */
+const DATA_ACCESS = new Set(['reads', 'writes'])
 
 export interface ImpactTrace {
   elements: ImpactedElement[]
@@ -14,6 +16,10 @@ export interface ImpactTrace {
  * direction their type's impact rule declares, plus definitional containment from endpoints and
  * data entities to their module. Breadth-first from all seeds at once, so each element gets a
  * shortest path from its nearest seed; ties are broken by relation id, so results are stable.
+ *
+ * For a data entity, definitional containment is only a fallback (ADR 0021): when an active
+ * `reads` or `writes` relation says which code uses the entity, impact follows those relations
+ * instead of every importer of the module that happens to define it.
  */
 export function traceImpact(
   objects: readonly ObjectVersion[],
@@ -23,6 +29,9 @@ export function traceImpact(
   limits: { maxDepth: number; maxNodes: number },
 ): ImpactTrace {
   const byId = new Map(objects.map((o) => [o.id, o]))
+  const accessed = new Set(
+    relations.filter((r) => r.lifecycle === 'active' && DATA_ACCESS.has(r.type)).map((r) => r.to),
+  )
   const next = new Map<string, ImpactStep[]>()
   const add = (at: string, step: ImpactStep) => {
     const list = next.get(at)
@@ -39,10 +48,12 @@ export function traceImpact(
     if (rule === 'targetToSource' || rule === 'both') {
       add(r.to, { ...base, from: r.to, to: r.from, direction: 'reverse', rule: 'relation' })
     }
+    const defined = byId.get(r.to)?.type ?? ''
     if (
       r.type === 'contains' &&
       byId.get(r.from)?.type === 'software.Module' &&
-      DEFINED_IN_MODULE.has(byId.get(r.to)?.type ?? '')
+      DEFINED_IN_MODULE.has(defined) &&
+      !(defined === 'software.DataEntity' && accessed.has(r.to))
     ) {
       add(r.to, { ...base, from: r.to, to: r.from, direction: 'reverse', rule: 'definition' })
     }

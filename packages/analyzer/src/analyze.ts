@@ -1,4 +1,5 @@
 import { posix } from 'node:path'
+import { MAX_CALL_DEPTH, PythonModel, type SourceRef } from './data-access.ts'
 import {
   ANALYZER,
   type EvidenceSpan,
@@ -11,6 +12,7 @@ import { countSyntaxErrors, languageOf, loadParsers } from './parsers.ts'
 import {
   extractPython,
   makePythonResolver,
+  type PyClass,
   type PyFile,
   type PyRoute,
   type Value,
@@ -32,6 +34,7 @@ export interface AnalysisResult {
 
 const MANIFESTS = new Set(['pyproject.toml', 'package.json', 'tsconfig.json'])
 const MAX_FILE_BYTES = 512 * 1024
+const MAX_PARAMETERS = 100
 
 export interface AnalyzeOptions {
   git: GitRepository
@@ -260,12 +263,20 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
     return result.length > 0 ? result : undefined
   }
 
+  // Data access, entity references and endpoint parameters (ADR 0021).
+  const isTable = (cls: PyClass) => cls.keywords.table === 'True'
+  const model = new PythonModel(pyFiles, importMaps, (_file, cls) =>
+    isTable(cls) ? `entity:${cls.name}` : undefined,
+  )
+  const spanOf = (ref: SourceRef) =>
+    facts.span(ref.file, ref.lines.start, ref.lines.end, { symbol: ref.symbol, excerpt: true })
+
   // FastAPI serves "/items/" and "/items" as different paths, so trailing slashes are kept.
   const joinPath = (...parts: string[]) => `/${parts.join('')}`.replace(/\/{2,}/g, '/')
   for (const [file, py] of pyFiles) {
     for (const route of py.routes) addRoute(file, route)
     for (const cls of py.classes) {
-      if (cls.keywords.table !== 'True') continue
+      if (!isTable(cls)) continue
       const span = facts.span(file, cls.lines.start, cls.lines.end, {
         symbol: cls.name,
         excerpt: true,
@@ -298,20 +309,32 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
       symbol: route.handler,
       excerpt: true,
     })
+    const root: SourceRef = { file, lines: route.lines, symbol: route.handler }
+    const accesses = model.accesses(file, route.fn, root)
     for (const m of mountsFound) {
       const path = joinPath(m.prefix, routePath)
       const key = `endpoint:${route.method} ${path}`
+      const parameters = model.parameters(file, route.fn, path).slice(0, MAX_PARAMETERS)
       facts.object(
         key,
         'software.Endpoint',
-        { method: route.method, path, handler: `${file}:${route.handler}` },
+        { method: route.method, path, handler: `${file}:${route.handler}`, parameters },
         [span],
       )
       facts.relation('exposes', moduleKey(file), key, [span])
+      for (const access of accesses)
+        facts.relation(access.kind, key, access.entity, access.support.map(spanOf))
       if (m.conditional) bump('conditionallyMountedRoutes')
       bump('endpoints')
     }
   }
+
+  const entityReferences = model.references()
+  for (const ref of entityReferences.references)
+    facts.relation('references', ref.from, ref.to, [spanOf(ref.support)])
+  if (entityReferences.unresolved > 0)
+    bump('unresolvedEntityReferences', entityReferences.unresolved)
+  if (model.unfollowed.size > 0) bump('unfollowedCalls', model.unfollowed.size)
 
   // ---------- TypeScript imports and libraries ----------
   const resolveTs = makeTypeScriptResolver(paths, text)
@@ -333,6 +356,8 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
   const relations = [...facts.relations.values()].filter(
     (r) => facts.objects.has(r.from) && facts.objects.has(r.to),
   )
+  for (const type of ['reads', 'writes', 'references'])
+    stats[`${type}Relations`] = relations.filter((r) => r.type === type).length
   for (const [k, n] of Object.entries({
     unmountedRoutes: 'routes not reachable from a FastAPI app; their paths are relative',
     conditionallyMountedRoutes:
@@ -343,6 +368,9 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
     unresolvedTypeScriptImports:
       'TypeScript imports that did not resolve to a source file (for example served assets)',
     unresolvedIncludes: 'include_router calls whose router could not be identified',
+    unresolvedEntityReferences:
+      'foreign keys or relationships of SQLModel tables whose target entity could not be identified',
+    unfollowedCalls: `functions ${MAX_CALL_DEPTH} calls below a route handler whose own calls were not followed for data access`,
   })) {
     if (stats[k]) limitations.push(`${stats[k]} ${n}`)
   }
@@ -359,7 +387,10 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
     coverage:
       `${ANALYZER.tool} ${ANALYZER.toolVersion}: static tree-sitter analysis of ${stats.pythonFiles ?? 0} Python and ` +
       `${stats.typescriptFiles ?? 0} TypeScript files tracked at ${commit}, plus pyproject.toml, package.json and tsconfig.json manifests. ` +
-      'Covers modules, imports, external libraries, FastAPI routes and SQLModel tables. No code was executed; runtime behaviour is not observed.',
+      'Covers modules, imports, external libraries, FastAPI routes with their request parameters, and SQLModel tables. ' +
+      `Reads and writes of tables by routes are taken from SQLModel and SQLAlchemy call patterns in each handler and in repository functions it calls, up to ${MAX_CALL_DEPTH} levels deep; ` +
+      'FastAPI dependencies, loops and untyped variables are not followed. References between tables come from foreign keys and scalar relationships. ' +
+      'No code was executed; runtime behaviour is not observed.',
     limitations,
     stats: { ...stats, objects: objects.length, relations: relations.length },
   }

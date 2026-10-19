@@ -102,3 +102,83 @@ describe('impact traversal (ADR 0010)', () => {
     expect(byId.crud).toMatchObject({ seed: 'item', depth: 2 })
   })
 })
+
+describe('impact through data access (ADR 0021)', () => {
+  // Two entities defined in one module. Endpoints say which of them they read and write; the
+  // utils module imports models for an unrelated class, as the FastAPI template does.
+  const objects = [
+    obj('models', 'software.Module', { path: 'app/models.py' }),
+    obj('items', 'software.Module', { path: 'app/api/items.py' }),
+    obj('users', 'software.Module', { path: 'app/api/users.py' }),
+    obj('utils', 'software.Module', { path: 'app/api/utils.py' }),
+    obj('item', 'software.DataEntity', { name: 'Item' }),
+    obj('user', 'software.DataEntity', { name: 'User' }),
+    obj('tag', 'software.DataEntity', { name: 'Tag' }),
+    obj('list_items', 'software.Endpoint', { method: 'GET', path: '/items/' }),
+    obj('create_user', 'software.Endpoint', { method: 'POST', path: '/users/' }),
+    obj('health', 'software.Endpoint', { method: 'GET', path: '/utils/health-check/' }),
+  ]
+  const base = [
+    rel('a01', 'contains', 'models', 'item'),
+    rel('a02', 'contains', 'models', 'user'),
+    rel('a03', 'contains', 'models', 'tag'),
+    rel('a04', 'dependsOn', 'items', 'models'),
+    rel('a05', 'dependsOn', 'users', 'models'),
+    rel('a06', 'dependsOn', 'utils', 'models'),
+    rel('a07', 'exposes', 'items', 'list_items'),
+    rel('a08', 'exposes', 'users', 'create_user'),
+    rel('a09', 'exposes', 'utils', 'health'),
+    rel('a10', 'reads', 'list_items', 'item'),
+    rel('a11', 'writes', 'create_user', 'user'),
+    rel('a12', 'references', 'item', 'user'),
+  ]
+  const run = (relations: RelationVersion[], seed: string) => {
+    const result = traceImpact(objects, relations, defaultRegistry, [seed], {
+      maxDepth: 6,
+      maxNodes: 100,
+    })
+    return Object.fromEntries(result.elements.map((e) => [e.id, e]))
+  }
+
+  it('follows reads and writes instead of the defining module when they exist', () => {
+    const fromItem = run(base, 'item')
+    expect(Object.keys(fromItem).sort()).toEqual(['item', 'items', 'list_items'])
+    expect(fromItem.list_items?.path.map((s) => [s.type, s.direction, s.rule])).toEqual([
+      ['reads', 'reverse', 'relation'],
+    ])
+    // The endpoint still leads to its own module by definition, and the module to its endpoints.
+    expect(fromItem.items?.path.at(-1)).toMatchObject({ type: 'exposes', direction: 'reverse' })
+  })
+
+  it('follows references from the referenced entity to the one that refers to it', () => {
+    const fromUser = run(base, 'user')
+    expect(Object.keys(fromUser).sort()).toEqual(
+      ['create_user', 'item', 'items', 'list_items', 'user', 'users'].sort(),
+    )
+    expect(fromUser.item?.path.map((s) => [s.type, s.direction])).toEqual([
+      ['references', 'reverse'],
+    ])
+    expect(fromUser).not.toHaveProperty('health')
+    expect(fromUser).not.toHaveProperty('models')
+  })
+
+  it('falls back to the defining module for an entity without access relations', () => {
+    const fromTag = run(base, 'tag')
+    expect(fromTag.models?.path).toEqual([
+      expect.objectContaining({ relationId: 'a03', rule: 'definition' }),
+    ])
+    expect(fromTag).toHaveProperty('health')
+  })
+
+  it('falls back again when the access relations are retired', () => {
+    const retired = base.map((r) =>
+      r.type === 'reads' ? rel(r.id, r.type, r.from, r.to, 'retired') : r,
+    )
+    const fromItem = run(retired, 'item')
+    expect(fromItem.models?.path).toEqual([
+      expect.objectContaining({ relationId: 'a01', rule: 'definition' }),
+    ])
+    expect(fromItem).toHaveProperty('health')
+    expect(run(retired, 'item')).toEqual(fromItem)
+  })
+})

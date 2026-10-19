@@ -26,3 +26,4 @@ cite those entries where a decision came from review.
 | [0018](0018-citations-by-evidence-span.md) | Citations by evidence span | Proposed |
 | [0019](0019-hosted-demo.md) | Hosted demo: per-visitor sandboxes, recorded runs first, capped live inference | Accepted with amendments (D7, KAL-20261019-029) |
 | [0020](0020-product-direction-workspace-and-change-thread.md) | Product direction: one workspace, change threads and the Drafting Table language | Accepted (KAL-20261019-034) |
+| [0021](0021-data-access-relations-and-finer-impact.md) | Data access relations, entity references, endpoint parameters and finer impact | Proposed (technical lead review) |
