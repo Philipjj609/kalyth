@@ -303,7 +303,9 @@ export const relationTypes: RelationTypeDef[] = [
     description: 'The source writes the target data.',
     from: [...CODE_UNITS, 'software.Endpoint'],
     to: ['software.DataEntity'],
-    impact: 'both',
+    // A change to the data affects the code that writes it. Not the other way: through a writer
+    // of two entities, one entity's impact would reach the other's readers (ADR 0021).
+    impact: 'targetToSource',
   },
   {
     ...base,

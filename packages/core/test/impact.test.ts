@@ -162,6 +162,13 @@ describe('impact through data access (ADR 0021)', () => {
     expect(fromUser).not.toHaveProperty('models')
   })
 
+  it('does not chain from one entity to another through a code unit that writes both', () => {
+    const both = [...base, rel('a13', 'writes', 'create_user', 'tag')]
+    const fromTag = run(both, 'tag')
+    expect(Object.keys(fromTag).sort()).toEqual(['create_user', 'tag', 'users'].sort())
+    expect(fromTag).not.toHaveProperty('user')
+  })
+
   it('falls back to the defining module for an entity without access relations', () => {
     const fromTag = run(base, 'tag')
     expect(fromTag.models?.path).toEqual([

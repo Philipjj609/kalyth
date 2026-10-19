@@ -1,6 +1,7 @@
 # 0021. Data access relations and finer impact
 
-Date: 2026-10-19. Status: Proposed (technical lead review). Builds on ADRs 0005, 0008, 0009 and
+Date: 2026-10-19. Status: accepted (technical lead); the `writes` impact rule awaits ChatGPT's
+review. Builds on ADRs 0005, 0008, 0009 and
 0010; lifts the "reads and writes are not inferred yet" limit of ADR 0009.
 
 ## Context
@@ -111,6 +112,14 @@ analyzer could not resolve. When access relations exist, impact follows them and
 instead of the defining module's importers. Endpoints keep the definition rule, and the traversal
 stays breadth-first with ties broken by relation id.
 
+**`writes` propagates from the data to its writers only** (technical lead, 19 October). Its impact
+rule changes from `both` to `targetToSource`, like `reads`. A change to an entity affects the code
+that writes it. With `both`, impact also ran from a writer to every other entity it writes, then to
+that entity's readers. So `Item` reached `User` and all of `User`'s readers through
+`DELETE /api/v1/users/{user_id}`, which deletes a user's items. The cost: seeding a writer no longer
+reaches the data it writes. A change to how an endpoint writes data is a behavioural effect that
+static impact does not claim to follow. For ChatGPT's review.
+
 **Ingest and version.** Ingest matches existing `reads`, `writes` and `references` relations by
 natural key, so re-ingesting a commit is still idempotent. The analyzer's version becomes 0.2.0.
 The coverage note names the heuristics and their limits.
@@ -136,17 +145,16 @@ The coverage note names the heuristics and their limits.
 
   | | Before | After |
   |---|---|---|
-  | Elements reached from `User` | 49 | 29 |
-  | Elements reached from `Item` | 49 | 28 |
+  | Elements reached from `User` | 49 | 29 (21 endpoints) |
+  | Elements reached from `Item` | 49 | 20 (15 endpoints) |
   | Health-check or test-email reached | from both | from neither |
 
   The ingest adds 15 `reads`, 14 `writes` and 1 `references` relation (`Item` references `User`),
-  for 852 relations instead of 822. Every endpoint now carries its parameters.
-- **Remaining over-approximation.** `writes` has impact `both` (ADR 0005), so impact can chain
-  through a writer. `Item` reaches `DELETE /api/v1/users/{user_id}`, which deletes items. That
-  endpoint also writes `User`, so `Item` reaches `User` and everything that reads it. With
-  `writes` as `targetToSource`, `Item` would reach 20 elements (15 endpoints) while `User` stays at
-  29. Changing an impact rule is a registry contract change and is left to the technical lead.
+  for 852 relations instead of 822. Every endpoint now carries its parameters. Only `User` reaches
+  the login, password-recovery and private endpoints.
+- **Remaining over-approximation.** An endpoint still reaches its module, and the module every
+  endpoint it exposes. `Item` reaches `DELETE /api/v1/users/{user_id}`, which deletes items, and
+  through `users.py` the other user endpoints.
 - **Recall.** For an entity with access relations, code that is not a route handler is no longer
   reached through the models module. This includes tests, scripts, `init_db` and the crud module
   itself. Module-level access relations would restore it.
