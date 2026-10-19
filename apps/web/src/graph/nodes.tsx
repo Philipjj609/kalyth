@@ -85,8 +85,9 @@ function nodeFrame(basis: string, selected: boolean, holdsSelection: boolean, di
   const meta = basisMeta(basis)
   return {
     className: cn(
-      'relative h-full w-full overflow-hidden rounded-[10px] bg-surface text-left shadow-panel transition-[opacity,box-shadow] duration-150',
-      dimmed && 'opacity-45',
+      'relative h-full w-full overflow-hidden rounded-[10px] bg-surface text-left shadow-panel transition-[filter,box-shadow] duration-150',
+      // Unrelated nodes turn grey rather than fade, so their text keeps its contrast (WCAG 1.4.3).
+      dimmed && 'bg-surface-2 grayscale',
       (selected || holdsSelection) && 'shadow-pop',
     ),
     style: {
@@ -96,7 +97,9 @@ function nodeFrame(basis: string, selected: boolean, holdsSelection: boolean, di
         ? 'var(--k-accent)'
         : holdsSelection
           ? 'var(--k-focus)'
-          : 'var(--k-border-strong)',
+          : dimmed
+            ? 'var(--k-border)'
+            : 'var(--k-border-strong)',
     },
   }
 }

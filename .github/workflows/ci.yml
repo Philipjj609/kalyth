@@ -27,6 +27,9 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # Browser tests (G4): the main flows by keyboard and axe accessibility checks, with the
+      # runner's preinstalled Chrome and the mock provider.
+      - run: pnpm test:e2e
 
   # Scans the full git history with the gitleaks CLI (checksum-verified release binary).
   secrets:

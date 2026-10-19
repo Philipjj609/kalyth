@@ -59,7 +59,7 @@
   --k-border-strong: #cbd1da;
   --k-fg: #151922;
   --k-fg-muted: #4f5766;
-  --k-fg-subtle: #737c8c;
+  --k-fg-subtle: #626a78;
   --k-accent: #3651d4;
   --k-accent-hover: #2c45bd;
   --k-accent-fg: #ffffff;
@@ -138,7 +138,7 @@
     --k-border-strong: #343c4c;
     --k-fg: #e5e8ee;
     --k-fg-muted: #a2aab8;
-    --k-fg-subtle: #7a8394;
+    --k-fg-subtle: #88909f;
     --k-accent: #7d95ff;
     --k-accent-hover: #95a8ff;
     --k-accent-fg: #0b0e14;
@@ -213,7 +213,7 @@
   --k-border-strong: #343c4c;
   --k-fg: #e5e8ee;
   --k-fg-muted: #a2aab8;
-  --k-fg-subtle: #7a8394;
+  --k-fg-subtle: #88909f;
   --k-accent: #7d95ff;
   --k-accent-hover: #95a8ff;
   --k-accent-fg: #0b0e14;
@@ -448,13 +448,25 @@
   outline: none;
 }
 
-.kalyth-flow .react-flow__edge:focus-visible .kalyth-edge-path,
+/* Each edge sets --edge-width and --edge-opacity; the states below override them. */
+.kalyth-flow .kalyth-edge-path {
+  stroke-width: var(--edge-width, 1.6);
+  opacity: var(--edge-opacity, 1);
+}
+
 .kalyth-flow .react-flow__edge.selected .kalyth-edge-path {
   stroke-width: 3;
 }
 
 .kalyth-flow .react-flow__edge:hover .kalyth-edge-path {
   stroke-width: 2.6;
+}
+
+/* Keyboard focus: thicker, with a halo in the focus colour, so it differs from selection. */
+.kalyth-flow .react-flow__edge:focus-visible .kalyth-edge-path {
+  stroke-width: 3.5;
+  opacity: 1;
+  filter: drop-shadow(0 0 2px var(--k-focus));
 }
 
 .kalyth-flow .react-flow__controls {

@@ -266,7 +266,7 @@ function ProjectWorkbench({
                   <Tabs.Trigger
                     key={view}
                     value={view}
-                    className="group relative inline-flex items-center gap-1.5 px-2.5 font-medium text-fg-muted text-sm outline-none transition-colors hover:text-fg focus-visible:bg-surface-2 data-[state=active]:text-fg"
+                    className="group relative inline-flex items-center gap-1.5 px-2.5 font-medium text-fg-muted text-sm transition-colors hover:text-fg focus-visible:bg-surface-2 focus-visible:-outline-offset-2 data-[state=active]:text-fg"
                     title={`${label} (${i + 1})`}
                   >
                     <Icon aria-hidden className="size-4" />
@@ -296,51 +296,57 @@ function ProjectWorkbench({
             <main className="flex min-w-0 flex-1 flex-col">
               <Tabs.Content
                 value="overview"
-                className="relative min-h-0 flex-1 overflow-auto outline-none"
+                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
               >
                 <OverviewView />
               </Tabs.Content>
-              <Tabs.Content value="graph" className="min-h-0 flex-1 outline-none">
+              <Tabs.Content
+                value="graph"
+                className="min-h-0 flex-1 focus-visible:-outline-offset-2"
+              >
                 <Suspense fallback={<ViewLoading label="Loading the graph" />}>
                   <GraphView />
                 </Suspense>
               </Tabs.Content>
-              <Tabs.Content value="records" className="flex min-h-0 flex-1 flex-col outline-none">
+              <Tabs.Content
+                value="records"
+                className="flex min-h-0 flex-1 flex-col focus-visible:-outline-offset-2"
+              >
                 <RecordsView />
               </Tabs.Content>
               <Tabs.Content
                 value="proposals"
-                className="relative min-h-0 flex-1 overflow-auto outline-none"
+                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
               >
                 <ProposalsView />
               </Tabs.Content>
               <Tabs.Content
                 value="history"
-                className="relative min-h-0 flex-1 overflow-auto outline-none"
+                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
               >
                 <HistoryView />
               </Tabs.Content>
               <Tabs.Content
                 value="navigator"
-                className="relative min-h-0 flex-1 overflow-auto outline-none"
+                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
               >
                 <NavigatorView />
               </Tabs.Content>
               <Tabs.Content
                 value="handoff"
-                className="relative min-h-0 flex-1 overflow-auto outline-none"
+                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
               >
                 <HandoffView />
               </Tabs.Content>
               <Tabs.Content
                 value="tasks"
-                className="relative min-h-0 flex-1 overflow-auto outline-none"
+                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
               >
                 <TasksView />
               </Tabs.Content>
               <Tabs.Content
                 value="decisions"
-                className="relative min-h-0 flex-1 overflow-auto outline-none"
+                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
               >
                 <DecisionsView />
               </Tabs.Content>

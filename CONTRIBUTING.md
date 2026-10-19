@@ -6,7 +6,9 @@ Thank you for helping. Kalyth is early; the kernel contracts are stabilising and
 
 1. Open an issue describing the problem or proposal before large changes.
 2. Keep pull requests to one coherent change, with tests.
-3. Run `pnpm check` locally; CI runs the same checks on Linux and Windows.
+3. Run `pnpm check` locally. For UI changes, also run `pnpm build && pnpm test:e2e`: browser tests
+   of the main flows by keyboard, with axe accessibility checks in both themes. They use the
+   installed Chrome and the mock provider. CI runs all of these on Linux and Windows.
 4. If you change a contract or an invariant, add or update an ADR in `docs/adr`.
 
 ## Style

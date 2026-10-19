@@ -190,14 +190,25 @@ export function RefChip({
 }
 
 /** A link-styled button that selects a record into the Inspector. */
-export function RecordLink({ id, children }: { id: string; children?: ReactNode }) {
+export function RecordLink({
+  id,
+  children,
+  className,
+}: {
+  id: string
+  children?: ReactNode
+  className?: string
+}) {
   const wb = useWorkbench()
   const name = wb.model?.nameOf(id)
   return (
     <button
       type="button"
       onClick={() => wb.select(id)}
-      className="max-w-full truncate rounded-sm text-left text-accent underline-offset-2 hover:underline"
+      className={cn(
+        'max-w-full truncate rounded-sm text-left text-accent underline-offset-2 hover:underline',
+        className,
+      )}
       title={id}
     >
       {children ?? name ?? shortId(id)}
@@ -208,6 +219,7 @@ export function RecordLink({ id, children }: { id: string; children?: ReactNode 
 /**
  * A link to a place in the workbench. It has a real href, so it can be copied or opened elsewhere;
  * a plain click navigates in place without reloading.
+ * It is underlined, because it usually sits in a sentence and colour alone must not mark it.
  */
 export function AppLink({
   to,
@@ -229,7 +241,10 @@ export function AppLink({
         e.preventDefault()
         navigate(to)
       }}
-      className={cn('rounded-sm text-accent underline-offset-2 hover:underline', className)}
+      className={cn(
+        'rounded-sm text-accent underline decoration-1 underline-offset-2 hover:decoration-2',
+        className,
+      )}
       {...rest}
     >
       {children}

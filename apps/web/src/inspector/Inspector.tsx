@@ -581,16 +581,16 @@ function RelationList({
             {direction === 'in' ? `← ${type}` : `${type} →`}
             <span className="text-fg-subtle">{list.length}</span>
           </p>
-          <ul className="space-y-0.5 pl-5">
+          <ul className="pl-5">
             {list.slice(0, LIST_LIMIT).map((r) => {
               const other = direction === 'out' ? r.to : r.from
               return (
                 <li key={r.id} className="flex min-w-0 items-center gap-1.5 text-sm">
-                  <RecordLink id={other} />
+                  <RecordLink id={other} className="py-0.5" />
                   <button
                     type="button"
                     onClick={() => wb.select(r.id)}
-                    className="shrink-0 rounded px-1 text-2xs text-fg-subtle hover:bg-surface-2 hover:text-fg"
+                    className="inline-flex h-6 shrink-0 items-center rounded px-1 text-2xs text-fg-subtle hover:bg-surface-2 hover:text-fg"
                     aria-label={`Inspect the ${type} relation`}
                   >
                     {basisMeta(r.claim.basis).short}

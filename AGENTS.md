@@ -23,6 +23,7 @@ These conventions apply to any agent (or person) changing this repository.
 |---|---|
 | `pnpm check` | Lint, typecheck and test |
 | `pnpm test` | Tests only |
+| `pnpm test:e2e` | Browser tests of the main flows and accessibility checks (run `pnpm build` first; needs Chrome) |
 | `pnpm format` | Apply Biome formatting and safe fixes |
 | `pnpm dev:server` | Local HTTP API |
 | `pnpm mcp:stdio` | Local MCP server over stdio |

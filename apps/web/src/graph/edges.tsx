@@ -8,7 +8,7 @@ import {
   Position,
   useInternalNode,
 } from '@xyflow/react'
-import { memo } from 'react'
+import { type CSSProperties, memo } from 'react'
 import { basisMeta, relationMeta } from '../model/semantics.ts'
 import { edgeAnchors, type Rect, type Side } from './geometry.ts'
 
@@ -84,13 +84,17 @@ export const RelationEdge = memo(function RelationEdge({
         className="kalyth-edge-path"
         markerEnd={`url(#${markerId(known ? data.relationType : 'other')})`}
         interactionWidth={16}
-        style={{
-          stroke: color,
-          strokeWidth: selected ? 3 : data.aggregated ? 2 : 1.6,
-          strokeDasharray: dash,
-          strokeLinecap: 'round',
-          opacity: data.dimmed ? 0.18 : 1,
-        }}
+        // Width and opacity go through CSS variables so the selected, hover and focus styles in
+        // styles.css can override them.
+        style={
+          {
+            stroke: color,
+            '--edge-width': selected ? 3 : data.aggregated ? 2 : 1.6,
+            strokeDasharray: dash,
+            strokeLinecap: 'round',
+            '--edge-opacity': data.dimmed ? 0.18 : 1,
+          } as CSSProperties
+        }
       />
       {data.count > 1 && !data.dimmed && (
         <EdgeLabelRenderer>

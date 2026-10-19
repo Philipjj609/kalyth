@@ -107,14 +107,14 @@ export function SituationView({
                 {d.alternatives.length === 0 ? (
                   <p className="text-fg-subtle text-xs">No alternatives yet.</p>
                 ) : (
-                  <ul className="mt-1 space-y-0.5 border-border border-l pl-2.5">
+                  <ul className="mt-0.5 border-border border-l pl-2.5">
                     {d.alternatives.map((a) => (
                       <li key={a.id} className="flex min-w-0 items-center gap-1.5 text-xs">
                         <RecordButton
                           id={a.id}
                           label={a.title || nameOf(a.id) || shortId(a.id)}
                           onInspect={onInspect}
-                          className="min-w-0 truncate"
+                          className="min-w-0 truncate py-1"
                         />
                         <DecisionStatusBadge status={a.status} size="sm" className="ml-auto" />
                       </li>
@@ -143,7 +143,7 @@ export function SituationView({
                   className="block text-sm"
                 />
                 {q.concerns.length > 0 && (
-                  <p className="flex flex-wrap gap-x-1.5 text-fg-muted text-xs">
+                  <p className="flex flex-wrap items-center gap-x-1.5 text-fg-muted text-xs">
                     <span className="text-fg-subtle">about</span>
                     {q.concerns.map((c) => (
                       <RecordButton
@@ -151,6 +151,7 @@ export function SituationView({
                         id={c}
                         label={nameOf(c) ?? shortId(c)}
                         onInspect={onInspect}
+                        className="py-1"
                       />
                     ))}
                   </p>

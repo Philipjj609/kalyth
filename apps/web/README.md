@@ -142,6 +142,20 @@ schema is published.
 node project. Web tests are pure and run in node; a test that needs a DOM can opt in per file with
 a `@vitest-environment` comment.
 
+`pnpm test:e2e` runs the browser tests in `e2e/` with Playwright, after `pnpm build`. A global setup
+seeds the sample project into a throwaway database and starts the real server on a free port with
+the mock provider, a throwaway ledger and no provider keys. The tests drive the Chrome already
+installed, so no browser is downloaded. They cover G4's acceptance:
+
+- `accessibility.spec.ts`: axe's WCAG 2.2 A and AA rules on every view, in light and dark themes;
+- `focus.spec.ts`: the first 40 Tab stops of every view each show a focus indicator;
+- `keyboard.spec.ts`: the main flows by keyboard only (skip link, view switching, opening a record,
+  a graph node, rejecting and committing a proposal, a mock Navigator run, accepting an
+  alternative, and a past revision), with axe checks on the dialogs and other states they open.
+
+Automated rules find only part of what affects people; a review with a screen reader is still
+needed.
+
 ## The sample seed
 
 `apps/server/src/dev/sample.ts` creates "Sample: fullstack app" through the services: a system,

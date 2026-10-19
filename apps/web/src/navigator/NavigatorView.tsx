@@ -473,7 +473,7 @@ function RecentRuns({
                       <AppLink
                         to={{ run: run.id }}
                         aria-current={selected ? 'true' : undefined}
-                        className="block truncate font-medium"
+                        className="block truncate py-0.5 font-medium"
                       >
                         {RUN_KIND_LABEL[run.input.kind] ?? run.input.kind}:{' '}
                         {runSubject(run, (id) => wb.model?.nameOf(id))}
@@ -484,7 +484,10 @@ function RecentRuns({
                         </time>
                         <span className="font-mono">{shortId(run.id)}</span>
                         {run.proposalId && (
-                          <AppLink to={{ view: 'proposals', proposal: run.proposalId }}>
+                          <AppLink
+                            to={{ view: 'proposals', proposal: run.proposalId }}
+                            className="inline-flex min-h-6 items-center gap-1"
+                          >
                             proposal <span className="font-mono">{shortId(run.proposalId)}</span>
                           </AppLink>
                         )}

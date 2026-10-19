@@ -10,7 +10,8 @@ It is built for the Nebius x NVIDIA Global AI Hackathon (October 2026) and meant
 
 ## Status
 
-Phase 1. What exists and is tested today (352 tests, in CI on Linux and Windows):
+Phase 1. What exists and is tested today, in CI on Linux and Windows: 352 unit and integration
+tests, and 36 browser tests of the main flows by keyboard, with automated accessibility checks:
 
 - **Semantic kernel.**
   - Typed objects and relations, with a registry of allowed endpoints and impact rules.
@@ -53,7 +54,8 @@ Phase 1. What exists and is tested today (352 tests, in CI on Linux and Windows)
   Tests are the agent's own claim; Kalyth does not run them. A person completes the task.
 - **Workbench UI.** Overview, Graph, Records, Proposals, History, Navigator, Handoff, Tasks (board
   or dependency graph) and Decisions views, with an inspector. Claim basis and freshness show on
-  every node and edge. Light and dark themes, and keyboard shortcuts, listed under the keyboard button in the header.
+  every node and edge. Light and dark themes, and keyboard shortcuts, listed under the keyboard
+  button in the header.
 - **Export and import.** A project's whole history, as one file that rebuilds the same state.
 
 Real NVIDIA Nemotron inference through Nebius Token Factory has been tested in a keyed spike under
@@ -81,6 +83,7 @@ This README will say when each one works.
 pnpm install
 pnpm check          # lint, typecheck, tests
 pnpm build          # build the workbench UI
+pnpm test:e2e       # optional: browser tests and accessibility checks (needs Chrome)
 pnpm dev:seed       # optional: a small sample project
 pnpm dev:server     # API and UI on 127.0.0.1:4317
 ```
