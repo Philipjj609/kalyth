@@ -52,4 +52,21 @@ describe('git verifier (ADR 0013)', () => {
     })
     expect(verdict.checks.find((c) => c.name === 'task trailer')?.ok).toBe(false)
   })
+
+  it('reads refs as revisions, never as options or patterns', () => {
+    const repo = new FixtureRepo()
+    repos.push(repo)
+    repo.write({ 'a.txt': 'a\n' })
+    const head = repo.commit(`Start\n\n${taskTrailer(taskId)}`)
+    const git = new GitRepository(repo.path)
+    expect(() => git.isAncestor('--all', head)).toThrow()
+    expect(() => git.resolveCommit('--all')).toThrow()
+    // A task id is matched literally in the trailer, not as a pattern.
+    const trailer = (id: string) =>
+      verifyReport(git, { taskId: id, commit: head, filesChanged: ['a.txt'] }).checks.find(
+        (c) => c.name === 'task trailer',
+      )?.ok
+    expect(trailer('.*')).toBe(false)
+    expect(trailer(taskId)).toBe(true)
+  })
 })

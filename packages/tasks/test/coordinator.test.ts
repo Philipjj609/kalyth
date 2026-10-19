@@ -397,6 +397,19 @@ describe('task coordinator (ADR 0013)', () => {
     ).toHaveLength(2)
   })
 
+  it('confines an agent to the projects it was granted', () => {
+    const w = world()
+    // An agent with task.work on another project only, as an agent token would have.
+    const elsewhere = unwrap(w.services.createProject(w.owner, { name: 'Elsewhere' })).id
+    const principal = w.services.createPrincipal('agent', 'Scoped agent')
+    w.services.grant(principal.id, ['project.read', 'proposal.create', 'task.work'], elsewhere)
+    const scoped: Caller = { principalId: principal.id, origin: 'agent' }
+    expect(errorOf(w.tasks.claim(scoped, { taskId: w.taskId })).code).toBe('not_found')
+    expect(errorOf(w.tasks.getTask(scoped, { taskId: w.taskId })).code).toBe('not_found')
+    expect(errorOf(w.tasks.listTasks(scoped, { projectId: w.projectId })).code).toBe('unauthorized')
+    expect(w.view().status).toBe('ready')
+  })
+
   it('lets only a person acting directly register the task repository', () => {
     const w = world()
     expect(

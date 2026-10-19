@@ -46,7 +46,8 @@ export function verifyReport(
   checks.push({ name: 'commit exists', ok: true, detail: resolved })
 
   const message = git.commitMessage(resolved)
-  const trailer = new RegExp(`^Kalyth-Task:\\s*${report.taskId}\\s*$`, 'm').test(message)
+  const id = report.taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const trailer = new RegExp(`^Kalyth-Task:\\s*${id}\\s*$`, 'm').test(message)
   checks.push({
     name: 'task trailer',
     ok: trailer,

@@ -82,7 +82,7 @@ export class GitRepository {
   /** Whether `ancestor` is reachable from `descendant`. */
   isAncestor(ancestor: string, descendant: string): boolean {
     try {
-      this.#git(['merge-base', '--is-ancestor', ancestor, descendant])
+      this.#git(['merge-base', '--is-ancestor', '--end-of-options', ancestor, descendant])
       return true
     } catch (error) {
       if ((error as { status?: number }).status === 1) return false

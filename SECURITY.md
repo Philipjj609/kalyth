@@ -17,6 +17,9 @@ Kalyth is pre-release software. What is enforced today:
 - Evidence excerpts that match common secret patterns are stored as hashes only.
 - Kalyth does not execute code from analysed repositories.
 
+The threat model for local mode, with each surface, its controls and the remaining risks, is in
+[docs/security/threat-model.md](docs/security/threat-model.md).
+
 What is not claimed: a hardened multi-user deployment, a sandbox for untrusted code, complete secret
 detection, or compliance with any certification. The hosted demo (when it exists) will document its
 own limits.
