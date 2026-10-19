@@ -135,14 +135,15 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
     sendError(reply, status, error)
 
   app.addHook('onRequest', async (req, reply) => {
+    // The platform's health checker may not send the public host; the check reveals nothing.
     const health = req.routeOptions.url === '/api/v1/health'
+    if (health && req.method === 'GET') return
     if (req.headers.host !== options.host) {
       return deny(reply, 403, { code: 'unauthorized', message: 'host not allowed', issues: [] })
     }
     if (req.headers.origin !== undefined && req.headers.origin !== origin) {
       return deny(reply, 403, { code: 'unauthorized', message: 'origin not allowed', issues: [] })
     }
-    if (health) return
     if (sent.exceeded()) {
       return reply
         .code(503)

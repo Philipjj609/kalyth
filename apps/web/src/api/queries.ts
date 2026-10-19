@@ -36,6 +36,7 @@ import {
   type ProposeCommitOutcome,
   proposeAndCommit,
 } from './decide.ts'
+import type { DemoView } from './demo.ts'
 import { freshnessIndex } from './freshness.ts'
 import {
   type ChangeTaskStatusInput,
@@ -92,6 +93,7 @@ export const keys = {
   tasks: (projectId: string) => ['tasks', projectId] as const,
   task: (taskId: string) => ['task', taskId] as const,
   taskRepository: (projectId: string) => ['taskRepository', projectId] as const,
+  demo: ['demo', 'session'] as const,
 }
 
 export function useProjects() {
@@ -273,6 +275,7 @@ export function useNavigatorStatus(projectId: string | undefined) {
 /** Refreshes what a finished run changed: spend and reservations, runs and the new proposal. */
 function refreshAfterRun(client: QueryClient, projectId: string, runs = true) {
   return Promise.all([
+    client.invalidateQueries({ queryKey: keys.demo }),
     client.invalidateQueries({ queryKey: keys.navigatorStatus(projectId) }),
     runs ? client.invalidateQueries({ queryKey: keys.navigatorRuns(projectId) }) : undefined,
     client.invalidateQueries({ queryKey: keys.proposals(projectId) }),
@@ -533,12 +536,15 @@ export function useCompileContext(projectId: string) {
   })
 }
 
-/** Agent token summaries; null while the server has no token routes. Secrets never appear here. */
+/**
+ * Agent token summaries; null while the server has no token routes. Secrets never appear here.
+ * The hosted demo has no agent access (ADR 0019), so nothing is asked for there.
+ */
 export function useAgentTokens(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.agentTokens(projectId ?? ''),
     queryFn: () => api.agentTokens(projectId as string),
-    enabled: projectId !== undefined,
+    enabled: projectId !== undefined && session.mode() !== 'demo',
     refetchInterval: 60_000,
   })
 }
@@ -635,6 +641,28 @@ export function useCreateTask(projectId: string) {
     onSettled: invalidate,
     onError: (error) => {
       if (error.status === 401) session.reject()
+    },
+  })
+}
+
+/** This visitor's hosted demo session (ADR 0019); off outside the demo. */
+export function useDemoSession() {
+  return useQuery({
+    queryKey: keys.demo,
+    queryFn: api.demoSession,
+    enabled: session.mode() === 'demo',
+    refetchInterval: 30_000,
+  })
+}
+
+/** Unlocks the judges' allowance for this session. */
+export function useEnterJudgeCode() {
+  const client = useQueryClient()
+  return useMutation<DemoView, ApiError, string>({
+    mutationFn: (code) => api.enterJudgeCode(code),
+    onSuccess: (view) => {
+      client.setQueryData(keys.demo, view)
+      void client.invalidateQueries({ queryKey: ['navigator'] })
     },
   })
 }

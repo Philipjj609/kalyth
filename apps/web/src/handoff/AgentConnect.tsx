@@ -2,6 +2,7 @@ import type { AgentTokenSummary, IssuedAgentToken } from '@kalyth/contracts'
 import { Ban, KeyRound, Plug, ShieldAlert } from 'lucide-react'
 import { type ReactNode, useId, useState } from 'react'
 import { useAgentTokens, useRevokeAgentToken } from '../api/queries.ts'
+import { useSessionMode } from '../app/session.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import { StatusBadge } from '../components/badges.tsx'
 import { useToast } from '../components/toast.tsx'
@@ -374,6 +375,33 @@ function IssueForm({
  * for Claude Code and Codex. The issued secret lives only in this component's state.
  */
 export function AgentConnect() {
+  if (useSessionMode() === 'demo') return <AgentConnectInDemo />
+  return <AgentConnectLocal />
+}
+
+/** The hosted demo has no agent access until it is tested there (ADR 0019, amendment 2). */
+function AgentConnectInDemo() {
+  return (
+    <Panel
+      title="Connect an agent"
+      aside={<span className="text-fg-subtle text-xs">MCP over Streamable HTTP</span>}
+    >
+      <div className="space-y-2 p-4 text-sm">
+        <p>
+          Agent access over MCP is off in this hosted demo. Context packages still compile here, so
+          you can see exactly what an agent would read.
+        </p>
+        <p className="text-fg-muted text-xs">
+          To connect Claude Code or Codex, run Kalyth on your own machine and issue an agent token
+          there; the README explains how. An agent then reads the package and proposes changes, and
+          a person commits them.
+        </p>
+      </div>
+    </Panel>
+  )
+}
+
+function AgentConnectLocal() {
   const wb = useWorkbench()
   const tokens = useAgentTokens(wb.projectId)
   const issuer = useAgentTokenIssuer(wb.projectId)

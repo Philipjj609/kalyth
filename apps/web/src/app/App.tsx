@@ -3,7 +3,7 @@ import { KeyRound } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import { createQueryClient } from '../api/queries.ts'
 import { ToastProvider } from '../components/toast.tsx'
-import { Button, TooltipProvider } from '../components/ui.tsx'
+import { Button, Spinner, TooltipProvider } from '../components/ui.tsx'
 import { Shell } from './Shell.tsx'
 import { type SessionState, session, useSessionState } from './session.ts'
 
@@ -19,10 +19,44 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <ToastProvider>
-          {state === 'ok' ? <Shell /> : <SessionScreen state={state} />}
+          {state === 'ok' ? (
+            <Shell />
+          ) : state === 'starting' ? (
+            <StartingScreen />
+          ) : state === 'unavailable' ? (
+            <DemoUnavailable />
+          ) : (
+            <SessionScreen state={state} />
+          )}
         </ToastProvider>
       </TooltipProvider>
     </QueryClientProvider>
+  )
+}
+
+/** While the page finds out whether this is the hosted demo, and starts a demo session if so. */
+function StartingScreen() {
+  return (
+    <main className="flex h-full items-center justify-center bg-bg p-6">
+      <Spinner label="Starting Kalyth" />
+    </main>
+  )
+}
+
+/** The hosted demo could not start a session, for example after too many from one address. */
+function DemoUnavailable() {
+  return (
+    <main className="flex h-full items-center justify-center bg-bg p-6">
+      <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-pop">
+        <h1 className="mb-2 font-semibold text-[17px]">The demo could not start</h1>
+        <p className="text-fg-muted">
+          Kalyth could not start your copy of the demo project: {session.problem()}.
+        </p>
+        <Button variant="primary" className="mt-4" onClick={() => session.retry()}>
+          Try again
+        </Button>
+      </div>
+    </main>
   )
 }
 

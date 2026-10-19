@@ -1,7 +1,7 @@
 # Threat model (local mode)
 
-Date: 2026-10-19. Covers local mode, as shipped on `main`. The hosted demo's additions are proposed
-in [ADR 0019](../adr/0019-hosted-demo.md) and will move here once it is built. Reporting: see [SECURITY.md](../../SECURITY.md).
+Date: 2026-10-19. Covers local mode, as shipped on `main`, and the hosted demo mode (section 6),
+which is built and tested but not deployed. Reporting: see [SECURITY.md](../../SECURITY.md).
 
 ## Scope and assumptions
 
@@ -159,6 +159,42 @@ Threats: content sent to a provider without consent, uncontrolled spend, leaked 
   unknown fields are refused, and the rebuilt state must hash to the exported `stateSha256`
   (ADR 0014).
 
+## 6. The hosted demo mode
+
+`pnpm demo:serve` ([ADR 0019](../adr/0019-hosted-demo.md)) serves anonymous visitors on the public
+internet. It is built and tested, and not deployed. It adds these controls:
+
+- **Isolation.** Each visitor gets an anonymous session: 32 random bytes in an `HttpOnly`,
+  `SameSite=Strict` cookie (`Secure` over https), of which only the hash is kept. Each session has
+  its own copy of a read-only template project. Visitors act as the owner of their copy only;
+  nothing they write reaches another visitor. Sessions and their files expire after a day idle, and
+  at most 200 exist.
+- **Less surface.** No MCP endpoint and no agent tokens, until they are tested in hosted mode. No
+  consent changes, no repository registration and no repository import, so the server reads no
+  path and fetches no URL a visitor chooses. The only outbound calls go to Nebius.
+- **Requests.** Host and Origin must be the public host. Every change needs the UI's
+  `x-kalyth-ui` header, which a cross-site form cannot send. Requests, new sessions, runs and judge
+  code attempts are limited per address (`Fly-Client-IP` behind Fly.io's proxy).
+- **Spend.**
+  - Recorded runs are answered from recordings, with no consent, reservation or charge.
+  - Live runs need the operator's consent and the demo's own key.
+  - Live runs are charged to a public or a judges' pool: each a ledger on the persistent volume,
+    with a cap reset every UTC day to what it has used plus the day's allowance, within a hard
+    total.
+  - Each session has 3 live runs a day and one run at a time.
+  - The judge code (at least 16 characters) is compared in constant time.
+- **Traffic.** After 3 GB sent in a UTC day, the demo serves only its health check until the next
+  day, which bounds what Fly.io can bill for traffic.
+- **Image.** `.env` files, local data and agent instructions are excluded. The Nebius key and the
+  judge code are runtime secrets, never printed.
+
+Remaining risks:
+
+- One address can use the public share of a day's allowance; judges keep theirs.
+- Many addresses can fill the 200 sessions and push out idle ones; a visitor then gets a fresh
+  copy.
+- A large flood can make the demo unavailable for a while; judges may also judge from the video.
+
 ## Supply chain
 
 - Dependencies are pinned by `pnpm-lock.yaml`. `pnpm audit --prod` reported no known
@@ -188,6 +224,6 @@ Accepted, noted:
 
 Not covered by this model:
 
-- the hosted demo, proposed in ADR 0019;
+- the hosted demo's deployment on Fly.io (ADR 0019), which follows Philip's go-ahead;
 - multi-user deployments;
 - running untrusted code. Kalyth never does it, so there is no sandbox.

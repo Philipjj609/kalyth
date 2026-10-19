@@ -6,6 +6,8 @@ import { defineConfig } from '@playwright/test'
 // built UI. The tests share one server and change its data, so they run one at a time.
 export default defineConfig({
   testDir: './e2e',
+  // The hosted demo has its own server and setup: playwright.demo.config.ts.
+  testIgnore: ['demo/**'],
   globalSetup: './e2e/global-setup.ts',
   workers: 1,
   fullyParallel: false,

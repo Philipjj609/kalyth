@@ -274,6 +274,11 @@ describe('hosted demo (ADR 0019)', () => {
     const { cookie } = await d.visitor()
     const health = await d.request('GET', '/api/v1/health')
     expect(health.json()).toMatchObject({ status: 'ok', mode: 'demo' })
+    // The platform's health checker may use another host name.
+    const internal = await d.request('GET', '/api/v1/health', {
+      headers: { host: '10.0.0.5:8080' },
+    })
+    expect(internal.statusCode).toBe(200)
     const cases = [
       await d.request('GET', '/api/v1/projects', { cookie, headers: { host: 'evil.example' } }),
       await d.request('GET', '/api/v1/projects', {

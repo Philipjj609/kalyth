@@ -29,6 +29,7 @@ import type {
   TaskStatus,
   TaskView,
 } from '@kalyth/contracts'
+import type { DemoView } from './demo.ts'
 import { type FreshnessReport, parseFreshness } from './freshness.ts'
 import type { Situation } from './situation.ts'
 
@@ -189,12 +190,15 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
     const token = getToken()
     if (token) headers.authorization = `Bearer ${token}`
     if (body !== undefined) headers['content-type'] = 'application/json'
+    // The hosted demo checks this on every change, so a cross-site form cannot make one.
+    if (method !== 'GET') headers['x-kalyth-ui'] = '1'
     let res: Response
     try {
       res = await doFetch(url, {
         method,
         headers,
-        credentials: 'omit',
+        // Local mode authenticates with the token; the hosted demo (ADR 0019) with its cookie.
+        credentials: token ? 'omit' : 'same-origin',
         cache: 'no-store',
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       })
@@ -222,7 +226,14 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
   const project = (projectId: string) => `/api/v1/projects/${enc(projectId)}`
 
   return {
-    health: () => request<{ status: string; schemaVersion: number }>('GET', '/api/v1/health'),
+    health: () =>
+      request<{ status: string; schemaVersion: number; mode?: 'local' | 'demo' }>(
+        'GET',
+        '/api/v1/health',
+      ),
+    /** This visitor's demo session: their allowance, the presets and whether they are a judge. */
+    demoSession: () => request<DemoView>('GET', '/api/v1/demo/session'),
+    enterJudgeCode: (code: string) => request<DemoView>('POST', '/api/v1/demo/judge', { code }),
     types: () => request<TypeDescriptors>('GET', '/api/v1/types'),
     listProjects: () => request<{ projects: ProjectSummary[] }>('GET', '/api/v1/projects'),
     overview: (projectId: string, revision?: number) =>

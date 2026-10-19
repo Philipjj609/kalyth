@@ -45,6 +45,7 @@ import { ProjectsLanding } from '../views/ProjectsLanding.tsx'
 import { ProposalsView } from '../views/ProposalsView.tsx'
 import { RecordsView } from '../views/RecordsView.tsx'
 import { ErrorNotice } from '../views/shared.tsx'
+import { DemoBanner } from './DemoBanner.tsx'
 import { useAppLocation, VIEWS, type View } from './location.ts'
 import { type ThemePreference, theme, useTheme } from './theme.ts'
 import {
@@ -253,6 +254,7 @@ function ProjectWorkbench({
           </>
         }
       >
+        <DemoBanner />
         <Tabs.Root
           value={loc.view}
           onValueChange={(v) => setView(v as View)}

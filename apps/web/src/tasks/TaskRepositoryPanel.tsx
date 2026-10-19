@@ -2,6 +2,7 @@ import type { TaskRepositoryView } from '@kalyth/contracts'
 import { FolderGit2, TriangleAlert } from 'lucide-react'
 import { useId, useState } from 'react'
 import { useSetTaskRepository, useTaskRepository } from '../api/queries.ts'
+import { useSessionMode } from '../app/session.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import { useToast } from '../components/toast.tsx'
 import { Button, Panel, Skeleton, Spinner } from '../components/ui.tsx'
@@ -137,6 +138,27 @@ export function TaskRepositoryForm({
 }
 
 export function TaskRepositoryPanel() {
+  if (useSessionMode() === 'demo') return <TaskRepositoryInDemo />
+  return <TaskRepositoryLocal />
+}
+
+/** In the hosted demo, a path on the server cannot be registered (ADR 0019). */
+function TaskRepositoryInDemo() {
+  return (
+    <Panel
+      title="Task repository"
+      aside={<span className="text-fg-subtle text-xs">where agents commit</span>}
+    >
+      <p className="p-4 text-fg-muted text-sm">
+        Tasks are verified against a git repository on the machine running Kalyth. The hosted demo
+        has none, so tasks here can be planned and read, but not claimed or verified. Run Kalyth
+        locally to try the whole task flow with an agent.
+      </p>
+    </Panel>
+  )
+}
+
+function TaskRepositoryLocal() {
   const wb = useWorkbench()
   const repository = useTaskRepository(wb.projectId)
   const save = useSetTaskRepository(wb.projectId)

@@ -64,10 +64,15 @@ differed only in quote style or layout. See
 [docs/feedback/nebius-nvidia.md](docs/feedback/nebius-nvidia.md) and
 [ADR 0017](docs/adr/0017-bounded-citation-normalisation.md).
 
+The hosted demo mode is built and tested (`pnpm demo:serve`,
+[ADR 0019](docs/adr/0019-hosted-demo.md)). It gives each visitor their own copy of the analysed
+FastAPI template, recorded Nemotron runs and a capped allowance of live ones. It is not deployed
+yet.
+
 Not done yet:
 
 - the evaluation run against frozen ground truth ([docs/evaluation](docs/evaluation/README.md));
-- the hosted demo.
+- the hosted demo's deployment ([deploy/README.md](deploy/README.md)).
 
 This README will say when each one works.
 

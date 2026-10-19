@@ -1,0 +1,46 @@
+# The hosted demo on Fly.io (ADR 0019). Deploy only with Philip's go-ahead (amendment 1); the steps,
+# and what each one costs, are in deploy/README.md.
+#
+# Fly.io cannot cap spending, so this file fixes what can cost money: one shared-CPU machine with
+# 1 GB in one region, one 1 GB volume, no autoscaler, and no dedicated IPv4. The machine suspends
+# when idle and resumes on the next request, so it is billed mostly while in use.
+
+app = "kalyth-demo"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  KALYTH_DEMO_HOST = "kalyth-demo.fly.dev"
+  KALYTH_DEMO_DATA = "/data"
+  KALYTH_DEMO_CLIENT_IP_HEADER = "fly-client-ip"
+  KALYTH_PORT = "8080"
+
+[[mounts]]
+  source = "kalyth_demo_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 100
+    hard_limit = 200
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "60s"
+    method = "GET"
+    path = "/api/v1/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

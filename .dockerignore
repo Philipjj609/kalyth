@@ -1,0 +1,17 @@
+# Never in the image: secrets, local data, agent instructions and build output from this machine.
+.env
+.env.*
+!.env.example
+.kalyth/
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+.git/
+**/node_modules
+**/dist
+**/test-results
+**/playwright-report
+coverage/
+*.db
+*.db-*
+*.log

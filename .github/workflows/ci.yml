@@ -31,6 +31,22 @@ jobs:
       # runner's preinstalled Chrome and the mock provider.
       - run: pnpm test:e2e
 
+  # Builds the hosted demo's image (ADR 0019) and checks that it starts and serves a session. It is
+  # never pushed or deployed from CI: deployment is Philip's step (deploy/README.md).
+  demo-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t kalyth-demo:ci .
+      - name: Start the image and check it answers
+        run: |
+          docker run -d --name demo -p 8080:8080 -e KALYTH_DEMO_HOST=127.0.0.1:8080 -e KALYTH_DEMO_LISTEN=0.0.0.0 kalyth-demo:ci
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8080/api/v1/health && break; sleep 1; done
+          code=$(curl -s -X POST -H 'x-kalyth-ui: 1' -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/demo/session)
+          test "$code" = 201
+          curl -sf -o /dev/null http://127.0.0.1:8080/
+          docker logs demo
+
   # Scans the full git history with the gitleaks CLI (checksum-verified release binary).
   secrets:
     runs-on: ubuntu-latest

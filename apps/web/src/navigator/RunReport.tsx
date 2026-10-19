@@ -307,7 +307,10 @@ export function ModelCallsPanel({
                   <td className={cn(cell, 'font-mono text-xs')}>{c.purpose}</td>
                   <td className={cn(cell, 'font-mono text-xs')}>
                     <span className="block">{c.model}</span>
-                    <span className="block text-fg-subtle">{c.provider}</span>
+                    <span className="block text-fg-subtle">
+                      {c.provider}
+                      {c.recorded && ' · recorded'}
+                    </span>
                   </td>
                   <td className={cn(cell, 'text-right font-mono text-xs tabular-nums')}>
                     {c.attempt}

@@ -59,7 +59,7 @@ So the 15 USD cannot be enforced by Fly.io. It is kept by what we run, and by ch
 - **Who can create resources.** Only Philip's account, from his own machine. No Fly.io token is
   stored in GitHub or CI, and deployments are run by Philip, or by Claude only with his go-ahead
   each time.
-- **Monitoring.** `deploy/fly-audit.sh` lists the app's machines, volumes and IP addresses with
+- **Monitoring.** `deploy/fly-audit.mjs` lists the app's machines, volumes and IP addresses with
   `flyctl` and fails if anything beyond the expected set exists. Philip runs it, and looks at the
   invoice so far in the dashboard, weekly and after every deployment.
 - **The end.** On 15 December after 12:00 PT, the machine and volume are destroyed and the demo's

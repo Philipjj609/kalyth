@@ -2,7 +2,9 @@ import type { NavigatorRun, NavigatorStatus } from '@kalyth/contracts'
 import { Compass, OctagonAlert, Sparkles, TriangleAlert } from 'lucide-react'
 import { type ReactNode, useId, useState } from 'react'
 import { ApiError, toApiErrorBody } from '../api/client.ts'
+import { liveRunState } from '../api/demo.ts'
 import {
+  useDemoSession,
   useNavigatorRun,
   useNavigatorRuns,
   useNavigatorStatus,
@@ -10,6 +12,7 @@ import {
   useStartNavigatorRun,
 } from '../api/queries.ts'
 import { useAppLocation } from '../app/location.ts'
+import { useSessionMode } from '../app/session.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import { MockBadge, RunStatusBadge, StatusBadge } from '../components/badges.tsx'
 import { useToast } from '../components/toast.tsx'
@@ -27,6 +30,7 @@ import {
   runSubject,
 } from '../model/navigator.ts'
 import { AppLink, ErrorNotice, RecordLink, ViewHeader } from '../views/shared.tsx'
+import { DemoPresets } from './DemoPresets.tsx'
 import { ElementPicker } from './ElementPicker.tsx'
 import { RunOutput } from './ProposedOutput.tsx'
 import { GroundingReportPanel, ModelCallsPanel, OutputCountsPanel, Usd } from './RunReport.tsx'
@@ -37,6 +41,7 @@ const REQUEST_MIN = 3
 const REQUEST_MAX = 2000
 
 export function NavigatorView() {
+  const demo = useSessionMode() === 'demo'
   const wb = useWorkbench()
   const [loc] = useAppLocation()
   const status = useNavigatorStatus(wb.projectId)
@@ -66,7 +71,10 @@ export function NavigatorView() {
         <>
           <StatusStrip status={status.data} />
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-            <ChangeRequestForm status={status.data} runs={runList} />
+            <div className="space-y-4">
+              {demo && <DemoPresets runs={runList} />}
+              <ChangeRequestForm status={status.data} runs={runList} />
+            </div>
             <RecentRuns
               runs={runList}
               loading={runs.isLoading}
@@ -103,6 +111,7 @@ function Cell({
 }
 
 function StatusStrip({ status }: { status: NavigatorStatus }) {
+  const demo = useSessionMode() === 'demo'
   const { provider, budget, consent, models } = status
   const warnings = budgetWarnings(status)
   const used = budgetUsed(budget)
@@ -153,49 +162,55 @@ function StatusStrip({ status }: { status: NavigatorStatus }) {
             </dl>
           )}
         </Cell>
-        <Cell label="Budget">
-          <dl className="grid grid-cols-4 gap-x-3 text-xs">
-            {(
-              [
-                ['Cap', budget.capMicroUsd],
-                ['Spent', budget.spentMicroUsd],
-                ['Reserved', budget.reservedMicroUsd],
-                ['Remaining', budget.remainingMicroUsd],
-              ] as const
-            ).map(([label, micro]) => (
-              <div key={label} className="min-w-0">
-                <dt className="text-fg-muted">{label}</dt>
-                <dd className={cn('text-sm', label === 'Remaining' && 'font-semibold')}>
-                  <Usd micro={micro} />
-                </dd>
-              </div>
-            ))}
-          </dl>
-          {used !== null && (
-            <div aria-hidden className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
-              <span
-                className={cn(`tone-${meterTone}`, 'block h-full rounded-full bg-tone-fg')}
-                style={{ width: `${used * 100}%` }}
-              />
-            </div>
+        <Cell label={demo ? 'Today’s allowance' : 'Budget'}>
+          {demo ? (
+            <DemoAllowanceCell />
+          ) : (
+            <>
+              <dl className="grid grid-cols-4 gap-x-3 text-xs">
+                {(
+                  [
+                    ['Cap', budget.capMicroUsd],
+                    ['Spent', budget.spentMicroUsd],
+                    ['Reserved', budget.reservedMicroUsd],
+                    ['Remaining', budget.remainingMicroUsd],
+                  ] as const
+                ).map(([label, micro]) => (
+                  <div key={label} className="min-w-0">
+                    <dt className="text-fg-muted">{label}</dt>
+                    <dd className={cn('text-sm', label === 'Remaining' && 'font-semibold')}>
+                      <Usd micro={micro} />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              {used !== null && (
+                <div aria-hidden className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
+                  <span
+                    className={cn(`tone-${meterTone}`, 'block h-full rounded-full bg-tone-fg')}
+                    style={{ width: `${used * 100}%` }}
+                  />
+                </div>
+              )}
+              <p className="mt-1.5 text-fg-subtle text-xs">
+                {used !== null && <>{Math.round(used * 100)}% of the cap used · </>}
+                {plural(budget.calls, 'call')} recorded
+                {budget.capSetAt && (
+                  <>
+                    {' '}
+                    · cap set{' '}
+                    <time dateTime={budget.capSetAt} title={absoluteTime(budget.capSetAt)}>
+                      {relativeTime(budget.capSetAt)}
+                    </time>
+                  </>
+                )}
+                {budget.capNote && <> · {budget.capNote}</>}. Reserved amounts count as spent.
+              </p>
+            </>
           )}
-          <p className="mt-1.5 text-fg-subtle text-xs">
-            {used !== null && <>{Math.round(used * 100)}% of the cap used · </>}
-            {plural(budget.calls, 'call')} recorded
-            {budget.capSetAt && (
-              <>
-                {' '}
-                · cap set{' '}
-                <time dateTime={budget.capSetAt} title={absoluteTime(budget.capSetAt)}>
-                  {relativeTime(budget.capSetAt)}
-                </time>
-              </>
-            )}
-            {budget.capNote && <> · {budget.capNote}</>}. Reserved amounts count as spent.
-          </p>
         </Cell>
       </div>
-      {consent.required && <ConsentRow status={status} />}
+      {consent.required && (demo ? <DemoConsentRow /> : <ConsentRow status={status} />)}
       {warnings.length > 0 && (
         <ul aria-label="Budget warnings">
           {warnings.map((w) => (
@@ -281,6 +296,44 @@ function ConsentRow({ status }: { status: NavigatorStatus }) {
         <p className="mt-1.5 text-fg-muted text-xs">{PROVIDER_NOTES[provider.id]}</p>
       )}
       {set.isError && <ErrorNotice error={set.error} className="mt-2" />}
+    </div>
+  )
+}
+
+/** In the hosted demo, the operator consented once for this public project (ADR 0019). */
+function DemoConsentRow() {
+  return (
+    <div className="border-border border-t px-4 py-3 text-sm">
+      <h3 className="mb-1 font-semibold text-2xs text-fg-subtle uppercase tracking-[0.06em]">
+        Consent
+      </h3>
+      <p>
+        Granted by the demo’s operator for this project, which is built from a public repository.
+        Live runs send excerpts of its source to Nebius Token Factory; please do not type personal
+        data into a request.
+      </p>
+    </div>
+  )
+}
+
+/** The visitor's live runs and the pool's allowance today, instead of the ledger's cap. */
+function DemoAllowanceCell() {
+  const demo = useDemoSession()
+  const view = demo.data
+  if (!view) return <Skeleton className="h-10" />
+  const state = liveRunState(view)
+  return (
+    <div className="space-y-1 text-xs">
+      <p>
+        {view.live.available
+          ? `${view.live.runsLeftToday} of ${view.live.runsPerDay} live runs left for your copy.`
+          : 'Live runs are off; recorded runs work.'}
+      </p>
+      <p>
+        {view.live.pool === 'judges' ? 'Judges’' : 'Public'} allowance left today:{' '}
+        <Usd micro={view.live.poolRemainingTodayMicroUsd} />. It resets at 00:00 UTC.
+      </p>
+      {!state.ok && <p className="text-fg-muted">{state.reason}</p>}
     </div>
   )
 }
@@ -526,6 +579,7 @@ function runError(run: NavigatorRun): ApiError | null {
 }
 
 function RunDetail({ runId }: { runId: string }) {
+  const demo = useSessionMode() === 'demo'
   const wb = useWorkbench()
   const query = useNavigatorRun(wb.projectId, runId)
   const titleId = useId()
@@ -543,6 +597,7 @@ function RunDetail({ runId }: { runId: string }) {
   }
   const error = runError(run)
   const input = run.input
+  const recorded = run.calls.length > 0 && run.calls.every((c) => c.recorded === true)
   return (
     <section aria-labelledby={titleId} className="space-y-4">
       <header className="rounded-lg border border-border bg-surface px-4 py-3 shadow-panel">
@@ -552,6 +607,14 @@ function RunDetail({ runId }: { runId: string }) {
             {RUN_KIND_LABEL[input.kind] ?? input.kind} run
           </span>
           {isMockRun(run) && <MockBadge />}
+          {recorded && (
+            <StatusBadge
+              tone="success"
+              label="Recorded Nemotron run"
+              description="Replayed from a recording made earlier on this same project; nothing was sent or charged"
+              prefix="Source:"
+            />
+          )}
           <span className="font-mono text-2xs text-fg-subtle">{shortId(run.id)}</span>
           <span role="status" className="sr-only">
             Run status: {RUN_STATUS_META[run.status]?.label ?? run.status}
@@ -608,7 +671,22 @@ function RunDetail({ runId }: { runId: string }) {
           </p>
         )}
       </header>
-      {error && <ErrorNotice error={error} title="The run failed" />}
+      {error &&
+        (demo && error.body.code === 'budget_exceeded' ? (
+          <ErrorNotice
+            error={
+              new ApiError(0, {
+                code: 'budget_exceeded',
+                message:
+                  'This request has no recording, and no live run is available for it now: your live runs for today, or today’s allowance, are used up. The recorded presets still run, and everything else in your copy works.',
+                issues: [],
+              })
+            }
+            title="Live runs are paused"
+          />
+        ) : (
+          <ErrorNotice error={error} title="The run failed" />
+        ))}
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
         <GroundingReportPanel grounding={run.grounding} status={run.status} />
         <OutputCountsPanel output={run.output} />
