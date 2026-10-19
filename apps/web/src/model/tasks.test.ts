@@ -10,6 +10,7 @@ import {
   createTaskRationale,
   draftFromDecision,
   EMPTY_TASK_DRAFT,
+  LEASE_EXPIRED_NOTE,
   latestReport,
   NOT_FOR_PEOPLE,
   reportsNewestFirst,
@@ -21,6 +22,7 @@ import {
   taskActions,
   taskDraftProblems,
   taskDraftReducer,
+  taskStatusLine,
   taskTrailer,
   unmetRequirements,
 } from './tasks.ts'
@@ -44,6 +46,21 @@ describe('task statuses', () => {
       'cancelled',
     ])
     expect([...BOARD_ORDER].sort()).toEqual([...TaskStatus.options].sort())
+  })
+
+  it('says plainly when a running task’s lease has expired, and only then', () => {
+    expect(taskStatusLine(runningTask({ leaseExpired: true }))).toEqual({
+      label: 'Running, lease expired',
+      description: LEASE_EXPIRED_NOTE,
+    })
+    expect(LEASE_EXPIRED_NOTE).toBe(
+      'The lease has expired. The next claim checks git for a commit with this task’s trailer first.',
+    )
+    expect(taskStatusLine(runningTask())).toEqual({
+      label: 'Running',
+      description: 'An agent holds a lease on it and is working on it.',
+    })
+    expect(taskStatusLine(taskView({ status: 'unknown_outcome' })).label).toBe('Unknown outcome')
   })
 })
 

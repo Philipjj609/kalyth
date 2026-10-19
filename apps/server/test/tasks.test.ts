@@ -11,8 +11,8 @@ afterEach(async () => {
 })
 
 /** A person creates a ready task over HTTP and registers the task repository. */
-async function readyTask() {
-  h = await harness()
+async function readyTask(options: Parameters<typeof harness>[0] = {}) {
+  h = await harness(options)
   repo = new FixtureRepo()
   repo.write({ 'app/models.py': 'class Item:\n    pass\n' })
   const base = repo.commit('base')
@@ -185,5 +185,25 @@ describe('tasks over HTTP and MCP (ADR 0013)', () => {
     // The UI reads the path as git writes it.
     const viaHttp = await h.http('GET', `/api/v1/tasks/${taskId}`)
     expect(viaHttp.body.reports[0].filesChanged).toEqual(['app/models.py'])
+  })
+
+  it('shows an expired lease over HTTP and MCP at read time, without writing', async () => {
+    let now = Date.parse('2026-10-19T12:00:00.000Z')
+    const { projectId, taskId } = await readyTask({ clock: () => new Date(now).toISOString() })
+    expect((await h.mcp('claim_task', { taskId, leaseMinutes: 5 })).isError).toBe(false)
+    const head = async () =>
+      (await h.http('GET', `/api/v1/projects/${projectId}`)).body.project.headRevision as number
+    const before = await head()
+    expect((await h.http('GET', `/api/v1/tasks/${taskId}`)).body.leaseExpired).toBe(false)
+
+    now += 6 * 60_000
+    const viaHttp = (await h.http('GET', `/api/v1/tasks/${taskId}`)).body
+    expect(viaHttp).toMatchObject({ status: 'running', leaseExpired: true })
+    const listed = (await h.http('GET', `/api/v1/projects/${projectId}/tasks`)).body.tasks[0]
+    expect(listed.leaseExpired).toBe(true)
+    const viaMcp = await h.mcp('get_task', { taskId })
+    expect(viaMcp.body).toMatchObject({ status: 'running', leaseExpired: true })
+    expect((await h.mcp('list_tasks', { projectId })).body.tasks[0].leaseExpired).toBe(true)
+    expect(await head()).toBe(before)
   })
 })

@@ -11,8 +11,11 @@ import { createKalythMcpServer } from '../src/mcp/server.ts'
 export const TOKEN = 'test-session-token-0123456789'
 export const HOST = '127.0.0.1:4317'
 
-/** One store, one HTTP app (owner, human origin) and one MCP client (agent principal). */
-export async function harness() {
+/**
+ * One store, one HTTP app (owner, human origin) and one MCP client (agent principal). `clock`
+ * sets the task coordinator's time, for leases.
+ */
+export async function harness(options: { clock?: () => string } = {}) {
   const services = new KalythServices({ store: new SqliteStore(':memory:') })
   const owner = ensureLocalOwner(services)
   const agent = ensureLocalAgent(services)
@@ -23,7 +26,11 @@ export async function harness() {
   })
   const navigator = new Navigator({ services, gateway })
   const context = new ContextCompiler({ services })
-  const tasks = new TaskCoordinator({ services, context })
+  const tasks = new TaskCoordinator({
+    services,
+    context,
+    ...(options.clock ? { clock: options.clock } : {}),
+  })
   const app = buildHttpApp(
     services,
     { token: TOKEN, principalId: owner.id, allowedHosts: [HOST] },

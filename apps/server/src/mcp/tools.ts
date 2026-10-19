@@ -196,7 +196,7 @@ export const TOOLS: readonly ToolSpec[] = [
     name: 'list_tasks',
     title: 'List tasks',
     description:
-      'Tasks in a project with their status, lease, what they implement, what they wait for and their execution reports. Filter by status, for example "ready" for work you can claim.',
+      'Tasks in a project with their status, lease (leaseExpired is true once the lease of a running task has run out), what they implement, what they wait for and their execution reports. Filter by status, for example "ready" for work you can claim.',
     input: TaskListQuery,
     readOnly: true,
     run: (d, c, i) => d.tasks.listTasks(c, i),
@@ -205,7 +205,7 @@ export const TOOLS: readonly ToolSpec[] = [
     name: 'get_task',
     title: 'Get a task',
     description:
-      'One task: description, acceptance criteria, links, lease and every execution report with its verification.',
+      'One task: description, acceptance criteria, links, lease (leaseExpired is true once the lease of a running task has run out; the next claim checks git for its commit first) and every execution report with its verification.',
     input: TaskQuery,
     readOnly: true,
     run: (d, c, i) => d.tasks.getTask(c, i),

@@ -499,6 +499,27 @@ describe('task coordinator (ADR 0013)', () => {
     expect(result.task.status).toBe('running')
   })
 
+  it('shows an expired lease at read time, without writing anything', () => {
+    const w = world()
+    unwrap(w.tasks.claim(w.agent, { taskId: w.taskId, leaseMinutes: 5 }))
+    const head = () =>
+      unwrap(w.services.getProjectOverview(w.owner, { projectId: w.projectId })).project
+        .headRevision
+    const before = { view: w.view(), head: head() }
+    expect(before.view.leaseExpired).toBe(false)
+    w.advance(6)
+    expect(w.view()).toMatchObject({
+      status: 'running',
+      leaseExpired: true,
+      revision: before.view.revision,
+      updatedAt: before.view.updatedAt,
+    })
+    expect(
+      unwrap(w.tasks.listTasks(w.agent, { projectId: w.projectId })).tasks[0]?.leaseExpired,
+    ).toBe(true)
+    expect(head()).toBe(before.head)
+  })
+
   it('resumes an expired task only when no commit references it', () => {
     const w = world()
     const first = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId, leaseMinutes: 5 }))
