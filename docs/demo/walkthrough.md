@@ -15,6 +15,8 @@ pnpm demo:setup --force        # .kalyth/demo.db: the template analysed at tag 0
 KALYTH_DB=.kalyth/demo.db pnpm dev:server
 ```
 
+In PowerShell, set the variable first: `$env:KALYTH_DB = ".kalyth/demo.db"; pnpm dev:server`.
+
 Open the printed `http://127.0.0.1:4317/#token=...` link. The page moves the session token out of
 the URL at once. Do not record the terminal while it shows that link. Restarting the server issues a
 new token.
@@ -26,7 +28,8 @@ new token.
 - **replayed:** the run is recorded once (`KALYTH_RECORD_DIR=...`), then replayed on camera with
   `KALYTH_PROVIDER=replay KALYTH_REPLAY_DIR=...`. The screen must say it is a recorded run.
 
-Until the Nebius budget is approved, rehearse with the mock provider. Everything it writes says
+Until the Nebius budget is approved, rehearse with the mock provider: set
+`KALYTH_PROVIDER=mock` the same way as `KALYTH_DB`. A variable set like this wins over `.env`. Everything it writes says
 "Mock output", and that output must not appear in the submitted video.
 
 ## Shot list

@@ -24,8 +24,8 @@ address bar; fragments are never sent to the server or in a Referer header. The 
 every server launch; an old tab then shows a "Session expired" screen. Opening the new link in the
 same tab, or pasting the token there, continues.
 
-`pnpm dev:seed` and `pnpm dev:server` both run in `apps/server`, so they share
-`apps/server/.kalyth/kalyth.db`. Set `KALYTH_DB` to use another file.
+`pnpm dev:seed` and `pnpm dev:server` both run from the repository root, so they share
+`.kalyth/kalyth.db` there. Set `KALYTH_DB` to use another file.
 
 ## Develop with hot reload
 

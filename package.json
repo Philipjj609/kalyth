@@ -16,19 +16,19 @@
     "format": "biome check --write .",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "build": "pnpm --filter @kalyth/web build",
-    "mcp:stdio": "pnpm --filter @kalyth/server mcp:stdio",
-    "dev:server": "pnpm --filter @kalyth/server dev",
+    "mcp:stdio": "node apps/server/src/mcp/stdio.ts",
+    "dev:server": "node apps/server/src/http/main.ts",
     "ingest": "node apps/server/src/cli/ingest.ts",
     "project:export": "node apps/server/src/cli/export.ts",
     "project:import": "node apps/server/src/cli/import.ts",
     "dev:web": "pnpm --filter @kalyth/web dev",
-    "dev:seed": "pnpm --filter @kalyth/server exec node src/dev/seed.ts",
+    "dev:seed": "node apps/server/src/dev/seed.ts",
     "budget": "node apps/server/src/cli/budget.ts",
     "spike": "node apps/server/src/cli/spike.ts",
     "spike:replay": "node apps/server/src/dev/spike-replay.ts",
     "eval": "node apps/server/src/cli/eval.ts",
     "demo:setup": "node apps/server/src/dev/demo.ts",
-    "demo:agent": "pnpm --filter @kalyth/server exec node src/dev/demo-agent.ts"
+    "demo:agent": "node apps/server/src/dev/demo-agent.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
