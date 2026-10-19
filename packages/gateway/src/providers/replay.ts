@@ -52,6 +52,48 @@ export class ReplayProvider implements Provider {
   }
 }
 
+/**
+ * The hosted demo's provider (ADR 0019): a request recorded earlier is answered from its recording,
+ * which the gateway neither reserves nor charges; anything else goes to the live provider, under
+ * the caps. Without a live provider, unrecorded requests are refused by the caps (a ledger with a
+ * zero cap) before this provider is called, and by this provider if they ever reach it.
+ */
+export class RecordedFirstProvider implements Provider {
+  readonly id: string
+  readonly external: boolean
+  readonly paid: boolean
+  readonly #source: string
+  readonly #recordings: Map<string, Recording>
+  readonly #live: Provider | null
+
+  /** `source` is the provider the recordings came from; it is part of every key. */
+  constructor(source: string, recordings: Iterable<Recording>, live: Provider | null) {
+    if (live && live.id !== source) throw new Error(`live provider ${live.id} is not ${source}`)
+    this.id = source
+    this.#source = source
+    this.#recordings = new Map([...recordings].map((r) => [r.key, r]))
+    this.#live = live
+    this.external = live?.external ?? false
+    this.paid = live?.paid ?? false
+  }
+
+  static readRecordings(dir: string): Recording[] {
+    const index = join(dir, 'recordings.json')
+    return existsSync(index) ? (JSON.parse(readFileSync(index, 'utf8')) as Recording[]) : []
+  }
+
+  recorded(request: ChatRequest): ChatResponse | undefined {
+    return this.#recordings.get(requestKey(this.#source, request))?.response
+  }
+
+  async complete(request: ChatRequest, signal: AbortSignal): Promise<ChatResponse> {
+    if (!this.#live) {
+      throw new ProviderError('there is no recording of this request, and live runs are off', 409)
+    }
+    return this.#live.complete(request, signal)
+  }
+}
+
 /** Wraps a provider and saves each successful exchange for later replay. */
 export class RecordingProvider implements Provider {
   readonly id: string

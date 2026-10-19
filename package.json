@@ -29,7 +29,9 @@
     "spike:replay": "node apps/server/src/dev/spike-replay.ts",
     "eval": "node apps/server/src/cli/eval.ts",
     "demo:setup": "node apps/server/src/dev/demo.ts",
-    "demo:agent": "node apps/server/src/dev/demo-agent.ts"
+    "demo:agent": "node apps/server/src/dev/demo-agent.ts",
+    "demo:serve": "node apps/server/src/demo/main.ts",
+    "demo:record": "node apps/server/src/demo/record.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

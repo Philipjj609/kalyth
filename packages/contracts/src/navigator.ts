@@ -118,6 +118,8 @@ export const ModelCallRecord = z.object({
   costMicroUsd: z.int().min(0),
   latencyMs: z.int().min(0),
   issues: z.array(z.string()),
+  /** Answered from a recording of the same request, made earlier: nothing was sent or charged. */
+  recorded: z.boolean().optional(),
 })
 export type ModelCallRecord = z.infer<typeof ModelCallRecord>
 

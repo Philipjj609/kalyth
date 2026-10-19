@@ -1,6 +1,12 @@
 import { timingSafeEqual } from 'node:crypto'
 import type { ContextCompiler } from '@kalyth/context'
-import { type Caller, HTTP_STATUS, type KernelError, type Result } from '@kalyth/contracts'
+import {
+  type Caller,
+  HTTP_STATUS,
+  type KernelError,
+  type NavigatorRun,
+  type Result,
+} from '@kalyth/contracts'
 import { type KalythServices, SCHEMA_VERSION } from '@kalyth/core'
 import type { Navigator } from '@kalyth/navigator'
 import { TaskCoordinator } from '@kalyth/tasks'
@@ -13,6 +19,37 @@ export interface HttpAuth {
   principalId: string
   /** Allowed Host header values, e.g. 127.0.0.1:4317 and localhost:4317. Empty disables the check. */
   allowedHosts: readonly string[]
+}
+
+/** What one request acts on: a store, who is acting, and the components built over that store. */
+export interface Workspace {
+  services: KalythServices
+  caller: Caller
+  navigator?: Navigator | undefined
+  context?: ContextCompiler | undefined
+  tasks?: TaskCoordinator | undefined
+}
+
+/**
+ * Which parts of the API a mode offers. Local mode offers everything; the hosted demo (ADR 0019)
+ * switches off what would reach beyond a visitor's sandbox or change shared settings.
+ */
+export interface ApiFeatures {
+  mode: 'local' | 'demo'
+  /** Context packages and tasks. */
+  context: boolean
+  navigator: boolean
+  /** Issuing, listing and revoking agent tokens. */
+  agentTokens: boolean
+  /** Changing provider consent. */
+  consent: boolean
+  /** Registering a task repository, which is a path on this machine. */
+  taskRepository: boolean
+  /** Checks before a Navigator run starts, and a hook for each started run. */
+  runs?: {
+    admit(req: FastifyRequest, workspace: Workspace): KernelError | undefined
+    started(req: FastifyRequest, workspace: Workspace, done: Promise<NavigatorRun>): void
+  }
 }
 
 type Query = Record<string, string | string[] | undefined>
@@ -49,12 +86,7 @@ export function buildHttpApp(
     }
     // The token guards the API only; the UI shell and its assets are public. The routed pattern is
     // checked as well as the raw path, so an encoded path that routes to the API still needs it.
-    const route = req.routeOptions.url
-    if (route === '/api/v1/health') return
-    const underApi = (p: string) => p === '/api' || p.startsWith('/api/')
-    if (!underApi(req.url.split('?', 1)[0] ?? '') && !(route !== undefined && underApi(route))) {
-      return
-    }
+    if (!isApiRequest(req) || req.routeOptions.url === '/api/v1/health') return
     if (!tokenMatches(req.headers.authorization, auth.token)) {
       return sendError(reply, 401, {
         code: 'unauthenticated',
@@ -64,7 +96,44 @@ export function buildHttpApp(
     }
   })
 
-  const caller: Caller = { principalId: auth.principalId, origin: 'human' }
+  const context = options.context
+  const workspace: Workspace = {
+    services,
+    caller: { principalId: auth.principalId, origin: 'human' },
+    navigator: options.navigator,
+    context,
+    tasks: context ? (options.tasks ?? new TaskCoordinator({ services, context })) : undefined,
+  }
+  registerApiRoutes(app, () => workspace, {
+    mode: 'local',
+    context: context !== undefined,
+    navigator: options.navigator !== undefined,
+    agentTokens: true,
+    consent: true,
+    taskRepository: true,
+  })
+  if (context && workspace.tasks) {
+    registerMcpEndpoint(app, { services, context, tasks: workspace.tasks })
+  }
+  return app
+}
+
+/** Whether a request is for the API, by its raw path or by the route it matched. */
+export function isApiRequest(req: FastifyRequest): boolean {
+  const underApi = (p: string) => p === '/api' || p.startsWith('/api/')
+  const route = req.routeOptions.url
+  return underApi(req.url.split('?', 1)[0] ?? '') || (route !== undefined && underApi(route))
+}
+
+/**
+ * Registers API v1. Each route acts on the workspace that `workspaceOf` gives for its request, so
+ * one process can serve one local store, or a sandbox per visitor.
+ */
+export function registerApiRoutes(
+  app: FastifyInstance,
+  workspaceOf: (req: FastifyRequest) => Workspace,
+  features: ApiFeatures,
+): void {
   const send = (reply: FastifyReply, result: Result<unknown>, okStatus = 200) =>
     result.ok
       ? reply.code(okStatus).send(result.value)
@@ -72,18 +141,32 @@ export function buildHttpApp(
   const params = (req: FastifyRequest) => req.params as Record<string, string>
   const query = (req: FastifyRequest) => req.query as Query
   const body = (req: FastifyRequest) => (req.body ?? {}) as Record<string, unknown>
+  const off = (reply: FastifyReply, what: string) =>
+    sendError(reply, 403, {
+      code: 'unauthorized',
+      message: `${what} is not available in the hosted demo (ADR 0019)`,
+      issues: [],
+    })
 
-  app.get('/api/v1/health', async () => ({ status: 'ok', schemaVersion: SCHEMA_VERSION }))
-  app.get('/api/v1/types', async (_req, reply) => send(reply, services.describeTypes(caller)))
+  app.get('/api/v1/health', async () => ({
+    status: 'ok',
+    schemaVersion: SCHEMA_VERSION,
+    mode: features.mode,
+  }))
+  app.get('/api/v1/types', async (req, reply) =>
+    send(reply, workspaceOf(req).services.describeTypes(workspaceOf(req).caller)),
+  )
 
-  app.get('/api/v1/projects', async (_req, reply) => send(reply, services.listProjects(caller)))
+  app.get('/api/v1/projects', async (req, reply) =>
+    send(reply, workspaceOf(req).services.listProjects(workspaceOf(req).caller)),
+  )
   app.post('/api/v1/projects', async (req, reply) =>
-    send(reply, services.createProject(caller, body(req)), 201),
+    send(reply, workspaceOf(req).services.createProject(workspaceOf(req).caller, body(req)), 201),
   )
   app.get('/api/v1/projects/:projectId', async (req, reply) =>
     send(
       reply,
-      services.getProjectOverview(caller, {
+      workspaceOf(req).services.getProjectOverview(workspaceOf(req).caller, {
         projectId: params(req).projectId,
         ...revisionOf(query(req)),
       }),
@@ -93,7 +176,7 @@ export function buildHttpApp(
     const q = query(req)
     return send(
       reply,
-      services.queryObjects(caller, {
+      workspaceOf(req).services.queryObjects(workspaceOf(req).caller, {
         projectId: params(req).projectId,
         ...revisionOf(q),
         ...list('types', q.type),
@@ -106,7 +189,7 @@ export function buildHttpApp(
     const q = query(req)
     return send(
       reply,
-      services.queryRelations(caller, {
+      workspaceOf(req).services.queryRelations(workspaceOf(req).caller, {
         projectId: params(req).projectId,
         ...revisionOf(q),
         ...list('types', q.type),
@@ -120,7 +203,7 @@ export function buildHttpApp(
   app.get('/api/v1/projects/:projectId/evidence', async (req, reply) =>
     send(
       reply,
-      services.getEvidence(caller, {
+      workspaceOf(req).services.getEvidence(workspaceOf(req).caller, {
         projectId: params(req).projectId,
         ...list('ids', query(req).id),
       }),
@@ -129,13 +212,18 @@ export function buildHttpApp(
   app.get('/api/v1/projects/:projectId/history', async (req, reply) =>
     send(
       reply,
-      services.getHistory(caller, { projectId: params(req).projectId, ...limitOf(query(req)) }),
+      workspaceOf(req).services.getHistory(workspaceOf(req).caller, {
+        projectId: params(req).projectId,
+        ...limitOf(query(req)),
+      }),
     ),
   )
   // A whole project as one file (ADR 0014). Only this first-party UI, acting for the owner, can
   // ask; MCP has no export tool. Import is a local command (`pnpm project:import`).
   app.get('/api/v1/projects/:projectId/export', async (req, reply) => {
-    const result = services.exportProject(caller, { projectId: params(req).projectId })
+    const result = workspaceOf(req).services.exportProject(workspaceOf(req).caller, {
+      projectId: params(req).projectId,
+    })
     if (result.ok) {
       const { id, headRevision } = result.value.project
       reply.header(
@@ -148,7 +236,7 @@ export function buildHttpApp(
   app.get('/api/v1/projects/:projectId/freshness', async (req, reply) =>
     send(
       reply,
-      services.assessFreshness(caller, {
+      workspaceOf(req).services.assessFreshness(workspaceOf(req).caller, {
         projectId: params(req).projectId,
         ...revisionOf(query(req)),
       }),
@@ -157,7 +245,7 @@ export function buildHttpApp(
   app.get('/api/v1/projects/:projectId/situation', async (req, reply) =>
     send(
       reply,
-      services.getSituation(caller, {
+      workspaceOf(req).services.getSituation(workspaceOf(req).caller, {
         projectId: params(req).projectId,
         ...revisionOf(query(req)),
       }),
@@ -167,7 +255,7 @@ export function buildHttpApp(
     const q = query(req)
     return send(
       reply,
-      services.analyzeImpact(caller, {
+      workspaceOf(req).services.analyzeImpact(workspaceOf(req).caller, {
         projectId: params(req).projectId,
         ...revisionOf(q),
         seeds: list('seeds', q.seed).seeds ?? [],
@@ -180,7 +268,7 @@ export function buildHttpApp(
     const q = query(req)
     return send(
       reply,
-      services.listProposals(caller, {
+      workspaceOf(req).services.listProposals(workspaceOf(req).caller, {
         projectId: params(req).projectId,
         ...(typeof q.status === 'string' ? { status: q.status } : {}),
         ...limitOf(q),
@@ -189,22 +277,32 @@ export function buildHttpApp(
   })
   app.post('/api/v1/projects/:projectId/proposals', async (req, reply) => {
     const input = { ...body(req), projectId: params(req).projectId }
-    const checked = options.context?.checkProvenance(caller, input)
+    const checked = workspaceOf(req).context?.checkProvenance(workspaceOf(req).caller, input)
     if (checked && !checked.ok) return send(reply, checked)
-    const result = services.proposeChange(caller, input)
+    const result = workspaceOf(req).services.proposeChange(workspaceOf(req).caller, input)
     if (result.ok && result.value.status === 'invalid') return reply.code(422).send(result.value)
     return send(reply, result, 201)
   })
   app.get('/api/v1/proposals/:proposalId', async (req, reply) =>
-    send(reply, services.getProposal(caller, { proposalId: params(req).proposalId })),
+    send(
+      reply,
+      workspaceOf(req).services.getProposal(workspaceOf(req).caller, {
+        proposalId: params(req).proposalId,
+      }),
+    ),
   )
   app.post('/api/v1/proposals/:proposalId/commit', async (req, reply) =>
-    send(reply, services.commitProposal(caller, { proposalId: params(req).proposalId })),
+    send(
+      reply,
+      workspaceOf(req).services.commitProposal(workspaceOf(req).caller, {
+        proposalId: params(req).proposalId,
+      }),
+    ),
   )
   app.post('/api/v1/proposals/:proposalId/reject', async (req, reply) =>
     send(
       reply,
-      services.rejectProposal(caller, {
+      workspaceOf(req).services.rejectProposal(workspaceOf(req).caller, {
         proposalId: params(req).proposalId,
         reason: body(req).reason,
       }),
@@ -215,7 +313,7 @@ export function buildHttpApp(
     const status = one(query(req).status)
     return send(
       reply,
-      services.listDecisions(caller, {
+      workspaceOf(req).services.listDecisions(workspaceOf(req).caller, {
         projectId: params(req).projectId,
         ...revisionOf(query(req)),
         ...(status === undefined ? {} : { status }),
@@ -225,100 +323,161 @@ export function buildHttpApp(
 
   // Agent tokens: issued, listed and revoked by the owner in the UI (ADR 0011).
   app.get('/api/v1/projects/:projectId/agent-tokens', async (req, reply) =>
-    send(reply, services.listAgentTokens(caller, { projectId: params(req).projectId })),
+    features.agentTokens
+      ? send(
+          reply,
+          workspaceOf(req).services.listAgentTokens(workspaceOf(req).caller, {
+            projectId: params(req).projectId,
+          }),
+        )
+      : off(reply, 'Agent access'),
   )
   app.post('/api/v1/projects/:projectId/agent-tokens', async (req, reply) =>
-    send(
-      reply,
-      services.issueAgentToken(caller, { ...body(req), projectId: params(req).projectId }),
-      201,
-    ),
+    features.agentTokens
+      ? send(
+          reply,
+          workspaceOf(req).services.issueAgentToken(workspaceOf(req).caller, {
+            ...body(req),
+            projectId: params(req).projectId,
+          }),
+          201,
+        )
+      : off(reply, 'Agent access'),
   )
   app.post('/api/v1/agent-tokens/:tokenId/revoke', async (req, reply) =>
-    send(reply, services.revokeAgentToken(caller, { tokenId: params(req).tokenId })),
+    features.agentTokens
+      ? send(
+          reply,
+          workspaceOf(req).services.revokeAgentToken(workspaceOf(req).caller, {
+            tokenId: params(req).tokenId,
+          }),
+        )
+      : off(reply, 'Agent access'),
   )
 
-  const context = options.context
-  if (context) {
+  if (features.context) {
+    const context = (req: FastifyRequest) => {
+      const c = workspaceOf(req).context
+      if (!c) throw new Error('this workspace has no context compiler')
+      return c
+    }
+    const tasks = (req: FastifyRequest) => {
+      const t = workspaceOf(req).tasks
+      if (!t) throw new Error('this workspace has no task coordinator')
+      return t
+    }
     app.post('/api/v1/projects/:projectId/context', async (req, reply) =>
-      send(reply, context.compile(caller, { ...body(req), projectId: params(req).projectId }), 201),
+      send(
+        reply,
+        context(req).compile(workspaceOf(req).caller, {
+          ...body(req),
+          projectId: params(req).projectId,
+        }),
+        201,
+      ),
     )
     app.get('/api/v1/projects/:projectId/context', async (req, reply) =>
       send(
         reply,
-        context.list(caller, { projectId: params(req).projectId, ...limitOf(query(req)) }),
+        context(req).list(workspaceOf(req).caller, {
+          projectId: params(req).projectId,
+          ...limitOf(query(req)),
+        }),
       ),
     )
     app.get('/api/v1/context/:packageId', async (req, reply) =>
-      send(reply, context.get(caller, { packageId: params(req).packageId })),
+      send(reply, context(req).get(workspaceOf(req).caller, { packageId: params(req).packageId })),
     )
 
     // Tasks (ADR 0013). People read tasks here and change them through proposals; agents claim
     // and report over MCP only. The task repository is registered by a person, acting directly.
-    const tasks = options.tasks ?? new TaskCoordinator({ services, context })
     app.get('/api/v1/projects/:projectId/tasks', async (req, reply) => {
       const status = query(req).status
       return send(
         reply,
-        tasks.listTasks(caller, {
+        tasks(req).listTasks(workspaceOf(req).caller, {
           projectId: params(req).projectId,
           ...(typeof status === 'string' ? { status } : {}),
         }),
       )
     })
     app.get('/api/v1/tasks/:taskId', async (req, reply) =>
-      send(reply, tasks.getTask(caller, { taskId: params(req).taskId })),
+      send(reply, tasks(req).getTask(workspaceOf(req).caller, { taskId: params(req).taskId })),
     )
     app.get('/api/v1/projects/:projectId/task-repository', async (req, reply) =>
-      send(reply, tasks.getRepository(caller, { projectId: params(req).projectId })),
-    )
-    app.put('/api/v1/projects/:projectId/task-repository', async (req, reply) =>
       send(
         reply,
-        tasks.setRepository(caller, { path: body(req).path, projectId: params(req).projectId }),
+        tasks(req).getRepository(workspaceOf(req).caller, { projectId: params(req).projectId }),
       ),
     )
-    registerMcpEndpoint(app, { services, context, tasks })
+    app.put('/api/v1/projects/:projectId/task-repository', async (req, reply) =>
+      features.taskRepository
+        ? send(
+            reply,
+            tasks(req).setRepository(workspaceOf(req).caller, {
+              path: body(req).path,
+              projectId: params(req).projectId,
+            }),
+          )
+        : off(reply, 'Registering a repository'),
+    )
   }
 
-  const navigator = options.navigator
-  if (navigator) {
+  if (features.navigator) {
+    const navigator = (req: FastifyRequest) => {
+      const n = workspaceOf(req).navigator
+      if (!n) throw new Error('this workspace has no navigator')
+      return n
+    }
     // Navigator runs may spend money, so only this first-party UI (acting for the owner) starts
     // them; MCP has no such tool (ADR 0010).
     app.get('/api/v1/projects/:projectId/navigator', async (req, reply) =>
-      send(reply, navigator.status(caller, { projectId: params(req).projectId })),
-    )
-    app.put('/api/v1/projects/:projectId/navigator/consent', async (req, reply) =>
       send(
         reply,
-        navigator.setConsent(caller, {
-          projectId: params(req).projectId,
-          granted: body(req).granted,
-        }),
+        navigator(req).status(workspaceOf(req).caller, { projectId: params(req).projectId }),
       ),
     )
+    app.put('/api/v1/projects/:projectId/navigator/consent', async (req, reply) =>
+      features.consent
+        ? send(
+            reply,
+            navigator(req).setConsent(workspaceOf(req).caller, {
+              projectId: params(req).projectId,
+              granted: body(req).granted,
+            }),
+          )
+        : off(reply, 'Changing provider consent'),
+    )
     app.post('/api/v1/projects/:projectId/navigator/runs', async (req, reply) => {
-      const started = navigator.start(caller, { ...body(req), projectId: params(req).projectId })
+      const workspace = workspaceOf(req)
+      const refused = features.runs?.admit(req, workspace)
+      if (refused) return sendError(reply, HTTP_STATUS[refused.code], refused)
+      const started = navigator(req).start(workspace.caller, {
+        ...body(req),
+        projectId: params(req).projectId,
+      })
       if (!started.ok) return sendError(reply, HTTP_STATUS[started.error.code], started.error)
       // The run continues after the response; its record says how it ended.
       started.value.done.catch(() => {})
+      features.runs?.started(req, workspace, started.value.done)
       return reply.code(202).send(started.value.run)
     })
     app.get('/api/v1/projects/:projectId/navigator/runs', async (req, reply) =>
       send(
         reply,
-        navigator.listRuns(caller, { projectId: params(req).projectId, ...limitOf(query(req)) }),
+        navigator(req).listRuns(workspaceOf(req).caller, {
+          projectId: params(req).projectId,
+          ...limitOf(query(req)),
+        }),
       ),
     )
     app.get('/api/v1/navigator/runs/:runId', async (req, reply) =>
-      send(reply, navigator.getRun(caller, { runId: params(req).runId })),
+      send(reply, navigator(req).getRun(workspaceOf(req).caller, { runId: params(req).runId })),
     )
   }
-
-  return app
 }
 
-function sendError(reply: FastifyReply, status: number, error: KernelError) {
+export function sendError(reply: FastifyReply, status: number, error: KernelError) {
   return reply.code(status).send({ error })
 }
 

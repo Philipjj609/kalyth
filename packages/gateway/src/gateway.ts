@@ -2,7 +2,13 @@ import type { KernelError, ModelCallRecord, NavigatorStatus } from '@kalyth/cont
 import { z } from 'zod'
 import { costMicroUsd, findModel, type ModelSpec, reservationMicroUsd } from './catalog.ts'
 import type { BudgetLedger } from './ledger.ts'
-import { type ChatMessage, type ChatRequest, type Provider, ProviderError } from './provider.ts'
+import {
+  type ChatMessage,
+  type ChatRequest,
+  type ChatResponse,
+  type Provider,
+  ProviderError,
+} from './provider.ts'
 
 export interface GenerateRequest<T> {
   projectId: string
@@ -35,7 +41,9 @@ export interface GatewayOptions {
 
 /**
  * The only path to a model provider (ADR 0010): catalogue, consent and budget checks before every
- * call, actual usage recorded after it, and output validated against the caller's schema.
+ * call, actual usage recorded after it, and output validated against the caller's schema. A
+ * request the provider has a recording for is answered from it, with no reservation and no charge
+ * (ADR 0019).
  */
 export class ProviderGateway {
   readonly provider: Provider
@@ -91,12 +99,9 @@ export class ProviderGateway {
         `model ${req.model} is not in the catalogue for ${this.provider.id}`,
       )
     }
-    if (this.provider.external && !this.ledger.consent(req.projectId, this.provider.id).granted) {
-      return failWith(
-        'unauthorized',
-        `project has not consented to sending content to ${this.provider.id}`,
-      )
-    }
+    // Consent guards content leaving the machine, so a recorded answer does not need it.
+    const consented = () =>
+      !this.provider.external || this.ledger.consent(req.projectId, this.provider.id).granted
 
     const schema = jsonSchemaOf(req.schema)
     const messages: ChatMessage[] = [
@@ -116,6 +121,31 @@ export class ProviderGateway {
         responseSchema: { name: req.schemaName, schema },
         reasoning: req.reasoning,
       }
+      const recorded = this.provider.recorded?.(request)
+      if (recorded) {
+        const record = {
+          purpose: req.purpose,
+          provider: this.provider.id,
+          model: spec.id,
+          attempt,
+          reservedMicroUsd: 0,
+          inputTokens: recorded.inputTokens,
+          outputTokens: recorded.outputTokens,
+          costMicroUsd: 0,
+          latencyMs: 0,
+          recorded: true,
+        }
+        const answered = this.#answer(record, recorded, req.schema, calls, messages)
+        if (answered) return answered
+        continue
+      }
+      if (!consented()) {
+        return failWith(
+          'unauthorized',
+          `project has not consented to sending content to ${this.provider.id}`,
+        )
+      }
+
       const reserved = reservationMicroUsd(spec, request.messages, req.maxOutputTokens)
       const base = {
         purpose: req.purpose,
@@ -188,28 +218,47 @@ export class ProviderGateway {
         costMicroUsd: cost,
         latencyMs,
       }
-      if (response.refusal !== null) {
-        calls.push({ ...record, outcome: 'failed', issues: [`model refused: ${response.refusal}`] })
-        return failWith('invalid', 'the model declined to answer')
-      }
-
-      const parsed = parseOutput(response.content, req.schema)
-      if (parsed.ok) {
-        calls.push({ ...record, outcome: 'ok', issues: [] })
-        return { ok: true, value: parsed.value, calls }
-      }
-      calls.push({ ...record, outcome: 'schema_invalid', issues: parsed.issues })
-      messages.push(
-        { role: 'assistant', content: response.content.slice(0, 20_000) },
-        {
-          role: 'user',
-          content: `That answer does not match the required JSON Schema:\n- ${parsed.issues.join(
-            '\n- ',
-          )}\nReply again with only one JSON object that matches the schema.`,
-        },
-      )
+      const answered = this.#answer(record, response, req.schema, calls, messages)
+      if (answered) return answered
     }
     return failWith('invalid', 'the model output did not match the schema after corrections')
+  }
+
+  /**
+   * Records a completed call and checks its answer. Returns the outcome, or undefined after a
+   * schema failure, once the correction request has been added to `messages`.
+   */
+  #answer<T>(
+    record: Omit<ModelCallRecord, 'outcome' | 'issues'>,
+    response: ChatResponse,
+    schema: z.ZodType<T>,
+    calls: ModelCallRecord[],
+    messages: ChatMessage[],
+  ): GenerateOutcome<T> | undefined {
+    if (response.refusal !== null) {
+      calls.push({ ...record, outcome: 'failed', issues: [`model refused: ${response.refusal}`] })
+      return {
+        ok: false,
+        error: { code: 'invalid', message: 'the model declined to answer', issues: [] },
+        calls,
+      }
+    }
+    const parsed = parseOutput(response.content, schema)
+    if (parsed.ok) {
+      calls.push({ ...record, outcome: 'ok', issues: [] })
+      return { ok: true, value: parsed.value, calls }
+    }
+    calls.push({ ...record, outcome: 'schema_invalid', issues: parsed.issues })
+    messages.push(
+      { role: 'assistant', content: response.content.slice(0, 20_000) },
+      {
+        role: 'user',
+        content: `That answer does not match the required JSON Schema:\n- ${parsed.issues.join(
+          '\n- ',
+        )}\nReply again with only one JSON object that matches the schema.`,
+      },
+    )
+    return undefined
   }
 
   /** "replay:nebius" replays recordings priced as Nebius models. */

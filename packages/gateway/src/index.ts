@@ -42,6 +42,7 @@ export {
   OpenRouterProvider,
 } from './providers/openrouter.ts'
 export {
+  RecordedFirstProvider,
   type Recording,
   RecordingProvider,
   ReplayProvider,

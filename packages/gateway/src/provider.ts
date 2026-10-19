@@ -32,6 +32,11 @@ export interface Provider {
   /** Calls may cost money. */
   readonly paid: boolean
   complete(request: ChatRequest, signal: AbortSignal): Promise<ChatResponse>
+  /**
+   * An answer recorded earlier for exactly this request, if the provider has one. The gateway uses
+   * it without a reservation or a charge, and marks the call as recorded (ADR 0019).
+   */
+  recorded?(request: ChatRequest): ChatResponse | undefined
 }
 
 /**
