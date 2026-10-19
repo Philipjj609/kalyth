@@ -1,6 +1,6 @@
 import { CONTRACTS_VERSION, canonicalJson } from '@kalyth/contracts'
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/server'
-import { type McpDeps, TOOLS, toToolResult } from './tools.ts'
+import { advertisedSchema, callTool, type McpDeps, TOOLS, toToolResult } from './tools.ts'
 
 const INSTRUCTIONS = `Kalyth holds a persistent, evidence-backed engineering model of this project.
 Read before you change: query objects, relations and evidence at a revision.
@@ -28,14 +28,16 @@ export function createKalythMcpServer(deps: McpDeps, principalId: string): McpSe
       {
         title: tool.title,
         description: tool.description,
-        inputSchema: tool.input,
+        // Advertised to clients as the tool's JSON Schema; checked in callTool, so invalid input
+        // is answered in Kalyth's error envelope rather than the SDK's plain text.
+        inputSchema: advertisedSchema(tool.input),
         annotations: {
           readOnlyHint: tool.readOnly,
           destructiveHint: false,
           openWorldHint: false,
         },
       },
-      async (input: unknown) => toToolResult(tool.run(deps, caller, input)),
+      async (input: unknown) => toToolResult(callTool(tool, deps, caller, input)),
     )
   }
   server.registerResource(

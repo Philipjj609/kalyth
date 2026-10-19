@@ -10,8 +10,10 @@ import {
   DecisionsQuery,
   EvidenceQuery,
   FreshnessQuery,
+  fail,
   HistoryQuery,
   ImpactQuery,
+  type Issue,
   ObjectQuery,
   ProjectRef,
   ProposalListQuery,
@@ -27,6 +29,7 @@ import {
 } from '@kalyth/contracts'
 import type { KalythServices } from '@kalyth/core'
 import type { TaskCoordinator } from '@kalyth/tasks'
+import type { StandardSchemaWithJSON } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
 /**
@@ -237,7 +240,7 @@ export const TOOLS: readonly ToolSpec[] = [
     name: 'submit_execution_report',
     title: 'Submit an execution report',
     description:
-      'Reports the work on a task you hold: outcome, summary, the sha of your last commit, every file your work changed (since the task base, when the task has one) and the tests you ran. Kalyth checks the work in the task repository: the commit exists on a branch or tag, its message carries the Kalyth-Task trailer, it descends from the task base, and the files changed from the base to it are exactly those reported; the verdict lists the commits in that range. That check is recorded as an observed verification. A passing report moves the task to review; a person completes it. Tests are recorded as reported, not run. Reuse the idempotencyKey when retrying.',
+      'Reports the work on a task you hold: outcome, summary, the sha of your last commit, every file your work changed (since the task base, when the task has one) and the tests you ran. Kalyth checks the work in the task repository: the commit exists on a branch or tag, its message carries the Kalyth-Task trailer, it descends from the task base, and the files changed from the base to it are exactly those reported; the verdict lists the commits in that range. That check is recorded as an observed verification. A passing report moves the task to review; a person completes it. Tests are recorded as reported, not run. Reuse the idempotencyKey when retrying: a retry returns the original verdict.',
     input: SubmitReportInput,
     readOnly: false,
     run: (d, c, i) => d.tasks.submitReport(c, i),
@@ -259,6 +262,55 @@ export const TOOLS: readonly ToolSpec[] = [
     run: (d, c, i) => d.services.listProposals(c, i),
   },
 ]
+
+/** Schema issues returned for one call at most; the message counts the rest. */
+const MAX_ISSUES = 20
+
+/**
+ * The input schema a tool advertises: its own zod schema, converted to JSON Schema for
+ * tools/list, with validation left to {@link callTool}. Given the zod schema itself, the SDK would
+ * refuse invalid input before Kalyth sees it, as plain "Input validation error" text; callTool
+ * validates against the same schema and answers in the shared error envelope. Nothing reaches a
+ * service unparsed, so validation is not weakened.
+ */
+export function advertisedSchema(schema: z.ZodType): StandardSchemaWithJSON {
+  return {
+    '~standard': {
+      version: 1,
+      vendor: 'kalyth',
+      validate: (value: unknown) => ({ value }),
+      jsonSchema: schema['~standard'].jsonSchema,
+    },
+  }
+}
+
+/**
+ * Runs a tool on its parsed input. Input that does not match the tool's schema is refused with
+ * code `invalid` and the zod issues, like every other Kalyth failure (ADR 0013, amendment).
+ */
+export function callTool(
+  tool: ToolSpec,
+  deps: McpDeps,
+  caller: Caller,
+  input: unknown,
+): Result<unknown> {
+  const parsed = tool.input.safeParse(input ?? {})
+  if (parsed.success) return tool.run(deps, caller, parsed.data)
+  const all = parsed.error.issues
+  const issues: Issue[] = all.slice(0, MAX_ISSUES).map((i) => ({
+    code: `schema.${i.code}`,
+    message: i.message,
+    path: i.path.map((p) => (typeof p === 'number' ? p : String(p))),
+  }))
+  const named = issues
+    .slice(0, 3)
+    .map((i) => (i.path?.length ? `${i.path.join('.')}: ${i.message}` : i.message))
+    .join('; ')
+  const more = all.length > 3 ? ` (and ${all.length - 3} more)` : ''
+  return fail('invalid', `input does not match the ${tool.name} input schema: ${named}${more}`, {
+    issues,
+  })
+}
 
 export interface ToolCallOutput {
   [key: string]: unknown

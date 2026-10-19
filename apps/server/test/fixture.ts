@@ -48,9 +48,14 @@ export async function harness() {
   const mcp = async (name: string, args: Record<string, unknown> = {}) => {
     const res = (await client.callTool({ name, arguments: args })) as {
       structuredContent?: Record<string, any>
+      content?: { type: string; text?: string }[]
       isError?: boolean
     }
-    return { isError: res.isError === true, body: res.structuredContent ?? {} }
+    return {
+      isError: res.isError === true,
+      body: res.structuredContent ?? {},
+      text: res.content?.find((c) => c.type === 'text')?.text ?? '',
+    }
   }
   const close = async () => {
     await client.close()
