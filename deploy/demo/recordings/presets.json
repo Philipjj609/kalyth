@@ -1,0 +1,26 @@
+[
+  {
+    "id": "multi-tenancy",
+    "recordedAt": "2026-10-19T13:32:01.618Z",
+    "status": "completed",
+    "costMicroUsd": 24508
+  },
+  {
+    "id": "soft-delete",
+    "recordedAt": "2026-10-19T13:32:12.590Z",
+    "status": "completed",
+    "costMicroUsd": 17602
+  },
+  {
+    "id": "audit-log",
+    "recordedAt": "2026-10-19T13:32:17.848Z",
+    "status": "completed",
+    "costMicroUsd": 13425
+  },
+  {
+    "id": "summary-backend",
+    "recordedAt": "2026-10-19T13:32:20.030Z",
+    "status": "completed",
+    "costMicroUsd": 2404
+  }
+]

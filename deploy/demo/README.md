@@ -9,9 +9,11 @@ of one template project.
   tag 0.12.0, including short source excerpts as evidence. That project is MIT-licensed, copyright
   Sebastián Ramírez. The demo server imports this file at startup. Import keeps its ids, so
   recordings made against it keep matching.
-- `recordings/` will hold the preset runs' recorded Nemotron answers, made once with
-  `pnpm demo:record` against Nebius, and `presets.json`, listing which presets were recorded.
-  Recording costs money, so it waits for Philip's go-ahead (ADR 0019, amendments 1 and 5).
+- `recordings/` holds the preset runs' recorded Nemotron answers (`recordings.json`: the
+  responses and a hash of each request, never a prompt or key), and `presets.json`, listing which
+  presets were recorded. They were made once, on 19 October 2026, with `pnpm demo:record` against
+  Nebius Token Factory. That was approved in KAL-20261019-030 and cost 0.058 USD, under a separate
+  ledger capped at 0.30 USD. The demo replays them at no cost.
 
 To rebuild the template after an analyser change:
 
