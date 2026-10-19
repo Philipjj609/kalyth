@@ -35,7 +35,13 @@ With these changes:
    rehearsal left an accepted mock decision in it. The template is a clean analysis, committed as an
    export. Its preset runs need one recording session against Nebius (at most 0.30 USD of the
    approved inference budget), which waits for Philip's go-ahead under amendment 1. Until then,
-   development and tests use a test provider.
+   development and tests use a test provider. Recorded on 19 October for 0.058 USD
+   (KAL-20261019-031).
+6. **The Python string fallback is on in the hosted demo** (KAL-20261019-032). Without it, the
+   recorded backend summary keeps neither statement: all 7 rejected citations only swap Python's
+   string quotes. With it, both statements are kept, and the run report lists those 7 citations as
+   normalised, apart from exact ones. `fly.toml` sets `KALYTH_GROUNDING_PYTHON_STRINGS=1`; local
+   mode keeps the fallback off unless a person sets it.
 
 ### Fly.io billing controls
 

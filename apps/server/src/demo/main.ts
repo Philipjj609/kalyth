@@ -106,7 +106,7 @@ process.stderr.write(
   [
     `kalyth demo: ${secure ? 'https' : 'http'}://${host}/ (listening on port ${port})`,
     `  template ${template.projectId}, ${template.presets.filter((p) => p.recorded).length} of ${template.presets.length} presets recorded, ${recordings.length} recorded calls`,
-    `  live runs ${live === null ? 'off (no key)' : consented ? 'on' : 'off (no consent)'}; judge code ${judgeCode ? 'set' : 'not set'}`,
+    `  live runs ${live === null ? 'off (no key)' : consented ? 'on' : 'off (no consent)'}; judge code ${judgeCode ? 'set' : 'not set'}; Python string fallback ${env.KALYTH_GROUNDING_PYTHON_STRINGS === '1' ? 'on' : 'off'}`,
     `  today: public ${allowance.remainingToday('public')} and judges ${allowance.remainingToday('judges')} micro-USD`,
     '',
   ].join('\n'),

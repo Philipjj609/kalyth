@@ -101,4 +101,6 @@ Adversarial tests cover:
 
 - With the bounded rules alone, little changes on this sample. The gain comes from the Python
   fallback, which is opt-in.
+- Philip turned the fallback on for the hosted demo only (KAL-20261019-032, ADR 0019); local mode
+  keeps it off unless a person sets it.
 - Benchmark reports keep quoting the exact rate, with normalised acceptances beside it.

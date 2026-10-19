@@ -16,6 +16,9 @@ primary_region = "ams"
   KALYTH_DEMO_DATA = "/data"
   KALYTH_DEMO_CLIENT_IP_HEADER = "fly-client-ip"
   KALYTH_PORT = "8080"
+  # The Python string fallback of ADR 0017, for the hosted demo only (KAL-20261019-032); local
+  # mode keeps it off.
+  KALYTH_GROUNDING_PYTHON_STRINGS = "1"
 
 [[mounts]]
   source = "kalyth_demo_data"

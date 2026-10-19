@@ -234,7 +234,7 @@ repository root at startup. A variable set in the environment wins over `.env`, 
 | `KALYTH_OPENROUTER_API_KEY` | none | Your OpenRouter key (public and synthetic data only) |
 | `KALYTH_RECORD_DIR` | none | Record real model responses for replay |
 | `KALYTH_REPLAY_DIR` | none | Recordings to replay with `KALYTH_PROVIDER=replay` |
-| `KALYTH_GROUNDING_PYTHON_STRINGS` | off | `1` accepts swapped Python string quotes in citations ([ADR 0017](docs/adr/0017-bounded-citation-normalisation.md)) |
+| `KALYTH_GROUNDING_PYTHON_STRINGS` | off (on in the hosted demo) | `1` accepts swapped Python string quotes in citations ([ADR 0017](docs/adr/0017-bounded-citation-normalisation.md)) |
 
 ## Concepts in brief
 
