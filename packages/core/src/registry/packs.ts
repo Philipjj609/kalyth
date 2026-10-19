@@ -196,6 +196,8 @@ export const softwarePack: ObjectTypeDef[] = [
   },
   {
     type: 'software.Endpoint',
+    // Still version 1: `parameters` is optional and additive, so every earlier version of an
+    // endpoint is valid as it stands (ADR 0021).
     version: 1,
     pack: 'software',
     description: 'A network-facing operation such as an HTTP route.',
@@ -203,6 +205,18 @@ export const softwarePack: ObjectTypeDef[] = [
       method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'ANY']),
       path: z.string().min(1).max(1000),
       handler: z.string().max(500).optional(),
+      /** Request parameters from the handler's signature, in order; dependencies are left out. */
+      parameters: z
+        .array(
+          z.strictObject({
+            name: z.string().min(1).max(200),
+            in: z.enum(['path', 'query', 'body', 'header', 'cookie', 'unknown']),
+            /** The type annotation as written. */
+            type: z.string().min(1).max(300).optional(),
+          }),
+        )
+        .max(100)
+        .optional(),
     }),
   },
   {
@@ -290,6 +304,15 @@ export const relationTypes: RelationTypeDef[] = [
     from: [...CODE_UNITS, 'software.Endpoint'],
     to: ['software.DataEntity'],
     impact: 'both',
+  },
+  {
+    ...base,
+    type: 'references',
+    pack: 'software',
+    description: 'The source data refers to the target, for example through a foreign key.',
+    from: ['software.DataEntity'],
+    to: ['software.DataEntity'],
+    impact: 'targetToSource',
   },
   {
     ...base,
