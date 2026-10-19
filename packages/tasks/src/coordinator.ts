@@ -39,7 +39,15 @@ import {
 import type { z } from 'zod'
 import { TaskGit } from './git.ts'
 import { TaskRepositories } from './repository.ts'
-import { summarise, taskTrailer, VERIFIER, VERIFIER_COVERAGE, verifyReport } from './verifier.ts'
+import {
+  normaliseFiles,
+  parseSummary,
+  summarise,
+  taskTrailer,
+  VERIFIER,
+  VERIFIER_COVERAGE,
+  verifyReport,
+} from './verifier.ts'
 
 /** The coordinator's own principal: it commits task lifecycle records and nothing else (ADR 0013). */
 export const ensureCoordinator = (services: KalythServices): Principal =>
@@ -63,6 +71,36 @@ const parse = <S extends z.ZodType>(schema: S, input: unknown): Result<z.output<
 
 const text = (o: ObjectVersion | undefined, key: string): string =>
   o && typeof o.attributes[key] === 'string' ? (o.attributes[key] as string) : ''
+
+/** Why a task in this state takes no report or lease change, whoever asks. */
+const NOT_WORKABLE: Record<TaskStatus, string> = {
+  proposed: 'the task is proposed, not running: a person marks it ready before it can be claimed',
+  ready: 'the task is ready, not running: no one holds a lease on it; claim it first',
+  running: 'the task is running',
+  review:
+    'the task is in review: a verified report is waiting for a person, so the task takes no more reports and its lease has ended',
+  unknown_outcome:
+    'the lease expired before a report: the last holder can still report its work, but the lease cannot be renewed or released',
+  blocked: 'the task is blocked by a person: it takes no reports until it is unblocked and claimed',
+  failed:
+    'the task has failed: it takes no more reports until a person marks it ready and it is claimed again',
+  completed: 'the task is completed, which is final: it takes no more reports',
+  cancelled: 'the task is cancelled, which is final: it takes no more reports',
+}
+const notWorkable = (status: TaskStatus): string =>
+  NOT_WORKABLE[status] ?? `the task is ${status}, not running`
+
+/** The verdict on a report Kalyth cannot check; no verification is recorded for it. */
+const NO_COMMIT: VerificationCheck = {
+  name: 'commit',
+  ok: false,
+  detail: 'the report names no commit',
+}
+const NO_REPOSITORY: VerificationCheck = {
+  name: 'repository',
+  ok: false,
+  detail: 'no task repository is registered for this project',
+}
 
 interface Located {
   projectId: string
@@ -276,6 +314,7 @@ export class TaskCoordinator {
     const { located } = who.value
     const agent = who.value.caller
 
+    // A retry with the same key is answered with the original verdict, read back from the record.
     const previous = this.#reportByKey(
       caller,
       located.projectId,
@@ -286,36 +325,38 @@ export class TaskCoordinator {
       return ok({
         task: located.view,
         reportId: previous.id,
-        verification: {
-          id: previous.verification?.id ?? null,
-          outcome: previous.verification?.outcome ?? 'inconclusive',
-          checks: [],
-        },
+        verification: previous.verification
+          ? {
+              id: previous.verification.id,
+              outcome: previous.verification.outcome,
+              checks: parseSummary(previous.verification.summary),
+            }
+          : {
+              id: null,
+              outcome: 'inconclusive',
+              checks: [previous.commit ? NO_REPOSITORY : NO_COMMIT],
+            },
         duplicate: true,
       })
     }
     const held = this.#held(caller, report.taskId, report.leaseId, ['running', 'unknown_outcome'])
     if (!held.ok) return held
 
+    // Stored as git writes paths, so what people see is what was compared.
+    const filesChanged = normaliseFiles(report.filesChanged)
     const repoPath = this.#repos.get(located.projectId).path
     let outcome: 'pass' | 'fail' | 'inconclusive' = 'inconclusive'
     let checks: VerificationCheck[] = []
     if (!report.commit) {
-      checks = [{ name: 'commit', ok: false, detail: 'the report names no commit' }]
+      checks = [NO_COMMIT]
     } else if (!repoPath) {
-      checks = [
-        {
-          name: 'repository',
-          ok: false,
-          detail: 'no task repository is registered for this project',
-        },
-      ]
+      checks = [NO_REPOSITORY]
     } else {
       try {
         const verdict = verifyReport(new TaskGit(repoPath), {
           taskId: located.view.id,
           commit: report.commit,
-          filesChanged: report.filesChanged,
+          filesChanged,
           baseCommit: located.view.baseCommit,
         })
         outcome = verdict.outcome
@@ -341,7 +382,7 @@ export class TaskCoordinator {
           outcome: report.outcome,
           summary: report.summary,
           ...(report.commit ? { commit: report.commit } : {}),
-          filesChanged: report.filesChanged,
+          filesChanged,
           tests: report.tests.map((t) => ({
             command: t.command,
             passed: t.passed,
@@ -497,12 +538,13 @@ export class TaskCoordinator {
     const who = this.#worker(caller, taskId)
     if (!who.ok) return who
     const { view } = who.value.located
+    // The state first: once a task has left running, no lease on it counts, whoever held it.
+    if (!statuses.includes(view.status)) {
+      return fail('conflicting', notWorkable(view.status))
+    }
     const lease = view.lease
     if (!lease || lease.id !== leaseId || lease.holder !== who.value.caller.principalId) {
       return fail('unauthorized', 'you do not hold this lease on the task')
-    }
-    if (!statuses.includes(view.status)) {
-      return fail('conflicting', `task is ${view.status}`)
     }
     if (view.status === 'running' && view.leaseExpired) {
       return fail('conflicting', `the lease expired at ${lease.expiresAt}; claim the task again`)
@@ -626,7 +668,8 @@ export class TaskCoordinator {
               outcome: ra.outcome as 'succeeded' | 'failed' | 'partial',
               summary: text(rep, 'summary'),
               commit: typeof ra.commit === 'string' ? ra.commit : null,
-              filesChanged: (ra.filesChanged as string[] | undefined) ?? [],
+              // Stored normalised since 2026-10-19; earlier reports kept paths as typed.
+              filesChanged: normaliseFiles((ra.filesChanged as string[] | undefined) ?? []),
               tests: (ra.tests as TaskView['reports'][number]['tests'] | undefined) ?? [],
               revision: rep.revision,
               reportedAt: written.created(rep),

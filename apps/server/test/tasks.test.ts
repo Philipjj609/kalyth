@@ -148,4 +148,42 @@ describe('tasks over HTTP and MCP (ADR 0013)', () => {
     const unknown = await h.http('GET', `/api/v1/tasks/${'0'.repeat(32)}`)
     expect(unknown.status).toBeGreaterThanOrEqual(400)
   })
+
+  it('answers a late report with the task’s state and a retry with the original checks', async () => {
+    const { projectId, taskId, repo } = await readyTask()
+    await h.http('PUT', `/api/v1/projects/${projectId}/task-repository`, { path: repo.path })
+    const claim = await h.mcp('claim_task', { taskId })
+    const leaseId = claim.body.lease.id as string
+    repo.write({ 'app/models.py': 'class Item:\n    tenant_id: int\n' })
+    const sha = repo.commit(`Add tenant_id\n\nKalyth-Task: ${taskId}`)
+    const report = (idempotencyKey: string) => ({
+      taskId,
+      leaseId,
+      idempotencyKey,
+      outcome: 'succeeded',
+      summary: 'Added tenant_id.',
+      commit: sha,
+      filesChanged: ['app\\models.py'],
+    })
+    const first = await h.mcp('submit_execution_report', report('report-0001'))
+    expect(first.body.verification.outcome).toBe('pass')
+    expect(first.body.task.status).toBe('review')
+
+    const retry = await h.mcp('submit_execution_report', report('report-0001'))
+    expect(retry.isError).toBe(false)
+    expect(retry.body.duplicate).toBe(true)
+    expect(retry.body.verification).toEqual(first.body.verification)
+    expect(retry.body.verification.checks.length).toBeGreaterThan(0)
+
+    const late = await h.mcp('submit_execution_report', report('report-0002'))
+    expect(late).toMatchObject({
+      isError: true,
+      body: {
+        error: { code: 'conflicting', message: expect.stringMatching(/^the task is in review/) },
+      },
+    })
+    // The UI reads the path as git writes it.
+    const viaHttp = await h.http('GET', `/api/v1/tasks/${taskId}`)
+    expect(viaHttp.body.reports[0].filesChanged).toEqual(['app/models.py'])
+  })
 })

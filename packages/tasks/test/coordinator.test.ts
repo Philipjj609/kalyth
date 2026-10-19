@@ -221,11 +221,13 @@ describe('task coordinator (ADR 0013)', () => {
     })
     expect(result.verification.id).toBe(verification?.id)
 
-    // Retrying the same report is answered from the record, not written twice.
+    // Retrying the same report is answered from the record, with the original verdict, not
+    // written twice.
     const again = unwrap(
       w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, sha) }),
     )
     expect(again).toMatchObject({ duplicate: true, reportId: result.reportId })
+    expect(again.verification).toEqual(result.verification)
     expect(w.view().reports).toHaveLength(1)
 
     // Completion: never the coordinator, never through relayed text; the owner acting directly.
@@ -312,6 +314,16 @@ describe('task coordinator (ADR 0013)', () => {
     expect(failed['files changed']?.detail).toMatch(/reported but not changed: README\.md/)
     expect(result.task.status).toBe('running')
 
+    // A retry keeps the reasons for the failed verdict.
+    const retried = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, sha, { filesChanged: ['app/models.py', 'README.md'] }),
+      }),
+    )
+    expect(retried).toMatchObject({ duplicate: true, reportId: result.reportId })
+    expect(retried.verification).toEqual(result.verification)
+
     const missing = unwrap(
       w.tasks.submitReport(w.agent, {
         taskId: w.taskId,
@@ -334,8 +346,96 @@ describe('task coordinator (ADR 0013)', () => {
       }),
     )
     expect(gaveUp.verification.outcome).toBe('inconclusive')
+    expect(gaveUp.verification.checks).toEqual([
+      { name: 'commit', ok: false, detail: 'the report names no commit' },
+    ])
     expect(gaveUp.task.status).toBe('failed')
     expect(gaveUp.task.reports).toHaveLength(3)
+
+    // Unverified reports, too, are answered on retry with what was said the first time; the
+    // failed task refuses anything new.
+    const gaveUpAgain = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, undefined, {
+          idempotencyKey: 'report-gave-up',
+          outcome: 'failed',
+          filesChanged: [],
+        }),
+      }),
+    )
+    expect(gaveUpAgain).toMatchObject({ duplicate: true, reportId: gaveUp.reportId })
+    expect(gaveUpAgain.verification).toEqual(gaveUp.verification)
+    const afterFailure = errorOf(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, sha, { idempotencyKey: 'report-after-failure' }),
+      }),
+    )
+    expect(afterFailure).toMatchObject({ code: 'conflicting' })
+    expect(afterFailure.message).toMatch(/^the task has failed/)
+  })
+
+  it('refuses a late report once the task is in review, saying so, and still answers a retry', () => {
+    const w = world()
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    const sha = work(w)
+    const first = unwrap(
+      w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, sha) }),
+    )
+    expect(first.task.status).toBe('review')
+
+    const late = errorOf(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, sha, { idempotencyKey: 'report-late-0001' }),
+      }),
+    )
+    expect(late.code).toBe('conflicting')
+    expect(late.message).toBe(
+      'the task is in review: a verified report is waiting for a person, so the task takes no more reports and its lease has ended',
+    )
+    // The same refusal whoever asks and whatever lease they name, and for lease changes.
+    const forged = { taskId: w.taskId, leaseId: `lease_${'0'.repeat(32)}` }
+    expect(
+      errorOf(w.tasks.submitReport(w.other, { ...forged, ...report(forged.leaseId, sha) })).code,
+    ).toBe('conflicting')
+    expect(
+      errorOf(w.tasks.renew(w.agent, { taskId: w.taskId, leaseId: lease.id })).message,
+    ).toMatch(/^the task is in review/)
+    expect(
+      errorOf(w.tasks.release(w.agent, { taskId: w.taskId, leaseId: lease.id, reason: 'done' }))
+        .message,
+    ).toMatch(/^the task is in review/)
+    // A retry of the report that moved it is still answered.
+    const retry = unwrap(
+      w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, sha) }),
+    )
+    expect(retry).toMatchObject({ duplicate: true, verification: first.verification })
+    expect(w.view().reports).toHaveLength(1)
+    // An agent without task.work is still refused for its scopes first.
+    expect(
+      errorOf(w.tasks.submitReport(w.reader, { ...forged, ...report(forged.leaseId, sha) })).code,
+    ).toBe('unauthorized')
+  })
+
+  it('stores reported paths as git writes them', () => {
+    const w = world()
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    const result = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, work(w), {
+          filesChanged: ['app\\models.py', './app/tenant.py', 'app/models.py'],
+        }),
+      }),
+    )
+    expect(result.verification.outcome).toBe('pass')
+    expect(result.task.reports[0]?.filesChanged).toEqual(['app/models.py', 'app/tenant.py'])
+    const stored = unwrap(
+      w.services.queryObjects(w.owner, { projectId: w.projectId, types: ['core.ExecutionReport'] }),
+    ).objects[0]
+    expect(stored?.attributes.filesChanged).toEqual(['app/models.py', 'app/tenant.py'])
   })
 
   it('verifies the work from the task base, over two commits, and fails a report of the fix-up alone', () => {
