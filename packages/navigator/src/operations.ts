@@ -1,7 +1,7 @@
 import type { GroundingReport, OperationInput } from '@kalyth/contracts'
 import type { ContextEvidence, ModelContext } from './context.ts'
-import { checkCitations } from './grounding.ts'
-import type { AlternativesOutput, RefineOutput, SummaryOutput } from './schemas.ts'
+import { checkCitations, type GroundingOptions } from './grounding.ts'
+import type { AlternativesOutput, Citation, RefineOutput, SummaryOutput } from './schemas.ts'
 
 export interface ModelIdentity {
   provider: string
@@ -22,6 +22,46 @@ export interface Mapped {
 
 const evidenceIndex = (context: ModelContext) =>
   new Map<string, ContextEvidence>(context.evidence.map((e) => [e.handle, e]))
+
+/** At most this many normalised matches are kept in a run's report for audit. */
+const MAX_NORMALIZED_KEPT = 100
+
+/**
+ * Checks citations and adds them to the run's grounding report, keeping exact and normalised
+ * acceptances apart (ADR 0017). Each normalised match is recorded with both texts verbatim.
+ */
+function groundingTally(evidence: ReadonlyMap<string, ContextEvidence>, options: GroundingOptions) {
+  const grounding = {
+    citations: 0,
+    validCitations: 0,
+    exactCitations: 0,
+    normalizedCitations: 0,
+    normalizedMatches: [] as NonNullable<GroundingReport['normalizedMatches']>,
+    itemsKept: 0,
+    itemsRejected: [] as GroundingReport['itemsRejected'],
+  } satisfies GroundingReport
+  const cite = (item: string, citations: readonly Citation[]) => {
+    const check = checkCitations(citations, evidence, options)
+    grounding.citations += citations.length
+    grounding.validCitations += check.valid
+    grounding.exactCitations += check.exact
+    grounding.normalizedCitations += check.normalized
+    for (const o of check.outcomes) {
+      if (o.match !== 'normalized' || grounding.normalizedMatches.length >= MAX_NORMALIZED_KEPT) {
+        continue
+      }
+      grounding.normalizedMatches.push({
+        item,
+        ref: o.ref,
+        quote: o.quote,
+        source: o.source ?? '',
+        differences: o.differences ?? [],
+      })
+    }
+    return check
+  }
+  return { grounding, cite }
+}
 
 const inferred = (
   model: ModelIdentity,
@@ -48,20 +88,14 @@ export function mapSummary(
   context: ModelContext,
   elementId: string,
   model: ModelIdentity,
+  options: GroundingOptions = {},
 ): Mapped {
   const evidence = evidenceIndex(context)
   const ops: OperationInput[] = []
-  const grounding: GroundingReport = {
-    citations: 0,
-    validCitations: 0,
-    itemsKept: 0,
-    itemsRejected: [],
-  }
+  const { grounding, cite } = groundingTally(evidence, options)
   out.statements.forEach((s, i) => {
-    const check = checkCitations(s.citations, evidence)
-    grounding.citations += s.citations.length
-    grounding.validCitations += check.valid
     const item = `statement ${i + 1}`
+    const check = cite(item, s.citations)
     const firstInvalid = check.invalid[0]
     if (firstInvalid) {
       grounding.itemsRejected.push({ item, reason: firstInvalid.reason, ref: firstInvalid.ref })
@@ -125,16 +159,12 @@ export function mapAlternatives(
   context: ModelContext,
   model: ModelIdentity,
   existing?: ExistingDecision,
+  options: GroundingOptions = {},
 ): Mapped {
   const evidence = evidenceIndex(context)
   const elements = new Map(context.elements.map((e) => [e.handle, e]))
   const ops: OperationInput[] = []
-  const grounding: GroundingReport = {
-    citations: 0,
-    validCitations: 0,
-    itemsKept: 0,
-    itemsRejected: [],
-  }
+  const { grounding, cite } = groundingTally(evidence, options)
   const method = existing ? 'navigator.refine' : 'navigator.alternatives'
   const framing = {
     level: 'medium' as const,
@@ -211,9 +241,7 @@ export function mapAlternatives(
     const targets = new Set<string>()
     alt.directChanges.forEach((change, c) => {
       const item = `alternative ${a + 1}, change ${c + 1}`
-      const check = checkCitations(change.citations, evidence)
-      grounding.citations += change.citations.length
-      grounding.validCitations += check.valid
+      const check = cite(item, change.citations)
       const target = elements.get(change.element)
       if (!target) {
         grounding.itemsRejected.push({

@@ -8,7 +8,14 @@ export {
   renderContext,
   summarizeContext,
 } from './context.ts'
-export { type CitationCheck, checkCitations, MIN_QUOTE_CHARS } from './grounding.ts'
+export {
+  type CitationCheck,
+  type CitationOutcome,
+  checkCitations,
+  type GroundingOptions,
+  MIN_QUOTE_CHARS,
+  type NormalizedDifference,
+} from './grounding.ts'
 export { navigatorMockResponder } from './mock.ts'
 export { ensureNavigatorPrincipal, Navigator, type NavigatorOptions } from './navigator.ts'
 export { type ExistingDecision, type Mapped, mapAlternatives, mapSummary } from './operations.ts'

@@ -37,7 +37,7 @@ const lookup: ElementLookup = {
 }
 
 describe('grounding report', () => {
-  it('shows valid citations out of total and every rejection with reason and ref', () => {
+  it('shows exact, normalised and rejected citations and every rejection with reason and ref', () => {
     const html = renderToStaticMarkup(
       <GroundingReportPanel
         status="completed"
@@ -54,7 +54,9 @@ describe('grounding report', () => {
       />,
     )
     const text = textOf(html)
-    expect(text).toContain('Valid citations 7 of 9')
+    expect(text).toContain('Exact citations 7 of 9')
+    expect(text).toContain('Normalised 0')
+    expect(text).toContain('Rejected citations 2')
     expect(text).toContain('Items kept 3')
     expect(text).toContain('Items rejected 3')
     expect(text).toContain('3 items rejected and not proposed')
@@ -62,6 +64,40 @@ describe('grounding report', () => {
     expect(text).toContain('question 1 reference was not in context E99')
     expect(text).toContain('statement 3 no valid citation for a claim about code none')
     expect(html).toContain('tone-danger')
+  })
+
+  it('lists normalised matches with the quote and the source verbatim', () => {
+    const text = textOf(
+      renderToStaticMarkup(
+        <GroundingReportPanel
+          status="completed"
+          grounding={{
+            citations: 3,
+            validCitations: 3,
+            exactCitations: 2,
+            normalizedCitations: 1,
+            normalizedMatches: [
+              {
+                item: 'statement 1',
+                ref: 'E1',
+                quote: "foreign_key='user.id'",
+                source: 'foreign_key="user.id"',
+                differences: ['python string delimiters'],
+              },
+            ],
+            itemsKept: 1,
+            itemsRejected: [],
+          }}
+        />,
+      ),
+    )
+    expect(text).toContain('Exact citations 2 of 3')
+    expect(text).toContain('Normalised 1')
+    expect(text).toContain('Rejected citations 0')
+    expect(text).toContain('1 citation accepted after normalisation')
+    expect(text).toContain('statement 1 · E1 · python string delimiters')
+    expect(text).toContain("Quote: foreign_key='user.id'")
+    expect(text).toContain('Source: foreign_key="user.id"')
   })
 
   it('says so when nothing was rejected, and before grounding ran', () => {

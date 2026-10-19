@@ -163,11 +163,28 @@ export function runSubject(
     : input.request
 }
 
-/** "7 of 9 valid", or "no citations" when the model cited nothing, or "—" before grounding. */
+/**
+ * Exact, normalised and rejected citations of a run (ADR 0017). Runs recorded before ADR 0017
+ * have no separate counts; every accepted citation in them was exact.
+ */
+export function citationCounts(grounding: GroundingReport) {
+  const exact = grounding.exactCitations ?? grounding.validCitations
+  const normalized = grounding.normalizedCitations ?? 0
+  return { exact, normalized, rejected: grounding.citations - exact - normalized }
+}
+
+/**
+ * "7 of 9 exact", "7 exact and 2 normalised of 9", "no citations", or "—" before grounding.
+ * Normalised matches are never counted as exact.
+ */
 export function citationSummary(grounding: GroundingReport | null): string {
   if (!grounding) return '—'
   if (grounding.citations === 0) return 'no citations'
-  return `${grounding.validCitations.toLocaleString('en')} of ${grounding.citations.toLocaleString('en')} valid`
+  const { exact, normalized } = citationCounts(grounding)
+  const total = grounding.citations.toLocaleString('en')
+  return normalized > 0
+    ? `${exact.toLocaleString('en')} exact and ${normalized.toLocaleString('en')} normalised of ${total}`
+    : `${exact.toLocaleString('en')} of ${total} exact`
 }
 
 /** Input and output tokens of a call, e.g. "1,204 in · 388 out"; "?" where not reported. */

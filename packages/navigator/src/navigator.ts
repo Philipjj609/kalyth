@@ -23,6 +23,7 @@ import {
   renderContext,
   summarizeContext,
 } from './context.ts'
+import type { GroundingOptions } from './grounding.ts'
 import { type Mapped, mapAlternatives, mapSummary } from './operations.ts'
 import {
   ALTERNATIVES_SYSTEM,
@@ -40,6 +41,8 @@ export interface NavigatorOptions {
   services: KalythServices
   gateway: ProviderGateway
   clock?: () => string
+  /** Citation validation options (ADR 0017); the Python delimiter fallback is off by default. */
+  grounding?: GroundingOptions
 }
 
 /** The Navigator's own principal: it reads and proposes, and can do nothing else (ADR 0010). */
@@ -61,11 +64,13 @@ export class Navigator {
   readonly #runs: RunStore
   readonly #authz: Authorizer
   readonly #clock: () => string
+  readonly #grounding: GroundingOptions
 
   constructor(options: NavigatorOptions) {
     this.#services = options.services
     this.#gateway = options.gateway
     this.#clock = options.clock ?? (() => new Date().toISOString())
+    this.#grounding = options.grounding ?? {}
     this.#runs = new RunStore(options.services.store.db)
     this.#authz = new Authorizer(options.services.store, this.#clock)
     this.principal = ensureNavigatorPrincipal(options.services)
@@ -242,7 +247,8 @@ export class Navigator {
           maxOutputTokens: 2000,
           reasoning: false,
         })
-        map = (value, model) => mapSummary(value as SummaryOutput, context, input.elementId, model)
+        map = (value, model) =>
+          mapSummary(value as SummaryOutput, context, input.elementId, model, this.#grounding)
       } else if (input.decisionId) {
         const decision = readDecisionToRefine(
           this.#services,
@@ -265,7 +271,7 @@ export class Navigator {
           reasoning: true,
         })
         map = (value, model) =>
-          mapAlternatives(value as RefineOutput, context, model, decision.existing)
+          mapAlternatives(value as RefineOutput, context, model, decision.existing, this.#grounding)
       } else {
         context = alternativesContext(reader, input.focus ?? [])
         const focus = (input.focus ?? [])
@@ -282,7 +288,8 @@ export class Navigator {
           maxOutputTokens: 12_000,
           reasoning: true,
         })
-        map = (value, model) => mapAlternatives(value as AlternativesOutput, context, model)
+        map = (value, model) =>
+          mapAlternatives(value as AlternativesOutput, context, model, undefined, this.#grounding)
       }
 
       if (!generated.ok) return failed(generated.error, { calls: generated.calls })

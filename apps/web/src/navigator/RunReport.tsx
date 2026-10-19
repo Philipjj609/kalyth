@@ -7,6 +7,7 @@ import { cn } from '../lib/cn.ts'
 import { plural } from '../model/format.ts'
 import {
   callTokens,
+  citationCounts,
   exactMicroUsd,
   formatLatency,
   formatMicroUsd,
@@ -83,26 +84,36 @@ export function GroundingReportPanel({
     )
   }
   const rejected = grounding.itemsRejected
-  const allValid = grounding.validCitations === grounding.citations
+  const counts = citationCounts(grounding)
+  const matches = grounding.normalizedMatches ?? []
   return (
     <Panel
       title="Grounding"
       aside={<span className="text-fg-subtle text-xs">checked against pinned evidence</span>}
     >
-      <dl className="grid grid-cols-3 gap-3 p-4">
+      <dl className="grid grid-cols-2 gap-3 p-4 md:grid-cols-5">
         <Figure
-          label="Valid citations"
+          label="Exact citations"
           value={
             <>
-              {grounding.validCitations.toLocaleString('en')}
+              {counts.exact.toLocaleString('en')}
               <span className="font-normal text-[15px] text-fg-muted">
                 {' '}
                 of {grounding.citations.toLocaleString('en')}
               </span>
             </>
           }
-          hint={grounding.citations === 0 ? 'nothing was cited' : 'quote found in a pinned excerpt'}
-          tone={grounding.citations > 0 && !allValid ? 'caution' : undefined}
+          hint={grounding.citations === 0 ? 'nothing was cited' : 'quote found as written'}
+        />
+        <Figure
+          label="Normalised"
+          value={counts.normalized.toLocaleString('en')}
+          hint="same code; layout or quote form differed"
+        />
+        <Figure
+          label="Rejected citations"
+          value={counts.rejected.toLocaleString('en')}
+          tone={counts.rejected > 0 ? 'caution' : undefined}
         />
         <Figure label="Items kept" value={grounding.itemsKept.toLocaleString('en')} />
         <Figure
@@ -171,7 +182,45 @@ export function GroundingReportPanel({
           No item was rejected.
         </p>
       )}
+      {matches.length > 0 && <NormalizedMatches matches={matches} />}
     </Panel>
+  )
+}
+
+/**
+ * Citations accepted by the bounded second pass (ADR 0017), with the model's quote and the source
+ * text it matched, both verbatim. A match locates the text; it does not confirm the reading.
+ */
+function NormalizedMatches({
+  matches,
+}: {
+  matches: NonNullable<GroundingReport['normalizedMatches']>
+}) {
+  return (
+    <details className="mx-4 mb-4 rounded-md border border-border">
+      <summary className="cursor-pointer px-3 py-2 text-sm">
+        {plural(matches.length, 'citation')} accepted after normalisation
+      </summary>
+      <ul className="divide-y divide-border border-border border-t">
+        {matches.map((m, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the report is immutable and ordered
+          <li key={i} className="space-y-1 px-3 py-2 text-xs">
+            <p className="text-fg-muted">
+              <span className="font-medium text-fg">{m.item}</span> ·{' '}
+              <code className="font-mono">{m.ref}</code> · {m.differences.join(', ')}
+            </p>
+            <p>
+              <span className="text-fg-subtle">Quote: </span>
+              <code className="whitespace-pre-wrap break-all font-mono">{m.quote}</code>
+            </p>
+            <p>
+              <span className="text-fg-subtle">Source: </span>
+              <code className="whitespace-pre-wrap break-all font-mono">{m.source}</code>
+            </p>
+          </li>
+        ))}
+      </ul>
+    </details>
   )
 }
 

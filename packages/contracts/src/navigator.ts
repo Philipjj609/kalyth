@@ -129,10 +129,32 @@ export const GroundingRejection = z.object({
 })
 export type GroundingRejection = z.infer<typeof GroundingRejection>
 
-/** What the grounding validator checked in one run (ADR 0010). */
+/** A citation accepted by the bounded second pass (ADR 0017), kept verbatim for audit. */
+export const NormalizedCitation = z.object({
+  item: z.string(),
+  ref: z.string(),
+  /** The model's quote, verbatim. */
+  quote: z.string(),
+  /** The pinned source text it was matched to, verbatim. */
+  source: z.string(),
+  differences: z.array(z.enum(['typographic quotes', 'layout', 'python string delimiters'])),
+})
+export type NormalizedCitation = z.infer<typeof NormalizedCitation>
+
+/** What the grounding validator checked in one run (ADR 0010, ADR 0017). */
 export const GroundingReport = z.object({
   citations: z.int().min(0),
+  /** Citations accepted: exact plus normalised. */
   validCitations: z.int().min(0),
+  /**
+   * Accepted by the original comparison, the benchmark metric. Absent in runs recorded before
+   * ADR 0017, where every accepted citation was exact.
+   */
+  exactCitations: z.int().min(0).optional(),
+  /** Accepted only by the bounded second pass (ADR 0017). */
+  normalizedCitations: z.int().min(0).optional(),
+  /** The normalised matches, up to 100, for audit. */
+  normalizedMatches: z.array(NormalizedCitation).max(100).optional(),
   itemsKept: z.int().min(0),
   itemsRejected: z.array(GroundingRejection),
 })

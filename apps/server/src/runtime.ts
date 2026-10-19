@@ -87,5 +87,7 @@ export function openNavigator(services: KalythServices, env: NodeJS.ProcessEnv =
     ledger: new BudgetLedger(defaultLedgerPath()),
     roleModels,
   })
-  return { navigator: new Navigator({ services, gateway }), gateway }
+  // The Python string delimiter fallback is opt-in (ADR 0017).
+  const grounding = { pythonStringDelimiters: env.KALYTH_GROUNDING_PYTHON_STRINGS === '1' }
+  return { navigator: new Navigator({ services, gateway, grounding }), gateway }
 }

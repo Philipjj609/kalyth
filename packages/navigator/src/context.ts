@@ -27,6 +27,8 @@ export interface ContextEvidence {
   about: string | null
   /** The full excerpt; its SHA-256 equals the evidence's pinned span hash. */
   excerpt: string
+  /** The pinned span hash, checked again when a citation is validated (ADR 0017). */
+  sha256?: string
 }
 
 export interface ModelContext {
@@ -172,6 +174,7 @@ class ContextBuilder {
         lines: startLine === endLine ? `${startLine}` : `${startLine}-${endLine}`,
         about: this.#elements.get(c.aboutId)?.handle ?? null,
         excerpt: v.excerptText,
+        sha256: v.source.spanSha256 as string,
       })
     }
     const omissions = [...this.#reader.omissions]

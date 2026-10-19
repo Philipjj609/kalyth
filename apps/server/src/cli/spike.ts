@@ -105,7 +105,7 @@ function report(run: NavigatorRun) {
   if (run.grounding) {
     const g = run.grounding
     out(
-      `  citations ${g.validCitations}/${g.citations} valid; items kept ${g.itemsKept}, rejected ${g.itemsRejected.length}`,
+      `  citations ${g.citations}: exact ${g.exactCitations ?? g.validCitations}, normalised ${g.normalizedCitations ?? 0}, rejected ${g.citations - g.validCitations}; items kept ${g.itemsKept}, rejected ${g.itemsRejected.length}`,
     )
     for (const r of g.itemsRejected)
       out(`    rejected ${r.item}: ${r.reason}${r.ref ? ` (${r.ref})` : ''}`)

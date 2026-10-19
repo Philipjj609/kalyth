@@ -141,7 +141,11 @@ principal, which may only read and propose:
   `core.Question` records (`concerns`).
 
 Every claim is `inferred`, with model provenance, confidence and validated citations as support
-(ADR 0010).
+(ADR 0010). A citation is accepted when its quote occurs in the cited excerpt as written, with
+runs of whitespace as one space ("exact"), or, failing that, when its code tokens match a unique
+place in the excerpt with only layout and typographic quotes differing ("normalised"; ADR 0017).
+Run reports count exact, normalised and rejected citations separately and keep each normalised
+match verbatim.
 
 A hybrid alternative is linked by `combines` to each alternative it combines; a link to an
 alternative not listed before it is rejected in the grounding report. A run that names an open

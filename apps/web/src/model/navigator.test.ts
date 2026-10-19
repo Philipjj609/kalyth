@@ -131,9 +131,20 @@ describe('run polling and summaries', () => {
     expect(
       citationSummary({ citations: 0, validCitations: 0, itemsKept: 1, itemsRejected: [] }),
     ).toBe('no citations')
+    // A run recorded before ADR 0017: every accepted citation was exact.
     expect(
       citationSummary({ citations: 9, validCitations: 7, itemsKept: 3, itemsRejected: [] }),
-    ).toBe('7 of 9 valid')
+    ).toBe('7 of 9 exact')
+    expect(
+      citationSummary({
+        citations: 9,
+        validCitations: 8,
+        exactCitations: 6,
+        normalizedCitations: 2,
+        itemsKept: 3,
+        itemsRejected: [],
+      }),
+    ).toBe('6 exact and 2 normalised of 9')
   })
 })
 

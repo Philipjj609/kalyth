@@ -22,3 +22,5 @@ cite those entries where a decision came from review.
 | [0014](0014-project-export-and-import.md) | Project export and import | Accepted |
 | [0015](0015-guided-exploration-hybrids-and-comparison.md) | Guided exploration, hybrid alternatives and comparison | Accepted |
 | [0016](0016-openrouter-free-provider.md) | OpenRouter’s free endpoints as a test provider | Accepted |
+| [0017](0017-bounded-citation-normalisation.md) | Bounded citation normalisation | Accepted |
+| [0018](0018-citations-by-evidence-span.md) | Citations by evidence span | Proposed |
