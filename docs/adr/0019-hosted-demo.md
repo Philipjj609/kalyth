@@ -1,7 +1,79 @@
 # 0019. Hosted demo
 
-Date: 2026-10-19. Status: proposed. Needs Philip's decision on the host and a specific budget
-(decision D7) before anything is deployed or paid for. Nothing in this record has been built yet.
+Date: 2026-10-19. Status: accepted with amendments (decision D7, KAL-20261019-029). The amendments
+below take precedence over the original proposal that follows them.
+
+## Amendments (KAL-20261019-029)
+
+Philip reviewed the proposal (KAL-20261019-028) with ChatGPT and approved:
+
+- the design and its implementation: per-visitor sandbox projects, recorded examples, limited live
+  Nemotron inference, daily caps and a reserved allowance for judges;
+- Fly.io as the host, with at most 15 USD of planned hosting expense through 15 December;
+- up to 10 USD of his Nebius promotional credits for hosted inference.
+
+With these changes:
+
+1. **No paid resource without a go-ahead.** No paid Fly.io resource is created, and no spending
+   limit is raised, without Philip's explicit go-ahead. That includes the ledger cap for recording
+   more preset runs. Until then, only no-cost work goes ahead.
+2. **MCP stays off in the hosted demo.** The `/mcp` endpoint is not served, and agent tokens cannot
+   be issued. The Handoff view still compiles context packages, and says how to connect an agent to
+   a local Kalyth. MCP will be reconsidered only after specific tests of its authentication,
+   sandbox isolation, rate limiting and token security in hosted mode pass.
+3. **Judges keep a working demo when the public allowance runs out.** Judges have their own daily
+   pool. Recorded runs are free and never blocked by any cap. Everything that needs no inference
+   stays fully interactive in every visitor's sandbox: the graph, records, impact, decisions,
+   accepting alternatives, committing proposals, history, tasks and export.
+4. **The daily allowance splits** as follows; unused allowance does not carry over:
+   - before 1 December: 0.07 USD a day for the public and 0.03 USD for judges (0.10 USD);
+   - from 1 to 15 December: 0.15 USD for the public and 0.25 USD for judges (0.40 USD).
+
+   The pools' hard totals are 4.49 USD (public) and 4.71 USD (judges). With 0.30 USD for recordings
+   and 0.50 USD for staging, the total is 10 USD.
+5. **Recorded examples come from a clean template.** The spike's database cannot be the template: a
+   rehearsal left an accepted mock decision in it. The template is a clean analysis, committed as an
+   export. Its preset runs need one recording session against Nebius (at most 0.30 USD of the
+   approved inference budget), which waits for Philip's go-ahead under amendment 1. Until then,
+   development and tests use a test provider.
+
+### Fly.io billing controls
+
+Fly.io has no enforceable spending limit:
+
+- Its support staff wrote in June 2026 that they "aren't able to cap spending limits at this time".
+- Prepaid credits "are not a way to control spend": usage beyond them is charged to the card on
+  file.
+- Its billing documentation mentions no caps or alerts. Billing is monthly per organisation, and
+  the dashboard shows the invoice so far.
+
+So the 15 USD cannot be enforced by Fly.io. It is kept by what we run, and by checking:
+
+- **What costs money.** One machine (shared CPU, 1 GB) and one 1 GB volume: about 6.84 USD a
+  month, about 11 USD through 15 December. Fly.io never creates machines automatically. The
+  configuration fixes one machine in one region, with no autoscaler, no dedicated IPv4 (2 USD a
+  month), no database add-ons and no extra volumes.
+- **Traffic, the only part that grows with use,** at 0.02 USD per GB. The demo stops serving, except
+  its health check, once it has sent 3 GB in a UTC day: more than 2,000 first visits of about 1 MB
+  each. That bounds traffic to at most 0.06 USD a day, about 2.80 USD for the whole period.
+- **Who can create resources.** Only Philip's account, from his own machine. No Fly.io token is
+  stored in GitHub or CI, and deployments are run by Philip, or by Claude only with his go-ahead
+  each time.
+- **Monitoring.** `deploy/fly-audit.sh` lists the app's machines, volumes and IP addresses with
+  `flyctl` and fails if anything beyond the expected set exists. Philip runs it, and looks at the
+  invoice so far in the dashboard, weekly and after every deployment.
+- **The end.** On 15 December after 12:00 PT, the machine and volume are destroyed and the demo's
+  Nebius key is revoked.
+
+Remaining financial risk:
+
+- The planned configuration costs at most about 11 USD in compute and storage, plus at most about
+  2.80 USD in traffic.
+- Above that, money is spent only if someone with access to Philip's Fly.io account creates or
+  enlarges resources, or if traffic that never reaches the application is billed (for example,
+  floods stopped by Fly.io's proxy). The first is controlled by keeping access to Philip. The
+  second is not under our control, but the audit and the weekly invoice check would show it within
+  days.
 
 ## Context
 
@@ -44,8 +116,8 @@ This record makes that concrete.
 
 ### Shape
 
-One small container serves the built UI, the HTTP API and MCP over HTTP from one Node process, as
-local mode does. It runs in a new **hosted demo mode** (`KALYTH_MODE=demo`). The mode changes
+One small container serves the built UI and the HTTP API from one Node process, as local mode
+does; MCP is off (amendment 2). It runs in a new **hosted demo mode** (`KALYTH_MODE=demo`). The mode changes
 only how people get in, which data they see, and how spend is limited. The kernel, services,
 gateway and UI stay the same.
 
@@ -55,15 +127,14 @@ gateway and UI stay the same.
   a `Secure`, `HttpOnly`, `SameSite=Strict` cookie. The server stores only a hash of it.
 - **Each session gets its own sandbox.** It is a copy of a read-only template database, holding
   the pinned FastAPI template analysed at tag 0.12.0. The visitor is the human owner of that copy,
-  so they can do everything the video shows: accept alternatives, commit proposals, issue an agent
-  token. Nothing they do reaches any other visitor.
+  so they can accept alternatives, commit proposals and compile context packages. Nothing they do
+  reaches any other visitor.
 - **Sandboxes expire** after 24 hours without use, and at most 200 are kept; the oldest is removed
   first. They live on the machine's ephemeral disk, so a restart starts everyone afresh. That is
   acceptable for a demo.
 - **No repository import.** The clone and ingest paths are off. The only repositories are the ones
   built into the image.
-- **MCP over HTTP stays on**, so a judge can connect Claude Code or Codex. Agent tokens are bound
-  to the visitor's sandbox and expire with it, after 24 hours at most.
+- **MCP over HTTP is off** (amendment 2). Context packages still compile in the Handoff view.
 
 ### Model calls
 
@@ -94,7 +165,9 @@ says that requests go to Nebius Token Factory and asks visitors not to type pers
 ### Operations
 
 - **Image.** `node:24-slim`, a production install from the lockfile, and the built UI. The template
-  database is built at image build time by `pnpm demo:setup`. It runs as a non-root user, with only
+  database is imported at image build time from a committed export of a clean `pnpm demo:setup`
+  build. Prompts include the model's ids, and an import keeps them, so the recorded runs keep
+  matching; a fresh analysis would get new ids and match none. It runs as a non-root user, with only
   `/data` writable (ledger and logs).
 - **Secrets.** The Nebius key is a platform secret that Philip sets. It should be a dedicated key
   for the demo, so it can be revoked on its own and its spend shows separately in the console. It
@@ -139,8 +212,8 @@ recorded runs.
 | Defacing shared data, or showing one visitor's text to another | One sandbox per session; the template is read-only; nothing a visitor writes is shown to anyone else | None known beyond bugs in the isolation, which tests will cover. |
 | Server-side request abuse (making the server fetch URLs) | Repository import and cloning are off; the only outbound calls go to the Nebius API | None known. |
 | Cross-site requests and session theft | Cookie `HttpOnly`, `Secure`, `SameSite=Strict`; the existing Host and Origin checks with the public host name; the existing CSP; HSTS | A visitor's own browser extensions are out of scope. |
-| Agent tokens leaking | Bound to one sandbox, expire within 24 hours, cannot spend money | A leaked token gives access to one throwaway sandbox. |
-| Denial of service | Body limit, per-IP limits on writes and runs, at most 200 sandboxes, the platform's own protections | A large attack could make the demo unavailable for a while. Judges may also judge from the video. |
+| Agent tokens leaking | None can be issued: MCP is off (amendment 2) | None while MCP is off. |
+| Denial of service | Body limit, per-IP limits on requests, sessions and runs, at most 200 sandboxes, a daily limit of 3 GB sent, the platform's own protections | A large attack could make the demo unavailable for a while. Judges may also judge from the video. |
 | Prompt injection through free-text requests | The output is still only a proposal in the visitor's own sandbox, grounded and checked as in local mode | A visitor can make the model say odd things to themselves. |
 | Key exposure | Platform secret, dedicated key, scrubbed from errors, never logged | Platform compromise is out of scope. |
 
@@ -176,15 +249,17 @@ With approval by 21 October:
   caps stop spend;
 - submission on 29 October.
 
-## Decisions needed (D7)
+## Decisions (D7)
 
-1. **Host:** A (Fly.io), or another option above. Philip creates the account and adds the payment
-   method himself.
-2. **Hosting budget:** up to 15 USD in total through 15 December.
+As proposed in KAL-20261019-028 and decided in KAL-20261019-029:
+
+1. **Host:** Fly.io. Philip creates the account and adds the payment method himself, and approves
+   activating paid resources separately (amendment 1).
+2. **Hosting budget:** up to 15 USD in total through 15 December, not enforceable by Fly.io (see
+   the billing controls above).
 3. **Hosted inference budget:** up to 10 USD from the Nebius credits, with:
-   - daily caps of 0.10 USD before judging and 0.40 USD during it, 0.25 of it reserved for judges;
+   - the daily split in amendment 4;
    - 3 live runs per session a day;
    - a dedicated Nebius key, created by Philip.
-4. **Live runs for anonymous visitors** within their share (proposed), or recordings only without
-   the judge code.
-5. **MCP over HTTP in the demo**, with sandbox-bound tokens (proposed), or off.
+4. **Live runs for anonymous visitors** within their share: as proposed.
+5. **MCP over HTTP in the demo:** off until tested (amendment 2).

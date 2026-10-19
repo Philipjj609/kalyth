@@ -24,4 +24,4 @@ cite those entries where a decision came from review.
 | [0016](0016-openrouter-free-provider.md) | OpenRouter’s free endpoints as a test provider | Accepted |
 | [0017](0017-bounded-citation-normalisation.md) | Bounded citation normalisation | Accepted |
 | [0018](0018-citations-by-evidence-span.md) | Citations by evidence span | Proposed |
-| [0019](0019-hosted-demo.md) | Hosted demo: per-visitor sandboxes, recorded runs first, capped live inference | Proposed (D7, needs a budget) |
+| [0019](0019-hosted-demo.md) | Hosted demo: per-visitor sandboxes, recorded runs first, capped live inference | Accepted with amendments (D7, KAL-20261019-029) |
