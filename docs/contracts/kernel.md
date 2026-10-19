@@ -62,9 +62,14 @@ of each analysed file. `assessFreshness` (HTTP `GET /projects/:id/freshness`, MC
 
 `analyzeImpact` (HTTP `GET /projects/:id/impact?seed=...`, MCP `analyze_impact`) walks active
 relations from seed elements in the direction each type's `impact` rule declares. It also follows
-`contains` from an endpoint or data entity up to the module that defines it. Every reached element
-carries a shortest typed path and its nearest seed. The result is deterministic and bounded by depth
-and node count (ADR 0010).
+`contains` from an endpoint up to the module that defines it, and from a data entity only when no
+active `reads` or `writes` relation targets that entity; otherwise impact follows those relations
+and `references` (ADR 0021). Every reached element carries a shortest typed path and its nearest
+seed. The result is deterministic and bounded by depth and node count (ADR 0010).
+
+The analyzer observes `reads` and `writes` from FastAPI endpoints to SQLModel tables,
+`references` between tables, and each endpoint's request `parameters` (`{name, in, type?}`, an
+optional attribute of `software.Endpoint`) (ADR 0021).
 
 ## Situation
 
