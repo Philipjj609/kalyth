@@ -1,7 +1,7 @@
 # Threat model (local mode)
 
-Date: 2026-10-19. Covers local mode, as shipped on `main`. The hosted demo will get its own model
-before it exists. Reporting: see [SECURITY.md](../../SECURITY.md).
+Date: 2026-10-19. Covers local mode, as shipped on `main`. The hosted demo's additions are proposed
+in [ADR 0019](../adr/0019-hosted-demo.md) and will move here once it is built. Reporting: see [SECURITY.md](../../SECURITY.md).
 
 ## Scope and assumptions
 
@@ -188,6 +188,6 @@ Accepted, noted:
 
 Not covered by this model:
 
-- the hosted demo;
+- the hosted demo, proposed in ADR 0019;
 - multi-user deployments;
 - running untrusted code. Kalyth never does it, so there is no sandbox.
