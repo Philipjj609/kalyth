@@ -421,7 +421,14 @@ function QuestionList({
               <span className="font-medium text-fg">Answer:</span> {q.answer}
             </p>
           )}
-          {answerable && q.status === 'open' && <AnswerForm questionId={q.id} />}
+          {answerable && q.status === 'open' ? (
+            <AnswerForm questionId={q.id} options={q.options} />
+          ) : (
+            q.status === 'open' &&
+            q.options.length > 0 && (
+              <p className="text-fg-muted text-xs">Suggested answers: {q.options.join(' · ')}</p>
+            )
+          )}
         </li>
       ))}
     </ul>
@@ -429,7 +436,7 @@ function QuestionList({
 }
 
 /** A person's answer to an open question, proposed and committed at once. */
-function AnswerForm({ questionId }: { questionId: string }) {
+function AnswerForm({ questionId, options }: { questionId: string; options: readonly string[] }) {
   const wb = useWorkbench()
   const answer = useAnswerQuestion(wb.projectId)
   const [open, setOpen] = useState(false)
@@ -437,10 +444,24 @@ function AnswerForm({ questionId }: { questionId: string }) {
   const trimmed = text.trim()
   if (!open) {
     return (
-      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
-        <MessageSquareReply aria-hidden />
-        Answer
-      </Button>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {options.map((option) => (
+          <Button
+            key={option}
+            size="sm"
+            onClick={() => {
+              setText(option)
+              setOpen(true)
+            }}
+          >
+            {option}
+          </Button>
+        ))}
+        <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+          <MessageSquareReply aria-hidden />
+          {options.length > 0 ? 'Answer in your own words' : 'Answer'}
+        </Button>
+      </div>
     )
   }
   const refused = answer.data && 'refused' in answer.data ? answer.data.refused : null

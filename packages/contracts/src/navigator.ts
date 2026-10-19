@@ -188,6 +188,8 @@ export const NavigatorRunOutput = z.object({
   alternatives: z.int().min(0),
   questions: z.int().min(0),
   directImpacts: z.int().min(0),
+  /** Proposed to-be elements (ADR 0022); absent on runs from before it. */
+  newElements: z.int().min(0).default(0),
 })
 export type NavigatorRunOutput = z.infer<typeof NavigatorRunOutput>
 

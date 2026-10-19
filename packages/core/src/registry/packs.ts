@@ -78,6 +78,8 @@ export const corePack: ObjectTypeDef[] = [
       inquiryRole: z.enum(['blocking', 'decision-sensitive', 'model-sensitive', 'exploratory']),
       status: z.enum(['open', 'answered', 'deferred', 'delegated']).default('open'),
       answer: optionalText,
+      /** Suggested answers a person can pick from; they may still answer in their own words. */
+      options: z.array(z.string().min(1).max(200)).max(4).optional(),
     }),
   },
   {

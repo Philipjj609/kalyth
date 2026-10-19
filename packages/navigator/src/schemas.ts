@@ -5,8 +5,9 @@ import { z } from 'zod'
  * the JSON Schema works with strict structured output, and the model cannot add operations,
  * statuses or anything else the Navigator does not map deliberately.
  */
+/** E refs are source excerpts; S refs are what a person said (ADR 0022). */
 export const Citation = z.strictObject({
-  ref: z.string().regex(/^E\d{1,4}$/),
+  ref: z.string().regex(/^[ES]\d{1,4}$/),
   quote: z.string().min(1).max(400),
 })
 export type Citation = z.infer<typeof Citation>
@@ -31,6 +32,29 @@ export type SummaryOutput = z.infer<typeof SummaryOutput>
 /** Alternatives are numbered A1, A2, ... in order; a hybrid names the earlier ones it combines. */
 const AlternativeHandle = z.string().regex(/^A\d{1,2}$/)
 
+/** Element types the Navigator may propose as new, to-be elements (ADR 0022). */
+export const PROPOSABLE_TYPES = [
+  'software.Container',
+  'software.Component',
+  'software.DataEntity',
+  'software.Endpoint',
+] as const
+
+/**
+ * A new element that does not exist yet, numbered P1, P2, ... (ADR 0022). An endpoint's name is
+ * "METHOD /path". `within` is the N or earlier P ref of the container it belongs in, or empty.
+ */
+const NewElement = z.strictObject({
+  ref: z.string().regex(/^P\d{1,2}$/),
+  type: z.enum(PROPOSABLE_TYPES),
+  name: z.string().min(1).max(200),
+  description: z.string().min(1).max(600),
+  within: z.string().regex(/^(|N\d{1,4}|P\d{1,2})$/),
+  confidence: Confidence,
+  citations: z.array(Citation).max(4),
+})
+export type NewElement = z.infer<typeof NewElement>
+
 const AlternativeItem = z.strictObject({
   title: z.string().min(1).max(200),
   summary: z.string().min(1).max(1500),
@@ -42,7 +66,7 @@ const AlternativeItem = z.strictObject({
   directChanges: z
     .array(
       z.strictObject({
-        element: z.string().regex(/^N\d{1,4}$/),
+        element: z.string().regex(/^(N\d{1,4}|P\d{1,2})$/),
         change: z.string().min(1).max(400),
         citations: z.array(Citation).max(4),
       }),
@@ -66,6 +90,7 @@ export const AlternativesOutput = z.strictObject({
     title: z.string().min(1).max(200),
     question: z.string().min(1).max(600),
   }),
+  newElements: z.array(NewElement).max(8),
   alternatives: z.array(AlternativeItem).min(2).max(5),
   questions: Questions,
 })
@@ -73,6 +98,7 @@ export type AlternativesOutput = z.infer<typeof AlternativesOutput>
 
 /** Exploring an open decision again: new alternatives and questions for the same decision. */
 export const RefineOutput = z.strictObject({
+  newElements: z.array(NewElement).max(8),
   alternatives: z.array(AlternativeItem).min(1).max(4),
   questions: Questions,
 })

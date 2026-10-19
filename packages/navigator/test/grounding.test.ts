@@ -177,7 +177,13 @@ describe('grounding metrics', () => {
     const context: ModelContext = {
       revision: 4,
       elements: [
-        { handle: 'N1', id: `obj_${'1'.repeat(32)}`, type: 'software.Module', label: 'm' },
+        {
+          handle: 'N1',
+          id: `obj_${'1'.repeat(32)}`,
+          type: 'software.Module',
+          label: 'm',
+          stance: 'asIs',
+        },
       ],
       evidence: [...index.values()],
       omissions: [],

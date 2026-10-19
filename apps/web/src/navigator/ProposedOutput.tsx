@@ -278,7 +278,14 @@ export function AlternativesView({
             {questions.map((q) => (
               <li key={q.id} className="flex items-start gap-3 px-4 py-2.5">
                 <InquiryRoleBadge role={q.inquiryRole} size="sm" className="mt-0.5" />
-                <span className="min-w-0 flex-1 break-words text-sm">{q.text}</span>
+                <span className="min-w-0 flex-1 break-words text-sm">
+                  {q.text}
+                  {q.options.length > 0 && (
+                    <span className="mt-0.5 block text-fg-muted text-xs">
+                      Suggested answers: {q.options.join(' · ')}
+                    </span>
+                  )}
+                </span>
                 {q.mock && <MockBadge size="sm" className="mt-0.5" />}
               </li>
             ))}
@@ -491,13 +498,6 @@ function ImpactToggle({ alternative }: { alternative: ProposedAlternative }) {
 export function RunOutput({ run }: { run: NavigatorRun }) {
   const wb = useWorkbench()
   const proposal = useProposal(run.proposalId)
-  const lookup = useMemo<ElementLookup>(
-    () => ({
-      nameOf: (id) => wb.model?.nameOf(id),
-      typeOf: (id) => wb.model?.objectById.get(id)?.type,
-    }),
-    [wb.model],
-  )
   const parsed = useMemo(() => {
     const ops = proposal.data?.ops
     if (!ops) return null
@@ -505,6 +505,19 @@ export function RunOutput({ run }: { run: NavigatorRun }) {
       ? { kind: 'alternatives' as const, output: parseAlternativesProposal(ops) }
       : { kind: 'summary' as const, assertions: parseSummaryProposal(ops) }
   }, [proposal.data, run.input.kind])
+  // Elements the run proposes are named from the proposal itself; they are not in the model yet.
+  const lookup = useMemo<ElementLookup>(() => {
+    const proposed = new Map(
+      (parsed?.kind === 'alternatives' ? parsed.output.newElements : []).map((e) => [e.id, e]),
+    )
+    return {
+      nameOf: (id) => {
+        const p = proposed.get(id)
+        return p ? `${p.label} (proposed)` : wb.model?.nameOf(id)
+      },
+      typeOf: (id) => proposed.get(id)?.type ?? wb.model?.objectById.get(id)?.type,
+    }
+  }, [wb.model, parsed])
 
   if (!run.proposalId) return null
   return (

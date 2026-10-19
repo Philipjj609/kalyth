@@ -100,6 +100,22 @@ export function useProjects() {
   return useQuery({ queryKey: keys.projects, queryFn: api.listProjects, refetchInterval: 30_000 })
 }
 
+/** A new, empty project; a person names it and may describe the idea behind it. */
+export function useCreateProject() {
+  const client = useQueryClient()
+  return useMutation<
+    Awaited<ReturnType<typeof api.createProject>>,
+    ApiError,
+    { name: string; description: string }
+  >({
+    mutationFn: (input) => api.createProject(input),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.projects }),
+    onError: (error) => {
+      if (error.status === 401) session.reject()
+    },
+  })
+}
+
 export function useTypes() {
   return useQuery({ queryKey: keys.types, queryFn: api.types, staleTime: Number.POSITIVE_INFINITY })
 }

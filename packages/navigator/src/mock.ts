@@ -41,14 +41,118 @@ export function navigatorMockResponder(request: ChatRequest): string {
     about: m[4] ?? null,
     text: m[5] ?? '',
   }))
+  const statements: Evidence[] = [
+    ...user.matchAll(/<statement ref="(S\d+)">\n([\s\S]*?)\n<\/statement>/g),
+  ].map((m) => ({
+    handle: m[1] ?? '',
+    path: 'statement',
+    lines: '1',
+    about: null,
+    text: m[2] ?? '',
+  }))
   const task = /^TASK: (\w+)/m.exec(user)?.[1]
   return JSON.stringify(
     task === 'summarize'
       ? summary(evidence)
       : task === 'refine'
         ? refine(user, elements, evidence)
-        : alternatives(user, elements, evidence),
+        : elements.length === 0
+          ? fromIdea(user, statements)
+          : alternatives(user, elements, evidence),
   )
+}
+
+/**
+ * A project with no elements yet (ADR 0022): every alternative introduces new elements, and the
+ * framing cites what the person said.
+ */
+function fromIdea(user: string, statements: Evidence[]): AlternativesOutput {
+  const request = /CHANGE REQUEST \(from a person\):\n(.*)/.exec(user)?.[1]?.trim() ?? 'the idea'
+  const said = citation(statements[0])
+  const element = (
+    ref: string,
+    type: AlternativesOutput['newElements'][number]['type'],
+    name: string,
+    within: string,
+  ) => ({
+    ref,
+    type,
+    name,
+    description: `Mock output: a ${type.replace('software.', '').toLowerCase()} the idea needs.`,
+    within,
+    confidence: 'low' as const,
+    citations: ref === 'P1' ? said : [],
+  })
+  const change = (element: string, text: string) => ({
+    element,
+    change: `Mock: ${text}.`,
+    citations: element === 'P2' ? said : [],
+  })
+  return {
+    decision: {
+      title: `Mock decision: how to build ${request.slice(0, 120)}`,
+      question: `Mock: which first design best serves "${request.slice(0, 400)}"?`,
+    },
+    newElements: [
+      element('P1', 'software.Container', 'Web application', ''),
+      element('P2', 'software.DataEntity', 'Core record', 'P1'),
+      element('P3', 'software.Endpoint', 'GET /records/', 'P1'),
+      element('P4', 'software.Container', 'Worker service', ''),
+      element('P5', 'software.Component', 'Unused component', ''),
+    ],
+    alternatives: [
+      {
+        title: 'Mock alternative A: one web application',
+        summary: 'Mock output. Start with a single application that owns the data and the API.',
+        tradeoffs: 'Mock output. Simplest to run; harder to scale parts separately.',
+        confidence: 'low',
+        rationale: 'Mock output; not a model inference.',
+        combines: [],
+        directChanges: [
+          change('P1', 'introduce the web application'),
+          change('P2', 'store the core record'),
+          change('P3', 'list the records'),
+        ],
+      },
+      {
+        title: 'Mock alternative B: application plus a worker',
+        summary: 'Mock output. Move slow work to a separate worker from the start.',
+        tradeoffs: 'Mock output. Two deployables from day one.',
+        confidence: 'low',
+        rationale: 'Mock output; not a model inference.',
+        combines: [],
+        directChanges: [
+          change('P1', 'introduce the web application'),
+          change('P4', 'introduce the worker service'),
+          {
+            element: 'P2',
+            change:
+              'Mock change with a fabricated citation, which the grounding validator must reject.',
+            citations: [{ ref: statements[0]?.handle ?? 'S1', quote: FABRICATED }],
+          },
+        ],
+      },
+      {
+        title: 'Mock alternative C: hybrid of A and B',
+        summary: 'Mock output. One application now, with the worker split out when needed.',
+        tradeoffs: 'Mock output. Defers the second deployable.',
+        confidence: 'low',
+        rationale: 'Mock output; not a model inference.',
+        combines: ['A1', 'A2'],
+        directChanges: [
+          change('P1', 'introduce the web application'),
+          change('P2', 'store the core record'),
+        ],
+      },
+    ],
+    questions: [
+      {
+        text: 'Mock question: who uses this first?',
+        inquiryRole: 'decision-sensitive',
+        options: ['The people who asked for it', 'Their customers', 'An internal team'],
+      },
+    ],
+  }
 }
 
 function quoteOf(text: string): string | undefined {
@@ -102,6 +206,7 @@ function alternatives(user: string, elements: Element[], evidence: Evidence[]): 
       title: `Mock decision: ${request.slice(0, 120)}`,
       question: `Mock: how should the system change to satisfy "${request.slice(0, 400)}"?`,
     },
+    newElements: [],
     alternatives: [
       {
         title: 'Mock alternative A: change the data model',
@@ -176,6 +281,7 @@ function refine(user: string, elements: Element[], evidence: Evidence[]): Refine
       citations: citation(about(e.handle)),
     }))
   const out: RefineOutput = {
+    newElements: [],
     alternatives: [
       {
         title: `Mock alternative: refined with ${answers} answer${answers === 1 ? '' : 's'}`,

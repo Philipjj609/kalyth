@@ -1,6 +1,8 @@
 import type { ProjectSummary } from '@kalyth/contracts'
-import { ArrowRight, FolderGit2 } from 'lucide-react'
-import { EmptyState, Skeleton } from '../components/ui.tsx'
+import { ArrowRight, FolderGit2, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { useCreateProject } from '../api/queries.ts'
+import { Button, EmptyState, Skeleton } from '../components/ui.tsx'
 import { absoluteTime, relativeTime } from '../model/format.ts'
 import { ErrorNotice, ViewHeader } from './shared.tsx'
 
@@ -22,6 +24,7 @@ export function ProjectsLanding({
           title="Projects"
           description="Each project is a revisioned, evidence-backed model that people and coding agents share."
         />
+        <NewProject onCreated={onOpen} />
         <div className="mt-6">
           {error ? (
             <ErrorNotice error={error} title="Projects could not be loaded" />
@@ -34,7 +37,7 @@ export function ProjectsLanding({
             <div className="rounded-lg border border-border border-dashed bg-surface">
               <EmptyState icon={<FolderGit2 />} title="No projects yet">
                 <p>
-                  Create one through the API or an agent over MCP, or load the sample with{' '}
+                  Start one above from an idea, or load the sample with{' '}
                   <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
                     pnpm dev:seed
                   </code>{' '}
@@ -76,5 +79,74 @@ export function ProjectsLanding({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * A new, empty project. The description is the idea in the person's words; the Navigator can then
+ * propose a first model from it (ADR 0022).
+ */
+function NewProject({ onCreated }: { onCreated: (id: string) => void }) {
+  const create = useCreateProject()
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  if (!open) {
+    return (
+      <div className="mt-6">
+        <Button variant="primary" onClick={() => setOpen(true)}>
+          <Plus aria-hidden />
+          New project
+        </Button>
+      </div>
+    )
+  }
+  const trimmed = name.trim()
+  return (
+    <form
+      aria-label="New project"
+      className="mt-6 space-y-3 rounded-lg border border-border bg-surface p-4"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!trimmed || create.isPending) return
+        create.mutate(
+          { name: trimmed, description: description.trim() },
+          { onSuccess: (project) => onCreated(project.id) },
+        )
+      }}
+    >
+      <label className="block space-y-1">
+        <span className="font-medium text-sm">Name</span>
+        <input
+          required
+          maxLength={200}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-sm"
+        />
+      </label>
+      <label className="block space-y-1">
+        <span className="font-medium text-sm">The idea</span>
+        <textarea
+          rows={3}
+          maxLength={4000}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="What should it do, and for whom? You can ask the Navigator for a first model next."
+          className="w-full resize-y rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-sm"
+        />
+      </label>
+      {create.error ? (
+        <ErrorNotice error={create.error} title="The project was not created" />
+      ) : null}
+      <div className="flex gap-2">
+        <Button type="submit" variant="primary" disabled={!trimmed || create.isPending}>
+          Create project
+        </Button>
+        <Button onClick={() => setOpen(false)} disabled={create.isPending}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   )
 }

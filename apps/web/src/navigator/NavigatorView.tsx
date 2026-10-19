@@ -392,7 +392,14 @@ function ChangeRequestForm({
   const [, navigate] = useAppLocation()
   const notify = useToast()
   const start = useStartNavigatorRun(wb.projectId)
-  const [request, setRequest] = useState('')
+  // A project with no software elements yet starts from an idea: the run proposes a first model,
+  // starting from the idea the person wrote when creating the project (ADR 0022).
+  const idea = !Object.entries(wb.overview.objectCounts).some(
+    ([type, n]) => type.startsWith('software.') && n > 0,
+  )
+  const [request, setRequest] = useState(() =>
+    idea ? wb.overview.project.description.slice(0, REQUEST_MAX) : '',
+  )
   const [focus, setFocus] = useState<string[]>([])
   const requestId = useId()
   const hintId = useId()
@@ -433,7 +440,7 @@ function ChangeRequestForm({
       >
         <div className="space-y-1">
           <label htmlFor={requestId} className="block font-medium text-xs">
-            What should change?
+            {idea ? 'What should it be?' : 'What should change?'}
           </label>
           <textarea
             id={requestId}
@@ -444,13 +451,17 @@ function ChangeRequestForm({
             value={request}
             disabled={busy}
             onChange={(e) => setRequest(e.target.value)}
-            placeholder="For example: add multi-tenancy to the API"
+            placeholder={
+              idea
+                ? 'For example: a tutoring platform where students book sessions with tutors'
+                : 'For example: add multi-tenancy to the API'
+            }
             className="w-full resize-y rounded-md border border-border-strong bg-surface px-2.5 py-2 text-sm placeholder:text-fg-subtle disabled:bg-surface-2"
           />
           <p id={hintId} className="text-fg-muted text-xs">
-            The model proposes two to four alternatives, possibly with a hybrid of two of them, the
-            elements each one changes directly, and open questions. Kalyth computes the propagated
-            impact itself.
+            {idea
+              ? 'The project has no elements yet. The model proposes two to four first designs, the new elements each one needs, and open questions. Your words are kept as what you said, never as an observation.'
+              : 'The model proposes two to four alternatives, possibly with a hybrid of two of them, the elements each one changes or adds directly, and open questions. Kalyth computes the propagated impact itself.'}
           </p>
         </div>
         <fieldset className="space-y-1.5">

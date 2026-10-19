@@ -206,6 +206,7 @@ export function outputCounts(output: NavigatorRun['output']): [string, number][]
     ['Alternatives', output.alternatives],
     ['Questions', output.questions],
     ['Direct impacts', output.directImpacts],
+    ['New elements', output.newElements ?? 0],
   ]
 }
 
@@ -310,6 +311,8 @@ export interface ProposedQuestion extends ProposedRecord {
   text: string
   inquiryRole: string
   status: string
+  /** Suggested answers, when the question offers them (ADR 0022). */
+  options: string[]
   /** True when a `concerns` relation links it to the decision. */
   linked: boolean
 }
@@ -326,10 +329,25 @@ export interface AlternativesProposal {
    * already in the model when a run explores it again (Journey 1).
    */
   decisionId: string | null
+  /** To-be elements the run proposes, which do not exist in the code yet (ADR 0022). */
+  newElements: ProposedElement[]
   alternatives: ProposedAlternative[]
   questions: ProposedQuestion[]
   /** Any record here came from the mock provider. */
   mock: boolean
+}
+
+export interface ProposedElement extends ProposedRecord {
+  type: string
+  label: string
+}
+
+/** A proposed software element's label: its name, or an endpoint's method and path. */
+export function proposedElementLabel(attributes: Record<string, unknown>): string {
+  if (typeof attributes.method === 'string' && typeof attributes.path === 'string') {
+    return `${attributes.method} ${attributes.path}`
+  }
+  return text(attributes.name) || text(attributes.path)
 }
 
 function record(op: CreateObject | CreateRelation): ProposedRecord {
@@ -402,13 +420,25 @@ export function parseAlternativesProposal(ops: readonly ResolvedOperation[]): Al
         text: text(o.attributes.text),
         inquiryRole: text(o.attributes.inquiryRole),
         status: text(o.attributes.status) || 'open',
+        options: Array.isArray(o.attributes.options) ? o.attributes.options.map(String) : [],
         linked: concerns.has(o.id),
+      }),
+    )
+
+  const newElements = objects
+    .filter((o) => o.type.startsWith('software.') && o.stance === 'toBe')
+    .map(
+      (o): ProposedElement => ({
+        ...record(o),
+        type: o.type,
+        label: proposedElementLabel(o.attributes),
       }),
     )
 
   return {
     decision,
     decisionId,
+    newElements,
     alternatives,
     questions,
     mock: hasMockOutput(ops),

@@ -22,6 +22,7 @@ import {
   ProjectReader,
   renderContext,
   summarizeContext,
+  withStatements,
 } from './context.ts'
 import type { GroundingOptions } from './grounding.ts'
 import { type Mapped, mapAlternatives, mapSummary } from './operations.ts'
@@ -258,7 +259,9 @@ export class Navigator {
           input.decisionId,
         )
         const focusIds = [...new Set([...(input.focus ?? []), ...decision.targets])].slice(0, 20)
-        context = alternativesContext(reader, focusIds)
+        context = withStatements(alternativesContext(reader, focusIds), [
+          { text: input.request, statedBy: run.requestedBy },
+        ])
         generated = await this.#gateway.generate({
           projectId: run.projectId,
           purpose: 'navigator.refine',
@@ -273,7 +276,10 @@ export class Navigator {
         map = (value, model) =>
           mapAlternatives(value as RefineOutput, context, model, decision.existing, this.#grounding)
       } else {
-        context = alternativesContext(reader, input.focus ?? [])
+        // The request is what the person said; the model may cite it as S1 (ADR 0022).
+        context = withStatements(alternativesContext(reader, input.focus ?? []), [
+          { text: input.request, statedBy: run.requestedBy },
+        ])
         const focus = (input.focus ?? [])
           .map((id) => context.elements.find((e) => e.id === id)?.handle)
           .filter((h): h is string => h !== undefined)

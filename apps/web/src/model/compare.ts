@@ -17,6 +17,8 @@ export interface ComparedQuestion {
   inquiryRole: string
   status: string
   answer: string | null
+  /** Suggested answers, when the question offers them (ADR 0022). */
+  options: string[]
 }
 
 export interface ComparedAlternative {
@@ -70,6 +72,7 @@ export function compareAlternatives(decision: DecisionSummary, model: ModelLooku
             inquiryRole: String(a.inquiryRole ?? 'exploratory'),
             status: String(a.status ?? 'open'),
             answer: typeof a.answer === 'string' && a.answer ? a.answer : null,
+            options: Array.isArray(a.options) ? a.options.map(String) : [],
           },
         ]
       })

@@ -246,6 +246,7 @@ describe('reading a run’s proposal', () => {
     expect(parsed).toEqual({
       decision: null,
       decisionId: null,
+      newElements: [],
       alternatives: [],
       questions: [],
       mock: false,

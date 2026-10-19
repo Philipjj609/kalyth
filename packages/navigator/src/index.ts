@@ -7,6 +7,7 @@ export {
   ProjectReader,
   renderContext,
   summarizeContext,
+  withStatements,
 } from './context.ts'
 export {
   type CitationCheck,
@@ -18,7 +19,20 @@ export {
 } from './grounding.ts'
 export { navigatorMockResponder } from './mock.ts'
 export { ensureNavigatorPrincipal, Navigator, type NavigatorOptions } from './navigator.ts'
-export { type ExistingDecision, type Mapped, mapAlternatives, mapSummary } from './operations.ts'
+export {
+  type ExistingDecision,
+  type Mapped,
+  mapAlternatives,
+  mapSummary,
+  STATEMENT_COLLECTOR,
+} from './operations.ts'
 export { type DecisionToRefine, readDecisionToRefine } from './refine.ts'
 export { RunStore } from './runs.ts'
-export { AlternativesOutput, Citation, RefineOutput, SummaryOutput } from './schemas.ts'
+export {
+  AlternativesOutput,
+  Citation,
+  type NewElement,
+  PROPOSABLE_TYPES,
+  RefineOutput,
+  SummaryOutput,
+} from './schemas.ts'

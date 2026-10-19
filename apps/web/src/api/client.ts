@@ -236,6 +236,8 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
     enterJudgeCode: (code: string) => request<DemoView>('POST', '/api/v1/demo/judge', { code }),
     types: () => request<TypeDescriptors>('GET', '/api/v1/types'),
     listProjects: () => request<{ projects: ProjectSummary[] }>('GET', '/api/v1/projects'),
+    createProject: (input: { name: string; description: string }) =>
+      request<ProjectSummary>('POST', '/api/v1/projects', input),
     overview: (projectId: string, revision?: number) =>
       request<ProjectOverview>('GET', buildUrl(project(projectId), { revision })),
     objects: (projectId: string, revision: number, includeRetired = false) =>
