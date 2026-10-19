@@ -1,11 +1,13 @@
 import type { ObjectVersion } from '@kalyth/contracts'
 import { Compass, Sparkles } from 'lucide-react'
 import {
+  useDemoSession,
   useNavigatorRun,
   useNavigatorRuns,
   useNavigatorStatus,
   useStartNavigatorRun,
 } from '../api/queries.ts'
+import { useSessionMode } from '../app/session.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import { MockBadge, RunStatusBadge } from '../components/badges.tsx'
 import { Button, SectionTitle, Spinner, Tip } from '../components/ui.tsx'
@@ -16,6 +18,39 @@ import { AppLink, ErrorNotice } from '../views/shared.tsx'
 
 /** Header chip: the provider and the remaining budget. Opens the Navigator view. */
 export function NavigatorIndicator() {
+  if (useSessionMode() === 'demo') return <DemoIndicator />
+  return <LocalIndicator />
+}
+
+/** In the hosted demo: what runs cost this visitor, not the ledger behind a recording. */
+function DemoIndicator() {
+  const wb = useWorkbench()
+  const view = useDemoSession().data
+  if (!view) return null
+  const text = view.live.available
+    ? `${view.live.runsLeftToday} live ${view.live.runsLeftToday === 1 ? 'run' : 'runs'} left`
+    : 'recorded runs'
+  const summary = `Navigator: recorded runs are free; ${
+    view.live.available ? `${text} today` : 'live runs are off'
+  }`
+  return (
+    <Tip label={`${summary}. Open the Navigator (6)`}>
+      <button
+        type="button"
+        aria-label={`${summary}. Open the Navigator`}
+        onClick={() => wb.setView('navigator')}
+        className="tone-neutral inline-flex h-7 items-center gap-1.5 rounded-md border border-tone-bd bg-tone-bg px-2 text-tone-fg text-xs transition-colors hover:brightness-[0.97]"
+      >
+        <Compass aria-hidden className="size-3.5" />
+        <span>Nemotron</span>
+        <span aria-hidden className="h-3 w-px bg-tone-bd" />
+        <span className="tabular-nums">{text}</span>
+      </button>
+    </Tip>
+  )
+}
+
+function LocalIndicator() {
   const wb = useWorkbench()
   const status = useNavigatorStatus(wb.projectId)
   const s = status.data

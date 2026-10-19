@@ -9,6 +9,7 @@ import {
   useTasks,
 } from '../api/queries.ts'
 import { useAppLocation } from '../app/location.ts'
+import { useSessionMode } from '../app/session.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import { Button, EmptyState, Segmented, Skeleton, Tip } from '../components/ui.tsx'
 import { shortId } from '../model/format.ts'
@@ -40,6 +41,7 @@ function focusCard(taskId: string) {
  * Tasks are always shown at the head.
  */
 export function TasksView() {
+  const demo = useSessionMode() === 'demo'
   const [loc, navigate] = useAppLocation()
   const wb = useWorkbench()
   const list = useTasks(wb.projectId)
@@ -94,7 +96,7 @@ export function TasksView() {
         </Button>
       </ViewHeader>
 
-      {repositoryUnset && (
+      {repositoryUnset && !demo && (
         <p className="tone-warning flex flex-wrap items-center gap-2 rounded-md border border-tone-bd bg-tone-bg px-3 py-2 text-tone-fg text-xs">
           <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
           <span>

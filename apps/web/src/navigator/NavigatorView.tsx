@@ -126,25 +126,31 @@ function StatusStrip({ status }: { status: NavigatorStatus }) {
     >
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.6fr)] divide-x divide-border">
         <Cell label="Provider">
-          <p className="flex flex-wrap items-center gap-1.5">
-            <span className="font-mono font-semibold text-sm">{provider.id}</span>
-            <StatusBadge
-              size="sm"
-              tone={provider.external ? 'caution' : 'neutral'}
-              label={provider.external ? 'External' : 'Local'}
-              description={providerFacts(provider)[0]}
-              prefix="Location:"
-            />
-            <StatusBadge
-              size="sm"
-              tone={provider.paid ? 'warning' : 'success'}
-              label={provider.paid ? 'Paid' : 'Free'}
-              description={providerFacts(provider)[1]}
-              prefix="Cost:"
-            />
-            {provider.id === 'mock' && <MockBadge size="sm" />}
-          </p>
-          <p className="mt-1 text-fg-muted text-xs">{providerFacts(provider).join('. ')}.</p>
+          {demo ? (
+            <DemoProviderCell />
+          ) : (
+            <>
+              <p className="flex flex-wrap items-center gap-1.5">
+                <span className="font-mono font-semibold text-sm">{provider.id}</span>
+                <StatusBadge
+                  size="sm"
+                  tone={provider.external ? 'caution' : 'neutral'}
+                  label={provider.external ? 'External' : 'Local'}
+                  description={providerFacts(provider)[0]}
+                  prefix="Location:"
+                />
+                <StatusBadge
+                  size="sm"
+                  tone={provider.paid ? 'warning' : 'success'}
+                  label={provider.paid ? 'Paid' : 'Free'}
+                  description={providerFacts(provider)[1]}
+                  prefix="Cost:"
+                />
+                {provider.id === 'mock' && <MockBadge size="sm" />}
+              </p>
+              <p className="mt-1 text-fg-muted text-xs">{providerFacts(provider).join('. ')}.</p>
+            </>
+          )}
         </Cell>
         <Cell label="Models">
           {modelEntries.length === 0 ? (
@@ -313,6 +319,35 @@ function DemoConsentRow() {
         data into a request.
       </p>
     </div>
+  )
+}
+
+/**
+ * In the hosted demo the provider is Nebius Token Factory, but most runs replay recordings: the
+ * gateway's own flags (local, free) describe the replay, not where live runs go.
+ */
+function DemoProviderCell() {
+  const demo = useDemoSession()
+  const live = demo.data?.live.available ?? false
+  return (
+    <>
+      <p className="flex flex-wrap items-center gap-1.5">
+        <span className="font-semibold text-sm">Nebius Token Factory</span>
+        <StatusBadge
+          size="sm"
+          tone="success"
+          label="Recorded runs free"
+          description="Recorded runs replay real Nemotron answers and cost nothing"
+          prefix="Cost:"
+        />
+      </p>
+      <p className="mt-1 text-fg-muted text-xs">
+        Recorded runs replay here at no cost.{' '}
+        {live
+          ? 'Live runs go to Nebius Token Factory, within today’s allowance.'
+          : 'Live runs are off in this demo.'}
+      </p>
+    </>
   )
 }
 
