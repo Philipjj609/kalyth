@@ -20,7 +20,16 @@ import {
   Sun,
   Table2,
 } from 'lucide-react'
-import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   useFreshness,
   useHistory,
@@ -86,9 +95,13 @@ export function Shell() {
   const projects = useProjects()
   const projectList = projects.data?.projects
 
-  // With exactly one project and none chosen, open it.
+  // With exactly one project and none chosen, open it once, on arrival. Asking for all projects
+  // later stays on the list, where a person can start another project.
+  const arrived = useRef(false)
   useEffect(() => {
-    if (loc.project === undefined && projectList?.length === 1 && projectList[0]) {
+    if (arrived.current || projectList === undefined) return
+    arrived.current = true
+    if (loc.project === undefined && projectList.length === 1 && projectList[0]) {
       navigate({ project: projectList[0].id }, 'replace')
     }
   }, [loc.project, projectList, navigate])

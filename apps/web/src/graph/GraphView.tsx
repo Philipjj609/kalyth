@@ -22,6 +22,7 @@ import { Button, EmptyState, Spinner } from '../components/ui.tsx'
 import { cn } from '../lib/cn.ts'
 import { plural } from '../model/format.ts'
 import { objectLabel } from '../model/labels.ts'
+import { searchObjects } from '../model/search.ts'
 import {
   BASIS_META,
   BASIS_ORDER,
@@ -492,11 +493,8 @@ function GraphSearch({ onReveal }: { onReveal: (id: string) => void }) {
   const [open, setOpen] = useState(false)
   const listId = 'graph-search-results'
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q || !wb.model) return []
-    return wb.model.objects
-      .filter((o) => objectLabel(o).toLowerCase().includes(q) || o.id.includes(q))
-      .slice(0, 8)
+    if (!wb.model) return []
+    return searchObjects(wb.model.objects, query, 8)
   }, [query, wb.model])
   const choose = (id: string) => {
     onReveal(id)

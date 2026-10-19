@@ -6,7 +6,7 @@ import { Button } from '../components/ui.tsx'
 import { cn } from '../lib/cn.ts'
 import { shortId } from '../model/format.ts'
 import { objectLabel } from '../model/labels.ts'
-import { compareTypes } from '../model/semantics.ts'
+import { searchObjects } from '../model/search.ts'
 
 const MATCHES = 8
 
@@ -35,13 +35,8 @@ export function ElementPicker({
   const chosen = useMemo(() => new Set(value), [value])
   const full = value.length >= max
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q || !wb.model) return []
-    return wb.model.objects
-      .filter((o) => !chosen.has(o.id))
-      .filter((o) => objectLabel(o).toLowerCase().includes(q) || o.id.includes(q))
-      .sort((a, b) => compareTypes(a.type, b.type) || objectLabel(a).localeCompare(objectLabel(b)))
-      .slice(0, MATCHES)
+    if (!wb.model) return []
+    return searchObjects(wb.model.objects, query, MATCHES, chosen)
   }, [query, wb.model, chosen])
   const add = (id: string) => {
     if (chosen.has(id) || full) return
