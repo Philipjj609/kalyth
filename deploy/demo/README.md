@@ -23,3 +23,7 @@ pnpm project:export --project <project id> --out deploy/demo/template.json
 ```
 
 Then record the presets again, because the new ids no longer match the old recordings.
+
+The secret scan in CI reads each recording's `"key"`, the SHA-256 of a request, as a possible API
+key. After a new recording, check the findings are only those hashes and list their fingerprints
+in `.gitleaksignore` with the reason.

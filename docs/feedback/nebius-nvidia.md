@@ -44,3 +44,20 @@ Three calls through Kalyth's gateway on the public FastAPI template, under a 0.2
   escaping double quotes. Normalising quote style in the validator is proposed for review, not
   changed.
 
+
+## 2026-10-19: hosted demo recordings (KAL-20261019-030)
+
+Four calls recorded the hosted demo's presets on a clean analysis of the same template, under a
+separate 0.30 USD cap: 0.058 USD in all. Each preset needed one call, with no corrective retry.
+
+- **Ultra, alternatives, three requests.** Every answer was valid JSON within the 12,000-token
+  limit (1,555 to 5,251 output tokens). Of 71 citations, 62 matched their excerpt exactly and 4
+  more under the bounded normalisation of ADR 0017.
+- **Citing a handle that was never given.** In one answer, four direct changes cited `E31`, a
+  handle not in the context; the excerpts are numbered only up to the handles listed. Kalyth
+  rejects such citations, but it suggests the model sometimes extrapolates a numbered list.
+- **A hybrid of itself.** One answer listed an alternative as combining `A2`, which was that
+  same alternative. Kalyth's checks reject it.
+- **Super, summary.** All seven rejected citations swapped Python's double quotes for single
+  quotes, the pattern seen in the spike, even with the prompt asking for exact copies. ADR 0017's
+  opt-in Python fallback accepts all seven.
