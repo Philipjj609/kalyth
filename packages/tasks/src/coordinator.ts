@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { GitRepository } from '@kalyth/analyzer'
 import type { ContextCompiler } from '@kalyth/context'
 import {
   Caller,
@@ -38,6 +37,7 @@ import {
   uuidv7Hex,
 } from '@kalyth/core'
 import type { z } from 'zod'
+import { TaskGit } from './git.ts'
 import { TaskRepositories } from './repository.ts'
 import { summarise, taskTrailer, VERIFIER, VERIFIER_COVERAGE, verifyReport } from './verifier.ts'
 
@@ -144,7 +144,7 @@ export class TaskCoordinator {
     const path = resolve(q.value.path)
     if (!existsSync(path)) return fail('invalid', `${path} does not exist`)
     try {
-      new GitRepository(path).resolveCommit('HEAD')
+      new TaskGit(path).resolveCommit('HEAD')
     } catch {
       return fail('invalid', `${path} is not a git repository with commits`)
     }
@@ -190,7 +190,7 @@ export class TaskCoordinator {
           'the previous holder may have finished, and no task repository is registered to check; a person can set the task ready',
         )
       }
-      const commits = new GitRepository(repo).commitsMentioning(taskTrailer(view.id))
+      const commits = new TaskGit(repo).commitsMentioning(taskTrailer(view.id))
       if (commits.length > 0) {
         return fail(
           'conflicting',
@@ -230,10 +230,12 @@ export class TaskCoordinator {
       lease,
       contextPackageId: this.#packageFor(caller, projectId, task),
       instructions: [
-        `Put the trailer "${taskTrailer(task.id)}" on its own line in your commit message.`,
+        `Commit on a branch of the task repository${task.baseCommit ? `, starting from the task base ${task.baseCommit}` : ''}. Put the trailer "${taskTrailer(task.id)}" on its own line in the message of the commit you report.`,
         `Your lease ends at ${lease.expiresAt}; extend it with renew_task_lease if you need longer.`,
-        'When done, call submit_execution_report with the commit sha, every file the commit changes and the tests you ran.',
-        'Kalyth checks the commit against the repository; a person completes the task.',
+        task.baseCommit
+          ? 'When done, call submit_execution_report with your last commit sha, every file your commits changed since the task base, and the tests you ran.'
+          : 'When done, call submit_execution_report with the commit sha, every file the commit changes and the tests you ran.',
+        'Kalyth checks the work in the repository; a person completes the task.',
       ],
     })
   }
@@ -309,14 +311,24 @@ export class TaskCoordinator {
         },
       ]
     } else {
-      const verdict = verifyReport(new GitRepository(repoPath), {
-        taskId: located.view.id,
-        commit: report.commit,
-        filesChanged: report.filesChanged,
-        baseCommit: located.view.baseCommit ?? undefined,
-      })
-      outcome = verdict.outcome
-      checks = verdict.checks
+      try {
+        const verdict = verifyReport(new TaskGit(repoPath), {
+          taskId: located.view.id,
+          commit: report.commit,
+          filesChanged: report.filesChanged,
+          baseCommit: located.view.baseCommit,
+        })
+        outcome = verdict.outcome
+        checks = verdict.checks
+      } catch {
+        checks = [
+          {
+            name: 'repository',
+            ok: false,
+            detail: 'git could not read the task repository; check that it is still there',
+          },
+        ]
+      }
     }
 
     const ops: OperationInput[] = [
@@ -401,7 +413,7 @@ export class TaskCoordinator {
         this.#status(
           located.view.id,
           'review',
-          'the repository shows the reported commit; a person reviews it',
+          'the repository shows the reported work; a person reviews it',
         ),
       )
     }

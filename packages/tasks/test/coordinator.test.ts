@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { ContextCompiler } from '@kalyth/context'
 import type { Caller, OperationInput, Result } from '@kalyth/contracts'
 import {
@@ -9,7 +10,7 @@ import {
 } from '@kalyth/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { FixtureRepo } from '../../analyzer/test/fixture-repo.ts'
-import { TaskCoordinator, taskTrailer } from '../src/index.ts'
+import { TaskCoordinator, taskTrailer, VERIFIER, VERIFIER_COVERAGE } from '../src/index.ts'
 
 const unwrap = <T>(r: Result<T>): T => {
   if (!r.ok)
@@ -190,10 +191,15 @@ describe('task coordinator (ADR 0013)', () => {
     expect(result.verification.outcome).toBe('pass')
     expect(result.verification.checks.map((c) => c.name)).toEqual([
       'commit exists',
+      'on a branch or tag',
       'task trailer',
-      'files changed',
       'descends from base',
+      'commits in range',
+      'files changed',
     ])
+    expect(result.verification.checks.find((c) => c.name === 'commits in range')?.detail).toBe(
+      `1 commit after the task base ${w.base.slice(0, 12)}, newest first: ${sha}`,
+    )
     expect(result.task.status).toBe('review')
     expect(result.task.lease).toBeNull()
     expect(result.task.reports).toEqual([
@@ -211,7 +217,7 @@ describe('task coordinator (ADR 0013)', () => {
     ).objects[0]
     expect(verification?.claim).toMatchObject({
       basis: 'observed',
-      observation: { tool: 'kalyth-git-verifier' },
+      observation: { ...VERIFIER, coverage: VERIFIER_COVERAGE },
     })
     expect(result.verification.id).toBe(verification?.id)
 
@@ -330,6 +336,67 @@ describe('task coordinator (ADR 0013)', () => {
     expect(gaveUp.verification.outcome).toBe('inconclusive')
     expect(gaveUp.task.status).toBe('failed')
     expect(gaveUp.task.reports).toHaveLength(3)
+  })
+
+  it('verifies the work from the task base, over two commits, and fails a report of the fix-up alone', () => {
+    const w = world()
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    const first = work(w)
+    w.repo.write({ 'app/tenant.py': 'X = 2\n', 'tests/test_tenant.py': 'def test(): ...\n' })
+    const fixup = w.repo.commit(`Fix the tenant default\n\n${taskTrailer(w.taskId)}`)
+
+    const fixupOnly = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, fixup, {
+          idempotencyKey: 'report-fixup-only',
+          filesChanged: ['app/tenant.py', 'tests/test_tenant.py'],
+        }),
+      }),
+    )
+    expect(fixupOnly.verification.outcome).toBe('fail')
+    expect(fixupOnly.verification.checks.filter((c) => !c.ok)).toEqual([
+      {
+        name: 'files changed',
+        ok: false,
+        detail: 'changed but not reported: app/models.py',
+      },
+    ])
+    expect(fixupOnly.task.status).toBe('running')
+
+    const whole = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, fixup, {
+          idempotencyKey: 'report-whole-work',
+          filesChanged: ['app/models.py', 'app/tenant.py', 'tests/test_tenant.py'],
+        }),
+      }),
+    )
+    expect(whole.verification.outcome).toBe('pass')
+    expect(whole.verification.checks.find((c) => c.name === 'commits in range')?.detail).toBe(
+      `2 commits after the task base ${w.base.slice(0, 12)}, newest first: ${fixup}, ${first}`,
+    )
+    expect(whole.task.status).toBe('review')
+  })
+
+  it('fails a commit that is on no branch or tag', () => {
+    const w = world()
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    execFileSync('git', ['-C', w.repo.path, 'checkout', '-q', '--detach'])
+    const loose = work(w)
+    execFileSync('git', ['-C', w.repo.path, 'checkout', '-q', 'main'])
+    const result = unwrap(
+      w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, loose) }),
+    )
+    expect(result.verification.outcome).toBe('fail')
+    expect(result.verification.checks.filter((c) => !c.ok)).toEqual([
+      expect.objectContaining({
+        name: 'on a branch or tag',
+        detail: expect.stringMatching(/is on no branch or tag in the task repository/),
+      }),
+    ])
+    expect(result.task.status).toBe('running')
   })
 
   it('resumes an expired task only when no commit references it', () => {

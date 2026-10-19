@@ -237,7 +237,7 @@ export const TOOLS: readonly ToolSpec[] = [
     name: 'submit_execution_report',
     title: 'Submit an execution report',
     description:
-      'Reports the work on a task you hold: outcome, summary, the commit sha, every file the commit changes and the tests you ran. Kalyth checks the commit in the task repository (it exists, carries the Kalyth-Task trailer, changes exactly the files reported and descends from the task base) and records that check as an observed verification. A passing report moves the task to review; a person completes it. Tests are recorded as reported, not run. Reuse the idempotencyKey when retrying.',
+      'Reports the work on a task you hold: outcome, summary, the sha of your last commit, every file your work changed (since the task base, when the task has one) and the tests you ran. Kalyth checks the work in the task repository: the commit exists on a branch or tag, its message carries the Kalyth-Task trailer, it descends from the task base, and the files changed from the base to it are exactly those reported; the verdict lists the commits in that range. That check is recorded as an observed verification. A passing report moves the task to review; a person completes it. Tests are recorded as reported, not run. Reuse the idempotencyKey when retrying.',
     input: SubmitReportInput,
     readOnly: false,
     run: (d, c, i) => d.tasks.submitReport(c, i),
