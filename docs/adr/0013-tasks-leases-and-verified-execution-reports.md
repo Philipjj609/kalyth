@@ -99,3 +99,61 @@ registers one per project. Kalyth only reads it, with the same plumbing rules as
   the work landed, and refuses a duplicate run if it might have.
 - The kernel gains one operation, two object types and three relation types. The web UI's operation list and the authorisation
   rules are updated with them.
+
+## Amendment, 2026-10-19
+
+A test of the handoff on 2026-10-19 (an agent claims a task over MCP, commits with the trailer,
+reports, and Kalyth checks the report) showed that one commit is not the unit of work, and that a
+commit can pass verification while git may still lose it. The verifier, `kalyth-git-verifier`
+0.2.0, and the coordinator change as follows. No task state is added.
+
+**Verification over the work.**
+
+- When the task has a base commit, the work is the range from the base to the reported commit.
+  The files changed are the net difference between the base tree and the commit tree, so work done
+  in several commits, a fix-up included, is reported as one piece. A report that names only a
+  fix-up's files fails and lists the files it left out.
+- The reported commit must still descend from the base. When it does not, files and commits are
+  read from their merge base, so the verdict says what differs, and the descent check fails.
+- The trailer is still required on the reported commit, and only there.
+- The verdict lists the commits in the range, newest first, as the check `commits in range`. At
+  most 500 are read.
+- Without a base, the files are the commit's own against its first parent, as before.
+- Reported paths are normalised (separators, `./`, empty segments) and stored that way, so what
+  people see is what was compared.
+
+**Reachability.** A new check, `on a branch or tag`, fails unless a branch or tag (`refs/heads/`,
+`refs/tags/`) contains the commit. A commit on no ref passes `commit exists` today and can be
+removed by garbage collection tomorrow.
+
+**Coverage.** The coverage recorded with each verification states exactly what the checks read,
+and what they do not: tests are reported and never run; what the changes do, trailers on other
+commits in the range, who wrote the commits, whether the files are within the task's scope and
+whether the commit was pushed are not checked.
+
+**Reading the task repository.** `packages/tasks` reads it through its own reader, under the
+analyzer's plumbing rules: shas are validated as 40 hex before they reach git, refs follow
+`--end-of-options`, and only `rev-parse`, `cat-file`, `merge-base`, `diff-tree`, `rev-list` and
+`for-each-ref` run. Each check's detail is one line, with control and bidirectional characters
+escaped and its length bounded, so a hostile path or ref name cannot add a line to the stored
+summary or push it past its limit.
+
+**Reports and retries.**
+
+- A report on a task that is not `running` or `unknown_outcome` is refused as `conflicting`, with
+  the task's state ("the task is in review: ..."), before any lease is compared. Renewing and
+  releasing are refused the same way.
+- A retry with the same idempotency key returns the original verdict and its checks, read back
+  from the stored verification summary.
+
+**The MCP error shape.** Input that does not match an MCP tool's schema is answered in Kalyth's
+envelope, `{ error: { code: "invalid", message, issues } }`, with each zod issue as
+`schema.<code>`, like every other failure. Tools still advertise their zod schemas as JSON Schema;
+the same schema is checked in the handler instead of by the SDK, so nothing reaches a service
+unparsed. The existing code `invalid` is used; no error code is added.
+
+**Lease expiry at read time.** The task read model computes `leaseExpired` when a task is read,
+from the lease's expiry and the current time, and returns it over HTTP and MCP; nothing is
+written. The task stays `running` until the next claim moves it to `unknown_outcome` and checks
+git. The web app's task view now says plainly that the lease has expired and that the next claim
+checks git for a commit first.
