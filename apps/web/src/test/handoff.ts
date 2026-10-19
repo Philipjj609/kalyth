@@ -258,6 +258,13 @@ export function packageResult(pkg: ContextPackage = readyPackage()): ContextPack
     package: pkg,
     uri: `kalyth://context/${pkg.id}`,
     callerScopes: ['grant.manage', 'project.read', 'proposal.create'],
+    current: {
+      headRevision: pkg.revision,
+      headMoved: false,
+      stale: [],
+      removed: [],
+      warning: null,
+    },
   }
 }
 
@@ -299,6 +306,11 @@ export function acceptedDecision(): DecisionSummary {
       },
     ],
     decides: [],
+    facets: {
+      freshness: { status: 'unchecked', changes: 0, stale: [] },
+      implementation: { state: 'none', tasks: [] },
+      verification: { state: 'none', coverage: null },
+    },
   }
 }
 

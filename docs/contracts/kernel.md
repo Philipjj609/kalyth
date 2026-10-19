@@ -92,6 +92,12 @@ If the mandatory part exceeds the limit, the package is `blocked` with `context_
 suggested split. Packages are read back by id, over HTTP or MCP (`get_context_package`), or as
 `kalyth://context/{id}`, and listed per project (`list_context_packages`). A proposal may name the
 package it answers (`contextPackageId`); adapters check that it exists in the same project.
+Every read adds `current`, computed against the head: whether the model moved, which items now
+need review or left the model, and a warning. The package itself never changes (ADR 0023).
+
+Each decision summary carries `facets`, computed on read: the freshness of the evidence behind its
+direct changes, implementation from the tasks that implement it, and verification of their latest
+reports. Acceptance stays the decision's own status; no facet implies another (ADR 0023).
 
 Agent tokens are issued, listed and revoked by a person with `grant.manage`, through HTTP
 `/projects/:id/agent-tokens` and `/agent-tokens/:id/revoke`. Each token gives an agent principal

@@ -28,3 +28,4 @@ cite those entries where a decision came from review.
 | [0020](0020-product-direction-workspace-and-change-thread.md) | Product direction: one workspace, change threads and the Drafting Table language | Accepted (KAL-20261019-034) |
 | [0021](0021-data-access-relations-and-finer-impact.md) | Data access relations, entity references, endpoint parameters and finer impact | Accepted (technical lead; the `writes` rule awaits review) |
 | [0022](0022-proposed-elements-and-statement-evidence.md) | Proposed elements and statement evidence | Accepted (D2, KAL-20261019-034) |
+| [0023](0023-decision-facets-and-package-revalidation.md) | Decision facets and package revalidation | Accepted (D4, KAL-20261019-034) |

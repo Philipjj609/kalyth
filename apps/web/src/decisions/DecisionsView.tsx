@@ -172,6 +172,7 @@ function DecisionComparison({ decision }: { decision: DecisionSummary }) {
             <span className="font-medium text-fg">Rationale:</span> {decision.statusRationale}
           </p>
         )}
+        <DecisionFacetsList decision={decision} />
         {open && atHead && <ExploreAgain decision={decision} answered={answered} />}
         {!atHead && (
           <p className="tone-warning mt-2 rounded border border-tone-bd bg-tone-bg px-2 py-1 text-tone-fg text-xs">
@@ -392,6 +393,88 @@ function ReachSummary({
         </div>
       )}
     </div>
+  )
+}
+
+const IMPLEMENTATION: Record<string, string> = {
+  none: 'Not started',
+  planned: 'Planned',
+  'in-progress': 'In progress',
+  reported: 'Reported, awaiting review',
+  partial: 'Partly done',
+  complete: 'Complete',
+}
+const VERIFICATION: Record<string, string> = {
+  none: 'Nothing verified yet',
+  failed: 'Failed',
+  partial: 'Partly verified',
+  passed: 'Passed',
+}
+const FRESHNESS: Record<string, string> = {
+  current: 'Current',
+  stale: 'Needs review',
+  unchecked: 'Unchecked',
+}
+
+/**
+ * Where the decision stands besides acceptance, one facet per row (ADR 0023). Each is tracked on
+ * its own: an accepted decision may be partly built, and built work may rest on changed evidence.
+ */
+function DecisionFacetsList({ decision }: { decision: DecisionSummary }) {
+  const { implementation, verification, freshness } = decision.facets
+  const tasks = implementation.tasks.filter((t) => t.status !== 'cancelled')
+  const done = tasks.filter((t) => t.status === 'completed').length
+  return (
+    <dl
+      aria-label="Where this decision stands"
+      className="mt-3 grid gap-x-6 gap-y-2 border-border border-t pt-3 text-sm sm:grid-cols-2"
+    >
+      <div>
+        <dt className="text-fg-muted text-xs">Implementation</dt>
+        <dd>
+          {IMPLEMENTATION[implementation.state] ?? implementation.state}
+          {tasks.length > 0 && (
+            <span className="text-fg-muted text-xs">
+              {' '}
+              · {done} of {plural(tasks.length, 'task')} completed
+            </span>
+          )}
+        </dd>
+      </div>
+      <div>
+        <dt className="text-fg-muted text-xs">Verification against git</dt>
+        <dd>
+          {VERIFICATION[verification.state] ?? verification.state}
+          {verification.coverage && (
+            <span className="line-clamp-2 text-fg-muted text-xs" title={verification.coverage}>
+              {verification.coverage}
+            </span>
+          )}
+        </dd>
+      </div>
+      <div className="sm:col-span-2">
+        <dt className="text-fg-muted text-xs">Evidence behind its changes</dt>
+        <dd>
+          {FRESHNESS[freshness.status] ?? freshness.status}
+          <span className="text-fg-muted text-xs">
+            {' '}
+            ·{' '}
+            {freshness.status === 'unchecked'
+              ? 'the changes cite no source that could go stale'
+              : `${freshness.stale.length} of ${plural(freshness.changes, 'direct change')} changed since they were proposed`}
+          </span>
+          {freshness.stale.length > 0 && (
+            <ul className="mt-1 space-y-0.5 text-xs">
+              {freshness.stale.map((s) => (
+                <li key={s.relationId}>
+                  <RecordLink id={s.target}>{s.label}</RecordLink>: {s.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+        </dd>
+      </div>
+    </dl>
   )
 }
 

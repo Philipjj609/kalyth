@@ -4,6 +4,7 @@ import {
   type ContextItem,
   type ContextPackage,
   type ContextPackageBody,
+  type ContextPackageCurrent,
   type ContextPackageList,
   ContextPackageListQuery,
   ContextPackageQuery,
@@ -41,6 +42,8 @@ const TYPE_ORDER = [
   'software.Library',
 ]
 const ROLE_ORDER = ['focus', 'question', 'impacted', 'dependency'] as const
+/** Freshness that means an item needs review before anyone relies on it (ADR 0009). */
+const NEEDS_REVIEW = new Set<string>(['stale', 'derived-stale', 'weakened'])
 const PAGE = 1000
 const IMPACT_DEPTH = 3
 const IMPACT_NODES = 300
@@ -151,7 +154,59 @@ export class ContextCompiler {
       package: pkg,
       uri: `kalyth://context/${pkg.id}`,
       callerScopes: [...this.#authz.scopes(caller.principalId, pkg.projectId)].sort(),
+      current: this.#current(caller, pkg),
     }
+  }
+
+  /**
+   * Revalidates a package against the head on every read (ADR 0023): which of its items now need
+   * review and which left the model. Commit-time revision checks still apply to any proposal; this
+   * only warns in advance.
+   */
+  #current(caller: Caller, pkg: ContextPackage): ContextPackageCurrent {
+    const overview = this.#services.getProjectOverview(caller, { projectId: pkg.projectId })
+    const head = overview.ok ? overview.value.revision : pkg.revision
+    const still = { headRevision: head, stale: [], removed: [], warning: null }
+    if (head === pkg.revision) return { ...still, headMoved: false }
+    const fresh = this.#services.assessFreshness(caller, { projectId: pkg.projectId })
+    if (!fresh.ok) {
+      return {
+        ...still,
+        headMoved: true,
+        warning: `The model moved from r${pkg.revision} to r${head} since this package was compiled. Recompile it before relying on it.`,
+      }
+    }
+    const now = new Map(fresh.value.claims.map((c) => [c.id, c]))
+    const items = [...pkg.mandatory.decisions, ...pkg.mandatory.constraints, ...pkg.items]
+    const seen = new Set<string>()
+    const stale: ContextPackageCurrent['stale'] = []
+    const removed: ContextPackageCurrent['removed'] = []
+    for (const item of items) {
+      if (seen.has(item.id)) continue
+      seen.add(item.id)
+      const claim = now.get(item.id)
+      if (!claim) {
+        removed.push({ id: item.id, label: item.label })
+        continue
+      }
+      if (NEEDS_REVIEW.has(claim.status) && !NEEDS_REVIEW.has(item.freshness)) {
+        stale.push({
+          id: item.id,
+          label: item.label,
+          compiled: item.freshness,
+          now: claim.status,
+          reason: claim.reason,
+        })
+      }
+    }
+    const names = [...stale, ...removed].map((i) => i.label)
+    const shown =
+      names.slice(0, 5).join(', ') + (names.length > 5 ? `, and ${names.length - 5} more` : '')
+    const warning =
+      names.length === 0
+        ? `The model moved from r${pkg.revision} to r${head}; nothing this package relies on changed.`
+        : `The model moved from r${pkg.revision} to r${head}: ${names.length} item${names.length === 1 ? '' : 's'} this package relies on changed (${shown}). Recompile the package, or check those items before relying on them.`
+    return { headRevision: head, headMoved: true, stale, removed, warning }
   }
 
   #build(caller: unknown, q: ReturnType<typeof CompileContextInput.parse>): ContextPackageBody {

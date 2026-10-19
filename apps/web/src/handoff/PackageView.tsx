@@ -203,6 +203,19 @@ export function PackageHeader({
       >
         {pkg.task?.title || `Context for ${plural(pkg.focus.length, 'focus element')}`}
       </h2>
+      {result.current.headMoved && (
+        <div
+          role="status"
+          className={cn(
+            'mt-3 rounded border px-3 py-2 text-sm',
+            result.current.stale.length + result.current.removed.length > 0
+              ? 'tone-warning border-tone-bd bg-tone-bg text-tone-fg'
+              : 'border-border bg-surface-2 text-fg-muted',
+          )}
+        >
+          {result.current.warning}
+        </div>
+      )}
       <dl className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-x-6 gap-y-3">
         <Fact label="Id">
           <span className="flex items-center gap-1">

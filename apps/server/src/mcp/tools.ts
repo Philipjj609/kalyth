@@ -175,7 +175,7 @@ export const TOOLS: readonly ToolSpec[] = [
     name: 'get_context_package',
     title: 'Get a context package',
     description:
-      'Reads a context package by id (ctx_...), for example one a person prepared for you in Kalyth. Also available as the resource kalyth://context/{packageId}.',
+      'Reads a context package by id (ctx_...), for example one a person prepared for you in Kalyth. Also available as the resource kalyth://context/{packageId}. The package never changes; `current` is checked when you read it and says whether the model moved since it was compiled and which items it relies on changed. When `current.warning` names items, check them, or ask the person to recompile the package, before relying on it.',
     input: ContextPackageQuery,
     readOnly: true,
     run: (d, c, i) => d.context.get(c, i),

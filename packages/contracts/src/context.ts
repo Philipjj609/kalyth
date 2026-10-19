@@ -130,11 +130,36 @@ export const ContextPackage = ContextPackageBody.extend({
 })
 export type ContextPackage = z.infer<typeof ContextPackage>
 
+/**
+ * The package checked against the project's head when it is read (ADR 0023). The package itself
+ * never changes; this says what moved since it was compiled.
+ */
+export const ContextPackageCurrent = z.object({
+  headRevision: z.int().min(0),
+  headMoved: z.boolean(),
+  /** Items that need review at the head although the package recorded them as current. */
+  stale: z.array(
+    z.object({
+      id: z.union([ObjectId, RelationId]),
+      label: z.string(),
+      compiled: FreshnessStatus,
+      now: FreshnessStatus,
+      reason: z.string(),
+    }),
+  ),
+  /** Items that are no longer active in the model at the head. */
+  removed: z.array(z.object({ id: z.union([ObjectId, RelationId]), label: z.string() })),
+  /** What to do about it, in a sentence; null when nothing moved. */
+  warning: z.string().nullable(),
+})
+export type ContextPackageCurrent = z.infer<typeof ContextPackageCurrent>
+
 /** A package as returned to a caller, with that caller's own scopes beside it. */
 export const ContextPackageResult = z.object({
   package: ContextPackage,
   uri: z.string(),
   callerScopes: z.array(Scope),
+  current: ContextPackageCurrent,
 })
 export type ContextPackageResult = z.infer<typeof ContextPackageResult>
 
@@ -169,6 +194,40 @@ export const DecisionsQuery = z.object({
   status: z.enum(['open', 'accepted', 'rejected', 'deferred', 'superseded']).optional(),
 })
 
+/**
+ * Where a decision stands besides its acceptance (`status`), each facet on its own and computed
+ * on read (ADR 0023): whether the evidence its changes rest on still matches the source, how far
+ * the tasks that implement it got, and what git confirmed about their reports. A facet may be
+ * partial; none implies another.
+ */
+export const DecisionFacets = z.object({
+  freshness: z.object({
+    /** `unchecked` when none of the changes cite evidence that can go stale. */
+    status: z.enum(['current', 'stale', 'unchecked']),
+    /** Direct changes considered: the accepted alternative's, or every alternative's while open. */
+    changes: z.int().min(0),
+    stale: z.array(
+      z.object({
+        relationId: RelationId,
+        target: ObjectId,
+        label: z.string(),
+        status: FreshnessStatus,
+        reason: z.string(),
+      }),
+    ),
+  }),
+  implementation: z.object({
+    state: z.enum(['none', 'planned', 'in-progress', 'reported', 'partial', 'complete']),
+    tasks: z.array(z.object({ id: ObjectId, title: z.string(), status: z.string() })),
+  }),
+  verification: z.object({
+    state: z.enum(['none', 'failed', 'partial', 'passed']),
+    /** What the latest passing verification checked, in the verifier's own words. */
+    coverage: z.string().nullable(),
+  }),
+})
+export type DecisionFacets = z.infer<typeof DecisionFacets>
+
 export const DecisionSummary = z.object({
   id: ObjectId,
   title: z.string(),
@@ -194,6 +253,7 @@ export const DecisionSummary = z.object({
   ),
   /** Elements the decision determines directly (`decides`). */
   decides: z.array(z.object({ id: ObjectId, label: z.string() })),
+  facets: DecisionFacets,
 })
 export type DecisionSummary = z.infer<typeof DecisionSummary>
 

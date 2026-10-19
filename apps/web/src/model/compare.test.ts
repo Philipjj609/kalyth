@@ -42,6 +42,11 @@ function openDecision(): DecisionSummary {
       },
     ],
     decides: [],
+    facets: {
+      freshness: { status: 'unchecked', changes: 0, stale: [] },
+      implementation: { state: 'none', tasks: [] },
+      verification: { state: 'none', coverage: null },
+    },
   }
 }
 

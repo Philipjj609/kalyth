@@ -50,6 +50,7 @@ import {
 import type { z } from 'zod'
 import { buildProjectExport } from '../export.ts'
 import { applyOperations } from '../kernel/apply.ts'
+import { decisionFacets } from '../kernel/facets.ts'
 import { assessFreshness } from '../kernel/freshness.ts'
 import { elementLabel, traceImpact } from '../kernel/impact.ts'
 import { predicateFingerprint } from '../kernel/predicates.ts'
@@ -389,17 +390,24 @@ export class KalythServices {
     const r = this.#readable(caller, DecisionsQuery, input)
     if (!r.ok) return r
     const { project, revision, input: q } = r.value
-    const objects = this.store.objectsAt(project.id, revision, {
-      types: ['core.Decision', 'core.Alternative'],
-    })
-    const relations = this.store.relationsAt(project.id, revision, {
-      types: ['alternativeOf', 'impacts', 'decides'],
-    })
+    // Facets need the tasks, reports and verifications, and freshness needs everything (ADR 0023).
+    const objects = this.store.objectsAt(project.id, revision, {})
+    const relations = this.store.relationsAt(project.id, revision, {})
     const byId = new Map(objects.map((o) => [o.id, o]))
     const labelOf = (id: string) => {
-      const o = byId.get(id) ?? this.store.objectsAt(project.id, revision, { ids: [id] })[0]
+      const o = byId.get(id)
       return o ? elementLabel(o) : id
     }
+    const hasDecisions = objects.some((o) => o.type === 'core.Decision')
+    const freshness = new Map(
+      hasDecisions
+        ? assessFreshness(
+            objects,
+            relations,
+            this.store.evidenceMapAt(project.id, revision),
+          ).claims.map((c) => [c.id, c] as const)
+        : [],
+    )
     const text = (o: { attributes: unknown }, key: string) => {
       const v = (o.attributes as Record<string, unknown>)[key]
       return typeof v === 'string' ? v : ''
@@ -440,6 +448,7 @@ export class KalythServices {
         decides: relations
           .filter((rel) => rel.type === 'decides' && rel.from === d.id)
           .map((rel) => ({ id: rel.to, label: labelOf(rel.to) })),
+        facets: decisionFacets(d.id, byId, relations, freshness, labelOf),
       }))
     return ok({ projectId: project.id, revision, decisions })
   }

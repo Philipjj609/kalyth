@@ -3,7 +3,7 @@ import type { Caller, OperationInput, Result } from '@kalyth/contracts'
 import { canonicalJson } from '@kalyth/contracts'
 import { ensureLocalOwner, ensurePrincipal, KalythServices, SqliteStore } from '@kalyth/core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { FixtureRepo, V1 } from '../../analyzer/test/fixture-repo.ts'
+import { FixtureRepo, V1, V2 } from '../../analyzer/test/fixture-repo.ts'
 import { ContextCompiler } from '../src/index.ts'
 
 const unwrap = <T>(r: Result<T>): T => {
@@ -265,6 +265,51 @@ describe('context packages (ADR 0011)', () => {
     expect(moved.revision).toBe(first.revision + 1)
     const stored = unwrap(compiler.get(owner, { packageId: first.id })).package
     expect(stored).toEqual(first)
+  })
+
+  it('says on read when the head moved and what the package relies on changed (ADR 0023)', async () => {
+    const { compiler, services, owner, projectId, decision } = await setup()
+    const compiled = unwrap(compiler.compile(owner, { projectId, focus: [decision.id] }))
+    expect(compiled.current).toMatchObject({
+      headMoved: false,
+      stale: [],
+      removed: [],
+      warning: null,
+    })
+
+    // The source moves on: the POST route and the client module go away.
+    const repo = new FixtureRepo()
+    try {
+      repo.write(V1)
+      repo.commit('v1')
+      repo.write(V2)
+      const v2 = repo.commit('v2')
+      const analyzer = ensurePrincipal(services, 'analyzer', 'tool', 'Analyzer', [
+        'project.read',
+        'proposal.create',
+        'ingest.observed',
+      ])
+      await ingestRepository({
+        services,
+        caller: { principalId: analyzer.id, origin: 'tool' },
+        projectId,
+        git: new GitRepository(repo.path),
+        repo: 'example.org/fixture-app',
+        ref: v2,
+      })
+    } finally {
+      repo.dispose()
+    }
+    const read = unwrap(compiler.get(owner, { packageId: compiled.package.id }))
+    expect(read.package).toEqual(compiled.package)
+    expect(read.current.headMoved).toBe(true)
+    expect(read.current.headRevision).toBeGreaterThan(compiled.package.revision)
+    expect(read.current.stale).toEqual([
+      expect.objectContaining({ label: 'POST /api/v1/items/', compiled: 'current', now: 'stale' }),
+    ])
+    expect(read.current.warning).toBe(
+      `The model moved from r${compiled.package.revision} to r${read.current.headRevision}: 1 item this package relies on changed (POST /api/v1/items/). Recompile the package, or check those items before relying on them.`,
+    )
   })
 
   it('cuts optional items nearest first at the size limit and lists what it left out', async () => {
