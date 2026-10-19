@@ -294,6 +294,24 @@ describe('task detail', () => {
     expect(text).toContain('ACTIONS')
   })
 
+  it('says plainly that an expired lease is no longer worked on and what the next claim does', () => {
+    const expired = runningTask({ leaseExpired: true })
+    const detail = textOf(
+      render(<TaskDetailView task={expired} links={links} now={NOW + 3_600_000} />),
+    )
+    expect(detail).toContain(
+      'Status Running, lease expired. The lease has expired. The next claim checks git for a commit with this task’s trailer first.',
+    )
+    expect(detail).not.toContain('An agent holds a lease on it')
+    expect(detail).toContain('lease expired 30 minutes ago')
+    expect(statusHint(expired)).toBe(
+      'The lease has expired: marking it ready here skips the git check the next claim makes.',
+    )
+    // While the lease holds, the task reads as before.
+    expect(text).toContain('Running. An agent holds a lease on it and is working on it.')
+    expect(statusHint(runningTask())).toMatch(/^An agent holds the lease\./)
+  })
+
   it('says what is missing on a bare task', () => {
     const bare = textOf(
       render(

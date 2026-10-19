@@ -119,6 +119,26 @@ export function taskStatusMeta(status: string): StatusMeta {
   )
 }
 
+/** What a running task whose lease has run out means, until the next claim settles it. */
+export const LEASE_EXPIRED_NOTE =
+  'The lease has expired. The next claim checks git for a commit with this task’s trailer first.'
+
+/**
+ * The task's status as a person reads it: a running task whose lease has expired is no longer
+ * being worked on, although it stays running until the next claim (the server says so at read
+ * time, without writing anything).
+ */
+export function taskStatusLine(task: Pick<TaskView, 'status' | 'leaseExpired'>): {
+  label: string
+  description: string
+} {
+  if (task.status === 'running' && task.leaseExpired) {
+    return { label: 'Running, lease expired', description: LEASE_EXPIRED_NOTE }
+  }
+  const meta = taskStatusMeta(task.status)
+  return { label: meta.label, description: meta.description }
+}
+
 export const REPORT_OUTCOME_META: Record<ReportOutcome, StatusMeta> = {
   succeeded: {
     label: 'Succeeded',
@@ -142,7 +162,7 @@ export const VERIFICATION_META: Record<VerificationOutcome, StatusMeta> = {
     label: 'Pass',
     tone: 'success',
     description:
-      'The git verifier found the commit with the task trailer, the reported files, and the base commit when one is set.',
+      'The git verifier found the commit on a branch, with the task trailer and the reported files since the task base.',
   },
   fail: {
     label: 'Fail',

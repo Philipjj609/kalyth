@@ -1,5 +1,6 @@
 import { canonicalJson } from '@kalyth/contracts'
 import { afterEach, describe, expect, it } from 'vitest'
+import { TOOLS } from '../src/mcp/tools.ts'
 import { harness, stated } from './fixture.ts'
 
 let h: Awaited<ReturnType<typeof harness>>
@@ -165,6 +166,68 @@ describe('MCP interface', () => {
     expect(denied.body).toMatchObject({
       status: 'invalid',
       issues: [{ code: 'attribute.reserved' }],
+    })
+  })
+
+  it('answers input that fails a tool schema with the shared envelope, for every tool', async () => {
+    h = await harness()
+    const wrong = { projectId: 42, taskId: 42, proposalId: 42, packageId: 42, revision: -1 }
+    const checked: string[] = []
+    for (const tool of TOOLS) {
+      const expected = tool.input.safeParse(wrong)
+      if (expected.success) continue
+      const res = await h.mcp(tool.name, wrong)
+      expect(res.isError, tool.name).toBe(true)
+      expect(res.body.error, tool.name).toMatchObject({
+        code: 'invalid',
+        message: expect.stringMatching(
+          new RegExp(`^input does not match the ${tool.name} input schema: `),
+        ),
+        issues: expected.error.issues.slice(0, 20).map((i) => ({
+          code: `schema.${i.code}`,
+          message: i.message,
+          path: i.path.map((p) => (typeof p === 'number' ? p : String(p))),
+        })),
+      })
+      expect(res.text, tool.name).toBe(canonicalJson(res.body))
+      expect(res.text, tool.name).not.toMatch(/Input validation error/)
+      checked.push(tool.name)
+    }
+    // Every tool that takes input was exercised.
+    expect(checked.sort()).toEqual(
+      TOOLS.filter((t) => !['list_projects', 'describe_types'].includes(t.name))
+        .map((t) => t.name)
+        .sort(),
+    )
+
+    const sha = await h.mcp('submit_execution_report', {
+      taskId: `obj_${'0'.repeat(32)}`,
+      leaseId: `lease_${'0'.repeat(32)}`,
+      idempotencyKey: 'report-0001',
+      outcome: 'succeeded',
+      summary: 'x',
+      commit: 'HEAD',
+    })
+    expect(sha.body.error).toMatchObject({
+      code: 'invalid',
+      message:
+        'input does not match the submit_execution_report input schema: commit: expected a 40-hex commit sha',
+      issues: [{ code: 'schema.invalid_format', path: ['commit'] }],
+    })
+    const none = await h.mcp('claim_task')
+    expect(none.body.error).toMatchObject({ code: 'invalid', issues: [{ path: ['taskId'] }] })
+  })
+
+  it('still advertises each tool’s input schema, as the SDK would convert it', async () => {
+    h = await harness()
+    const listed = new Map((await h.client.listTools()).tools.map((t) => [t.name, t.inputSchema]))
+    for (const tool of TOOLS) {
+      const json = tool.input['~standard'].jsonSchema.input({ target: 'draft-2020-12' })
+      expect(listed.get(tool.name), tool.name).toEqual({ type: 'object', ...json })
+    }
+    expect(listed.get('submit_execution_report')).toMatchObject({
+      required: expect.arrayContaining(['taskId', 'leaseId', 'idempotencyKey', 'outcome']),
+      properties: { commit: { pattern: '^[0-9a-f]{40}$' } },
     })
   })
 })

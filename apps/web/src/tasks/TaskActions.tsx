@@ -46,11 +46,14 @@ export function TaskActionButtons({
 }
 
 /** What a person should know before acting on a status that agents and the coordinator share. */
-export function statusHint(task: Pick<TaskView, 'status'>): string | null {
+export function statusHint(task: Pick<TaskView, 'status' | 'leaseExpired'>): string | null {
   switch (task.status) {
     case 'proposed':
       return 'Agents cannot claim a proposed task. Mark it ready when they may.'
     case 'running':
+      if (task.leaseExpired) {
+        return 'The lease has expired: marking it ready here skips the git check the next claim makes.'
+      }
       return 'An agent holds the lease. It renews, releases and reports over MCP; Kalyth’s git verifier then moves the task to review or keeps it running with the checks that failed.'
     case 'unknown_outcome':
       return 'The lease ran out before a report. The last holder can still report; otherwise decide here whether to try again.'

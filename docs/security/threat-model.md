@@ -55,7 +55,8 @@ and text written to steer a model or an agent.
 **Nothing from a repository is executed.**
 
 - Kalyth reads repositories with git plumbing only:
-  - `rev-parse`, `ls-tree`, `cat-file`, `diff-tree`, `merge-base` and `log`;
+  - `rev-parse`, `ls-tree`, `cat-file`, `diff-tree`, `merge-base`, `rev-list`, `for-each-ref`
+    and `log`;
   - no checkout, no hooks, no filters, no pager.
 - Every git call sets `core.fsmonitor=false`, `GIT_TERMINAL_PROMPT=0` and `GIT_OPTIONAL_LOCKS=0`.
 - Refs that come from outside are passed after `--end-of-options`, so they are never read as
@@ -110,8 +111,13 @@ money, or claiming work it did not do.
   - A task's lifecycle is committed by the task coordinator. Only a person completes or cancels a
     task (ADR 0013).
 - **Execution reports.**
-  - Reports are checked against git: the commit exists, carries the `Kalyth-Task` trailer for that
-    task, changes exactly the reported files, and descends from the task base.
+  - Reports are checked against git: the commit exists on a branch or tag, carries the
+    `Kalyth-Task` trailer for that task and descends from the task base, and the files changed from
+    the base to it are exactly the reported files (ADR 0013, amendment of 2026-10-19).
+  - Everything the verifier passes to git as a commit is a validated 40-hex sha. Paths and ref
+    names in a verdict are written on one line, with control and bidirectional characters
+    escaped, and each check's detail is bounded, so a hostile report cannot forge lines in the
+    stored summary or make it too long to record.
   - Test results are the agent's own claim; Kalyth does not run them, and the verifier's recorded
     coverage says so (R4).
 - **Isolation tests.** These pin that an agent token cannot read or claim work in another project.

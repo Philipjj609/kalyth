@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { ContextCompiler } from '@kalyth/context'
 import type { Caller, OperationInput, Result } from '@kalyth/contracts'
 import {
@@ -9,7 +10,7 @@ import {
 } from '@kalyth/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { FixtureRepo } from '../../analyzer/test/fixture-repo.ts'
-import { TaskCoordinator, taskTrailer } from '../src/index.ts'
+import { TaskCoordinator, taskTrailer, VERIFIER, VERIFIER_COVERAGE } from '../src/index.ts'
 
 const unwrap = <T>(r: Result<T>): T => {
   if (!r.ok)
@@ -190,10 +191,15 @@ describe('task coordinator (ADR 0013)', () => {
     expect(result.verification.outcome).toBe('pass')
     expect(result.verification.checks.map((c) => c.name)).toEqual([
       'commit exists',
+      'on a branch or tag',
       'task trailer',
-      'files changed',
       'descends from base',
+      'commits in range',
+      'files changed',
     ])
+    expect(result.verification.checks.find((c) => c.name === 'commits in range')?.detail).toBe(
+      `1 commit after the task base ${w.base.slice(0, 12)}, newest first: ${sha}`,
+    )
     expect(result.task.status).toBe('review')
     expect(result.task.lease).toBeNull()
     expect(result.task.reports).toEqual([
@@ -211,15 +217,17 @@ describe('task coordinator (ADR 0013)', () => {
     ).objects[0]
     expect(verification?.claim).toMatchObject({
       basis: 'observed',
-      observation: { tool: 'kalyth-git-verifier' },
+      observation: { ...VERIFIER, coverage: VERIFIER_COVERAGE },
     })
     expect(result.verification.id).toBe(verification?.id)
 
-    // Retrying the same report is answered from the record, not written twice.
+    // Retrying the same report is answered from the record, with the original verdict, not
+    // written twice.
     const again = unwrap(
       w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, sha) }),
     )
     expect(again).toMatchObject({ duplicate: true, reportId: result.reportId })
+    expect(again.verification).toEqual(result.verification)
     expect(w.view().reports).toHaveLength(1)
 
     // Completion: never the coordinator, never through relayed text; the owner acting directly.
@@ -306,6 +314,16 @@ describe('task coordinator (ADR 0013)', () => {
     expect(failed['files changed']?.detail).toMatch(/reported but not changed: README\.md/)
     expect(result.task.status).toBe('running')
 
+    // A retry keeps the reasons for the failed verdict.
+    const retried = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, sha, { filesChanged: ['app/models.py', 'README.md'] }),
+      }),
+    )
+    expect(retried).toMatchObject({ duplicate: true, reportId: result.reportId })
+    expect(retried.verification).toEqual(result.verification)
+
     const missing = unwrap(
       w.tasks.submitReport(w.agent, {
         taskId: w.taskId,
@@ -328,8 +346,178 @@ describe('task coordinator (ADR 0013)', () => {
       }),
     )
     expect(gaveUp.verification.outcome).toBe('inconclusive')
+    expect(gaveUp.verification.checks).toEqual([
+      { name: 'commit', ok: false, detail: 'the report names no commit' },
+    ])
     expect(gaveUp.task.status).toBe('failed')
     expect(gaveUp.task.reports).toHaveLength(3)
+
+    // Unverified reports, too, are answered on retry with what was said the first time; the
+    // failed task refuses anything new.
+    const gaveUpAgain = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, undefined, {
+          idempotencyKey: 'report-gave-up',
+          outcome: 'failed',
+          filesChanged: [],
+        }),
+      }),
+    )
+    expect(gaveUpAgain).toMatchObject({ duplicate: true, reportId: gaveUp.reportId })
+    expect(gaveUpAgain.verification).toEqual(gaveUp.verification)
+    const afterFailure = errorOf(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, sha, { idempotencyKey: 'report-after-failure' }),
+      }),
+    )
+    expect(afterFailure).toMatchObject({ code: 'conflicting' })
+    expect(afterFailure.message).toMatch(/^the task has failed/)
+  })
+
+  it('refuses a late report once the task is in review, saying so, and still answers a retry', () => {
+    const w = world()
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    const sha = work(w)
+    const first = unwrap(
+      w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, sha) }),
+    )
+    expect(first.task.status).toBe('review')
+
+    const late = errorOf(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, sha, { idempotencyKey: 'report-late-0001' }),
+      }),
+    )
+    expect(late.code).toBe('conflicting')
+    expect(late.message).toBe(
+      'the task is in review: a verified report is waiting for a person, so the task takes no more reports and its lease has ended',
+    )
+    // The same refusal whoever asks and whatever lease they name, and for lease changes.
+    const forged = { taskId: w.taskId, leaseId: `lease_${'0'.repeat(32)}` }
+    expect(
+      errorOf(w.tasks.submitReport(w.other, { ...forged, ...report(forged.leaseId, sha) })).code,
+    ).toBe('conflicting')
+    expect(
+      errorOf(w.tasks.renew(w.agent, { taskId: w.taskId, leaseId: lease.id })).message,
+    ).toMatch(/^the task is in review/)
+    expect(
+      errorOf(w.tasks.release(w.agent, { taskId: w.taskId, leaseId: lease.id, reason: 'done' }))
+        .message,
+    ).toMatch(/^the task is in review/)
+    // A retry of the report that moved it is still answered.
+    const retry = unwrap(
+      w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, sha) }),
+    )
+    expect(retry).toMatchObject({ duplicate: true, verification: first.verification })
+    expect(w.view().reports).toHaveLength(1)
+    // An agent without task.work is still refused for its scopes first.
+    expect(
+      errorOf(w.tasks.submitReport(w.reader, { ...forged, ...report(forged.leaseId, sha) })).code,
+    ).toBe('unauthorized')
+  })
+
+  it('stores reported paths as git writes them', () => {
+    const w = world()
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    const result = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, work(w), {
+          filesChanged: ['app\\models.py', './app/tenant.py', 'app/models.py'],
+        }),
+      }),
+    )
+    expect(result.verification.outcome).toBe('pass')
+    expect(result.task.reports[0]?.filesChanged).toEqual(['app/models.py', 'app/tenant.py'])
+    const stored = unwrap(
+      w.services.queryObjects(w.owner, { projectId: w.projectId, types: ['core.ExecutionReport'] }),
+    ).objects[0]
+    expect(stored?.attributes.filesChanged).toEqual(['app/models.py', 'app/tenant.py'])
+  })
+
+  it('verifies the work from the task base, over two commits, and fails a report of the fix-up alone', () => {
+    const w = world()
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    const first = work(w)
+    w.repo.write({ 'app/tenant.py': 'X = 2\n', 'tests/test_tenant.py': 'def test(): ...\n' })
+    const fixup = w.repo.commit(`Fix the tenant default\n\n${taskTrailer(w.taskId)}`)
+
+    const fixupOnly = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, fixup, {
+          idempotencyKey: 'report-fixup-only',
+          filesChanged: ['app/tenant.py', 'tests/test_tenant.py'],
+        }),
+      }),
+    )
+    expect(fixupOnly.verification.outcome).toBe('fail')
+    expect(fixupOnly.verification.checks.filter((c) => !c.ok)).toEqual([
+      {
+        name: 'files changed',
+        ok: false,
+        detail: 'changed but not reported: app/models.py',
+      },
+    ])
+    expect(fixupOnly.task.status).toBe('running')
+
+    const whole = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        ...report(lease.id, fixup, {
+          idempotencyKey: 'report-whole-work',
+          filesChanged: ['app/models.py', 'app/tenant.py', 'tests/test_tenant.py'],
+        }),
+      }),
+    )
+    expect(whole.verification.outcome).toBe('pass')
+    expect(whole.verification.checks.find((c) => c.name === 'commits in range')?.detail).toBe(
+      `2 commits after the task base ${w.base.slice(0, 12)}, newest first: ${fixup}, ${first}`,
+    )
+    expect(whole.task.status).toBe('review')
+  })
+
+  it('fails a commit that is on no branch or tag', () => {
+    const w = world()
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    execFileSync('git', ['-C', w.repo.path, 'checkout', '-q', '--detach'])
+    const loose = work(w)
+    execFileSync('git', ['-C', w.repo.path, 'checkout', '-q', 'main'])
+    const result = unwrap(
+      w.tasks.submitReport(w.agent, { taskId: w.taskId, ...report(lease.id, loose) }),
+    )
+    expect(result.verification.outcome).toBe('fail')
+    expect(result.verification.checks.filter((c) => !c.ok)).toEqual([
+      expect.objectContaining({
+        name: 'on a branch or tag',
+        detail: expect.stringMatching(/is on no branch or tag in the task repository/),
+      }),
+    ])
+    expect(result.task.status).toBe('running')
+  })
+
+  it('shows an expired lease at read time, without writing anything', () => {
+    const w = world()
+    unwrap(w.tasks.claim(w.agent, { taskId: w.taskId, leaseMinutes: 5 }))
+    const head = () =>
+      unwrap(w.services.getProjectOverview(w.owner, { projectId: w.projectId })).project
+        .headRevision
+    const before = { view: w.view(), head: head() }
+    expect(before.view.leaseExpired).toBe(false)
+    w.advance(6)
+    expect(w.view()).toMatchObject({
+      status: 'running',
+      leaseExpired: true,
+      revision: before.view.revision,
+      updatedAt: before.view.updatedAt,
+    })
+    expect(
+      unwrap(w.tasks.listTasks(w.agent, { projectId: w.projectId })).tasks[0]?.leaseExpired,
+    ).toBe(true)
+    expect(head()).toBe(before.head)
   })
 
   it('resumes an expired task only when no commit references it', () => {

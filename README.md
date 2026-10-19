@@ -49,8 +49,9 @@ tests, and 36 browser tests of the main flows by keyboard, with automated access
     acceptance criteria and agent policy.
   - Optional items are ranked by typed distance, with an explicit list of what was left out.
 - **Tasks and execution reports.** Coding agents claim tasks with an expiring lease and submit
-  execution reports. Kalyth checks each report against git: the commit exists, it carries the
-  task's trailer, it changes exactly the reported files, and it descends from the task's base.
+  execution reports. Kalyth checks each report against git: the commit exists on a branch or tag,
+  it carries the task's trailer, it descends from the task's base, and the files changed since the
+  base are exactly those reported.
   Tests are the agent's own claim; Kalyth does not run them. A person completes the task.
 - **Workbench UI.** Overview, Graph, Records, Proposals, History, Navigator, Handoff, Tasks (board
   or dependency graph) and Decisions views, with an inspector. Claim basis and freshness show on

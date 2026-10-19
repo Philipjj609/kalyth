@@ -109,10 +109,19 @@ A `core.Task` changes status and lease only through `setTaskStatus`, along `TASK
   are unmet. An expired lease moves the task to `unknown_outcome`; it is resumed only when no commit
   in the task repository carries its trailer.
 - `renew_task_lease` and `release_task` need the current lease.
-- `submit_execution_report` records the report as stated. When it names a commit, the git verifier
-  checks that the commit exists, carries the trailer, changes exactly the files reported and
-  descends from the task's base commit, and records the check as an observed `core.Verification`.
-  A pass moves the task to `review`. Reported tests are recorded, not run.
+- `submit_execution_report` records the report as stated, with its paths normalised. When it
+  names a commit, the git verifier checks that the commit exists on a branch or tag, carries the
+  trailer and descends from the task's base commit, and that the files changed from the base to
+  it are exactly those reported; it lists the commits in that range. It records the check as an
+  observed `core.Verification`. A pass moves the task to `review`. Reported tests are recorded,
+  not run. A retry with the same idempotency key returns the original verdict; a report on a task
+  that is no longer running is refused as `conflicting` with the task's state (ADR 0013,
+  amendment of 2026-10-19).
+- Input that does not match a tool's schema, for these and every other MCP tool, is answered with
+  the shared error envelope, code `invalid`, and the schema issues.
+
+`leaseExpired` on a task view is computed at read time: true while the task is `running` and its
+lease has passed its expiry. Reading writes nothing; the next claim moves the task on.
 
 Each task view carries `createdAt` and `updatedAt`, and each of its reports `reportedAt`. They are
 the commit times, read from the project history, of the revisions that created the task, wrote its

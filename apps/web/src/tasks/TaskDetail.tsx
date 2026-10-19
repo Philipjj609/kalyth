@@ -11,7 +11,7 @@ import {
 } from '../components/badges.tsx'
 import { CopyButton, ScrollRegion, SectionTitle } from '../components/ui.tsx'
 import { plural, shortId, shortSha } from '../model/format.ts'
-import { reportsNewestFirst, type TaskReport, taskStatusMeta, taskTrailer } from '../model/tasks.ts'
+import { reportsNewestFirst, type TaskReport, taskStatusLine, taskTrailer } from '../model/tasks.ts'
 import { LeaseLine, type TaskLinks, When } from './TaskBoard.tsx'
 
 // ---------- execution reports ----------
@@ -98,8 +98,8 @@ export function VerificationBlock({ verification }: { verification: TaskReport['
       </p>
       <p className="whitespace-pre-wrap break-words text-fg text-sm">{verification.summary}</p>
       <p className="text-fg-muted text-xs">
-        It reads the task repository: the commit, its trailer, the files it changed and its base. It
-        does not run the code or the tests.
+        It reads the task repository: the commit, its branch, its trailer and the files changed
+        since the base. It does not run the code or the tests.
       </p>
     </div>
   )
@@ -291,7 +291,7 @@ export function TaskDetailView({
   headingRef?: Ref<HTMLHeadingElement>
 }) {
   const headingId = useId()
-  const status = taskStatusMeta(task.status)
+  const status = taskStatusLine(task)
   const trailer = taskTrailer(task.id)
   return (
     <section
@@ -403,9 +403,7 @@ export function TaskDetailView({
                   {shortSha(task.baseCommit)}
                 </code>
                 <CopyButton text={task.baseCommit} label="Copy the base commit" />
-                <span className="text-fg-muted text-xs">
-                  the reported commit must descend from it
-                </span>
+                <span className="text-fg-muted text-xs">reports are checked from here</span>
               </p>
             ) : (
               <p className="text-fg-subtle text-sm">Not set.</p>
