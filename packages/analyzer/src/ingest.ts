@@ -38,7 +38,7 @@ const OBJECT_TYPES = [
   'software.DataEntity',
   'software.Library',
 ]
-const RELATION_TYPES = ['contains', 'dependsOn', 'exposes']
+const RELATION_TYPES = ['contains', 'dependsOn', 'exposes', 'reads', 'writes', 'references']
 
 /**
  * Analyses a commit and submits the result as one proposal through the shared services, then
