@@ -11,6 +11,7 @@ import {
   type DecisionsResult,
   EvidenceQuery,
   type EvidenceQueryResult,
+  type EvidenceRecord,
   ExportProjectInput,
   FreshnessQuery,
   type FreshnessResult,
@@ -399,15 +400,29 @@ export class KalythServices {
       return o ? elementLabel(o) : id
     }
     const hasDecisions = objects.some((o) => o.type === 'core.Decision')
+    const evidence: Map<string, EvidenceRecord> = hasDecisions
+      ? this.store.evidenceMapAt(project.id, revision)
+      : new Map()
     const freshness = new Map(
       hasDecisions
-        ? assessFreshness(
-            objects,
-            relations,
-            this.store.evidenceMapAt(project.id, revision),
-          ).claims.map((c) => [c.id, c] as const)
+        ? assessFreshness(objects, relations, evidence).claims.map((c) => [c.id, c] as const)
         : [],
     )
+    // The source files an element's evidence cites, for what verified reports touched (ADR 0024).
+    const pathsOf = (id: string): string[] => {
+      const o = byId.get(id)
+      if (!o) return []
+      return [
+        ...new Set(
+          o.claim.supports.flatMap((g) =>
+            g.allOf.flatMap((e) => {
+              const source = evidence.get(e)?.source
+              return source?.kind === 'sourceSpan' ? [source.path] : []
+            }),
+          ),
+        ),
+      ]
+    }
     const text = (o: { attributes: unknown }, key: string) => {
       const v = (o.attributes as Record<string, unknown>)[key]
       return typeof v === 'string' ? v : ''
@@ -448,7 +463,7 @@ export class KalythServices {
         decides: relations
           .filter((rel) => rel.type === 'decides' && rel.from === d.id)
           .map((rel) => ({ id: rel.to, label: labelOf(rel.to) })),
-        facets: decisionFacets(d.id, byId, relations, freshness, labelOf),
+        facets: decisionFacets(d.id, byId, relations, freshness, labelOf, pathsOf),
       }))
     return ok({ projectId: project.id, revision, decisions })
   }

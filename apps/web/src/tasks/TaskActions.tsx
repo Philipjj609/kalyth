@@ -5,6 +5,7 @@ import { useWorkbench } from '../app/workbench.ts'
 import { ReportOutcomeBadge, VerificationBadge } from '../components/badges.tsx'
 import { useToast } from '../components/toast.tsx'
 import { Button, SectionTitle, Spinner } from '../components/ui.tsx'
+import { shortSha } from '../model/format.ts'
 import { latestReport, type TaskAction, taskActions, taskStatusMeta } from '../model/tasks.ts'
 import { AppLink, ErrorNotice } from '../views/shared.tsx'
 
@@ -46,7 +47,12 @@ export function TaskActionButtons({
 }
 
 /** What a person should know before acting on a status that agents and the coordinator share. */
-export function statusHint(task: Pick<TaskView, 'status' | 'leaseExpired'>): string | null {
+export function statusHint(
+  task: Pick<TaskView, 'status' | 'leaseExpired'> & Partial<Pick<TaskView, 'finding'>>,
+): string | null {
+  if (task.status === 'unknown_outcome' && task.finding?.commits[0]) {
+    return `The lease ran out before a report, and git shows commit ${shortSha(task.finding.commits[0])} with this task’s trailer. Review it as a report under Follow-up, or decide here whether to try again.`
+  }
   switch (task.status) {
     case 'proposed':
       return 'Agents cannot claim a proposed task. Mark it ready when they may.'
@@ -62,6 +68,23 @@ export function statusHint(task: Pick<TaskView, 'status' | 'leaseExpired'>): str
     default:
       return null
   }
+}
+
+/**
+ * What a status change loses when git found a commit for the task (ADR 0013, amendment of
+ * 2026-10-20): the kernel clears the finding when the task leaves unknown_outcome. Null when there
+ * is nothing to lose.
+ */
+export function discardsFinding(
+  task: Partial<Pick<TaskView, 'finding'>>,
+  to: TaskStatus,
+): string | null {
+  const commit = task.finding?.commits[0]
+  if (!commit) return null
+  const found = `Git found commit ${shortSha(commit)} with this task’s trailer.`
+  return to === 'ready'
+    ? `${found} Marking the task ready discards that finding: the next agent starts the work again and is not told about the commit. If the commit holds the work, review it as a report instead.`
+    : `${found} This discards that finding; the history keeps it.`
 }
 
 /** Asks for the required rationale; the status change proposal carries it. */
@@ -84,6 +107,8 @@ export function StatusDialog({
   const [rationale, setRationale] = useState('')
   const titleId = useId()
   const noteId = useId()
+  const discardId = useId()
+  const discards = action ? discardsFinding(task, action.to) : null
   useEffect(() => {
     const dialog = ref.current
     if (!dialog) return
@@ -100,7 +125,7 @@ export function StatusDialog({
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      aria-describedby={noteId}
+      aria-describedby={discards ? `${noteId} ${discardId}` : noteId}
       onClose={onClose}
       className="m-auto w-[min(540px,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-0 text-fg shadow-pop"
     >
@@ -119,6 +144,14 @@ export function StatusDialog({
           <p id={noteId} className="text-fg-muted text-sm">
             {action.note}
           </p>
+          {discards && (
+            <p
+              id={discardId}
+              className="tone-caution rounded-md border border-tone-bd bg-tone-bg px-3 py-2 text-tone-fg text-xs"
+            >
+              {discards}
+            </p>
+          )}
           {report && (
             <p className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-surface-2 px-3 py-2 text-xs">
               <span className="text-fg-muted">Latest report</span>

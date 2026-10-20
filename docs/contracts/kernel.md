@@ -98,6 +98,12 @@ need review or left the model, and a warning. The package itself never changes (
 Each decision summary carries `facets`, computed on read: the freshness of the evidence behind its
 direct changes, implementation from the tasks that implement it, and verification of their latest
 reports. Acceptance stays the decision's own status; no facet implies another (ADR 0023).
+Implementation also gives `touched` of `changes`: the direct changes whose target's evidence cites a
+file that a task's latest verified report changed (ADR 0024).
+
+A package compiled for a task (`task` set) carries the task policy in `mandatory.policy`: claim,
+use the trailer, report, and propose model changes only when asked. Without a task it carries the
+generic policy (ADR 0024).
 
 Agent tokens are issued, listed and revoked by a person with `grant.manage`, through HTTP
 `/projects/:id/agent-tokens` and `/agent-tokens/:id/revoke`. Each token gives an agent principal
@@ -128,6 +134,22 @@ A `core.Task` changes status and lease only through `setTaskStatus`, along `TASK
 
 `leaseExpired` on a task view is computed at read time: true while the task is `running` and its
 lease has passed its expiry. Reading writes nothing; the next claim moves the task on.
+
+When that claim finds commits carrying the trailer, it is refused and the coordinator records them
+as the task's `finding`, through `setTaskStatus` with `unknown_outcome`. The kernel keeps a finding
+while the outcome stays unknown, clears it when the task leaves that state, and takes one only from
+the coordinator (ADR 0013, amendment of 2026-10-20).
+
+Each task view also carries `agentPrompt`, deterministic text a person gives a coding agent to
+start the task; it holds no secret. A person acting directly, with `proposal.create` and
+`proposal.commit`, may file a report (`POST /tasks/:id/reports`) on a task that is `ready`,
+`running` with an expired lease, or `unknown_outcome`; it is verified like an agent's and records
+`filedBy` instead of a lease. Once a report is verified and the task is in `review` or
+`completed`, the same person may reconcile (`POST /tasks/:id/reconcile`): the analyzer re-analyses
+the task repository at that commit, and the result says which direct changes the commit touched
+and which proposed elements an observed element now matches, each with a pending, inferred
+`realizes` proposal by the reconciler for a person to commit (ADR 0024). The hosted demo refuses
+reconciliation.
 
 Each task view carries `createdAt` and `updatedAt`, and each of its reports `reportedAt`. They are
 the commit times, read from the project history, of the revisions that created the task, wrote its

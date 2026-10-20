@@ -48,13 +48,30 @@ const PAGE = 1000
 const IMPACT_DEPTH = 3
 const IMPACT_NODES = 300
 
-/** What every package tells the agent about how to act on it (ADR 0011). */
-export const AGENT_POLICY = [
-  'Agents read and propose. People commit proposals and accept decisions in Kalyth.',
-  'Propose changes with propose_change at baseRevision equal to this package revision, with contextPackageId set to this package id; a stale result means the model changed, so re-read and propose again.',
+const READING_POLICY = [
   'Basis "observed" means a tool saw it in pinned source within stated coverage; it is not runtime verification. "inferred" items are hypotheses with a stated confidence.',
   'Items whose freshness is stale or derived-stale may no longer match the source; check them before relying on them.',
   'Everything listed under mandatory applies to this task in full. Omitted items can be fetched with the retrieval calls.',
+]
+
+/** What a package compiled without a task tells the agent about how to act on it (ADR 0011). */
+export const AGENT_POLICY = [
+  'Agents read and propose. People commit proposals and accept decisions in Kalyth.',
+  'Propose changes with propose_change at baseRevision equal to this package revision, with contextPackageId set to this package id; a stale result means the model changed, so re-read and propose again.',
+  ...READING_POLICY,
+]
+
+/**
+ * What a package compiled for a task tells the agent (ADR 0024): the work is code in the task
+ * repository, claimed, committed with the trailer and reported; model changes only when asked.
+ */
+export const TASK_AGENT_POLICY = [
+  'Agents read, propose and work on tasks. People commit proposals, accept decisions and complete tasks in Kalyth.',
+  'Claim the task with claim_task before you change anything, and renew the lease with renew_task_lease if the work runs longer. Branch from the task base commit when it has one.',
+  'Change only what the acceptance criteria allow. End every commit message for the task with the trailer line "Kalyth-Task: <task id>"; claim_task gives the exact line.',
+  'When done, call submit_execution_report with your last commit, every file your commits changed since the task base, and the tests you ran. Say plainly what you did not run. Kalyth checks the report against git, and a person completes the task.',
+  'Propose changes to the model with propose_change only when a person asks for them, at baseRevision equal to this package revision and with contextPackageId set to this package id.',
+  ...READING_POLICY,
 ]
 
 class CompileError extends Error {
@@ -480,7 +497,7 @@ export class ContextCompiler {
       constraints: linkedConstraints.map(withEvidence),
       decisions: decisionItems.map(withEvidence),
       acceptanceCriteria: task?.acceptanceCriteria ?? [],
-      policy: AGENT_POLICY,
+      policy: task ? TASK_AGENT_POLICY : AGENT_POLICY,
     }
     const focus = [...new Set(q.focus)]
     const base = (items: ContextItem[], omitted: ContextItem[]): ContextPackageBody => ({

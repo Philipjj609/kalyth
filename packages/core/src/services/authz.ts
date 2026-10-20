@@ -47,6 +47,7 @@ export class Authorizer {
    * - any decision status change needs a human principal, acting directly (origin "human"),
    *   holding decision.decide;
    * - a task becoming completed or cancelled needs a person acting directly (ADR 0013);
+   * - recording a task's git finding needs the task coordinator (a tool with task.coordinate);
    * - otherwise proposal.commit allows any operation;
    * - ingest.observed allows only evidence plus records whose claim basis is "observed";
    * - task.coordinate allows only task lifecycle records (ADR 0013).
@@ -78,6 +79,16 @@ export class Authorizer {
         message: 'completing or cancelling a task requires a person acting directly',
         issues: [],
         requiredScopes: ['proposal.commit'],
+      }
+    }
+    // A finding says what git showed; only the coordinator, which searched git, records one.
+    const recordsFinding = ops.some((op) => op.op === 'setTaskStatus' && op.finding !== undefined)
+    if (recordsFinding && !(principal.kind === 'tool' && held.has('task.coordinate'))) {
+      return {
+        code: 'unauthorized',
+        message: 'only the task coordinator records what git found for a task',
+        issues: [],
+        requiredScopes: ['task.coordinate'],
       }
     }
     if (held.has('proposal.commit')) return undefined

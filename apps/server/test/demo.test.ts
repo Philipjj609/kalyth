@@ -262,8 +262,11 @@ describe('hosted demo (ADR 0019)', () => {
         cookie,
         payload: { path: '/etc' },
       }),
+      // Reconciling re-analyses a repository on the server, like ingest (ADR 0024).
+      await d.request('POST', `/api/v1/tasks/obj_${'0'.repeat(32)}/reconcile`, { cookie }),
     ]
-    expect(refused.map((r) => r.statusCode)).toEqual([403, 403, 403, 403, 403])
+    expect(refused.map((r) => r.statusCode)).toEqual([403, 403, 403, 403, 403, 403])
+    expect(refused[5]?.json().error.message).toMatch(/not available in the hosted demo/)
     expect(refused[0]?.json().error.message).toMatch(/not available in the hosted demo/)
     const mcp = await d.request('POST', '/mcp', { cookie, payload: {} })
     expect(mcp.statusCode).toBe(404)

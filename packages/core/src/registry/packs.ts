@@ -2,6 +2,8 @@ import {
   AlternativeStatus,
   ContextPackageId,
   DecisionStatus,
+  PrincipalId,
+  TaskFinding,
   TaskLease,
   TaskStatus,
   TestRun,
@@ -118,8 +120,11 @@ export const corePack: ObjectTypeDef[] = [
         .string()
         .regex(/^[0-9a-f]{40}$/)
         .optional(),
+      // Still version 1: `finding` is optional, so every earlier version is valid as it stands.
+      // Only setTaskStatus writes it (ADR 0013, amendment of 2026-10-20).
+      finding: TaskFinding.optional(),
     }),
-    reserved: { status: 'proposed', lease: null },
+    reserved: { status: 'proposed', lease: null, finding: null },
   },
   {
     type: 'core.ExecutionReport',
@@ -136,7 +141,10 @@ export const corePack: ObjectTypeDef[] = [
         .optional(),
       filesChanged: z.array(z.string().min(1).max(1000)).max(500).default([]),
       tests: z.array(TestRun).max(20).default([]),
-      leaseId: z.string().min(1).max(100),
+      // Still version 1: an agent's report names its lease; a report a person files themselves
+      // names that person instead (ADR 0024). Both stay optional, so earlier versions are valid.
+      leaseId: z.string().min(1).max(100).optional(),
+      filedBy: PrincipalId.optional(),
       idempotencyKey: z.string().min(8).max(200),
     }),
   },

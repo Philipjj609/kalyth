@@ -1,23 +1,30 @@
 import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { basename, resolve } from 'node:path'
+import { GitRepository, IngestError, ingestRepository } from '@kalyth/analyzer'
 import type { ContextCompiler } from '@kalyth/context'
 import {
   Caller,
   type ClaimResult,
   ClaimTaskInput,
   type CommitSuccess,
+  FileReportInput,
   fail,
   type KernelError,
   type ObjectVersion,
   type OperationInput,
   ok,
   type Principal,
+  type ReconciledElement,
+  type ReconcileResult,
+  ReconcileTaskInput,
   type RelationVersion,
   ReleaseTaskInput,
   RenewLeaseInput,
   type ReportResult,
   type Result,
+  type Scope,
   SubmitReportInput,
+  type TaskFinding,
   type TaskLease,
   type TaskList,
   TaskListQuery,
@@ -27,6 +34,7 @@ import {
   type TaskRepositoryView,
   type TaskStatus,
   type TaskView,
+  type TestRun,
   type VerificationCheck,
 } from '@kalyth/contracts'
 import {
@@ -37,7 +45,15 @@ import {
   uuidv7Hex,
 } from '@kalyth/core'
 import type { z } from 'zod'
-import { TaskGit } from './git.ts'
+import { SHA, TaskGit } from './git.ts'
+import { agentPrompt } from './prompt.ts'
+import {
+  ensureAnalyzer,
+  ensureReconciler,
+  RECONCILE_METHOD,
+  type ReconcileModel,
+  reconcileDecisions,
+} from './reconcile.ts'
 import { TaskRepositories } from './repository.ts'
 import {
   normaliseFiles,
@@ -90,6 +106,35 @@ const NOT_WORKABLE: Record<TaskStatus, string> = {
 const notWorkable = (status: TaskStatus): string =>
   NOT_WORKABLE[status] ?? `the task is ${status}, not running`
 
+/** Why a person cannot file a report on a task in this state (ADR 0024). */
+function notFileable(view: TaskView): string {
+  switch (view.status) {
+    case 'running':
+      return `an agent holds the lease until ${view.lease?.expiresAt}: wait for its report, or for the lease to expire`
+    case 'proposed':
+      return 'the task is proposed: mark it ready before filing a report'
+    case 'review':
+      return 'the task is in review: a verified report is already waiting for a person'
+    case 'blocked':
+      return 'the task is blocked: mark it ready before filing a report'
+    case 'failed':
+      return 'the task has failed: mark it ready before filing a report'
+    default:
+      return `the task is ${view.status}, which is final: it takes no more reports`
+  }
+}
+
+/** The scopes a person needs to change a task through a committed proposal. */
+const PERSON_SCOPES: readonly Scope[] = ['proposal.create', 'proposal.commit']
+/** A person's report taken from ready holds the task this long, until it moves on. */
+const PERSON_LEASE_MINUTES = 15
+/** Commits that carry the trailer, recorded on a task as its finding. */
+const MAX_FOUND = 5
+
+const short = (sha: string) => sha.slice(0, 12)
+const sameCommits = (a: readonly string[] | undefined, b: readonly string[]) =>
+  a !== undefined && a.length === b.length && a.every((c, i) => c === b[i])
+
 /** The verdict on a report Kalyth cannot check; no verification is recorded for it. */
 const NO_COMMIT: VerificationCheck = {
   name: 'commit',
@@ -106,6 +151,14 @@ interface Located {
   projectId: string
   view: TaskView
   head: number
+}
+
+/** What is recorded about a report: the verifier's verdict, or why there is none. */
+interface Verdict {
+  outcome: 'pass' | 'fail' | 'inconclusive'
+  checks: VerificationCheck[]
+  /** The registered task repository, null when there is none. */
+  repoPath: string | null
 }
 
 /**
@@ -209,31 +262,54 @@ export class TaskCoordinator {
           : `task is held until ${view.lease?.expiresAt}`,
       )
     }
+    const repo = this.#repos.get(projectId).path
+    // What git shows is searched once, and recorded on the task for a person (ADR 0013,
+    // amendment of 2026-10-20).
+    let found: string[] | undefined
+    const search = (path: string) => {
+      found ??= new TaskGit(path).commitsMentioning(taskTrailer(view.id)).slice(0, MAX_FOUND)
+      return found
+    }
     if (view.status === 'running' && view.leaseExpired) {
+      const commits = repo ? search(repo) : []
       const expired = this.#commit(agent, projectId, `Lease on ${view.id} expired`, [
         this.#status(
           view.id,
           'unknown_outcome',
-          `lease ${view.lease?.id} expired at ${view.lease?.expiresAt}`,
+          `lease ${view.lease?.id} expired at ${view.lease?.expiresAt}${commits[0] ? `; commit ${short(commits[0])} carries the task trailer` : ''}`,
+          null,
+          commits.length > 0 ? { commits } : undefined,
         ),
       ])
       if (!expired.ok) return expired
       view = this.#reread(caller, projectId, view.id) ?? view
     }
     if (view.status === 'unknown_outcome') {
-      const repo = this.#repos.get(projectId).path
       if (!repo) {
         return fail(
           'conflicting',
           'the previous holder may have finished, and no task repository is registered to check; a person can set the task ready',
         )
       }
-      const commits = new TaskGit(repo).commitsMentioning(taskTrailer(view.id))
-      if (commits.length > 0) {
+      const commits = search(repo)
+      const newest = commits[0]
+      if (newest) {
+        if (!sameCommits(view.finding?.commits, commits)) {
+          const recorded = this.#commit(agent, projectId, `Git shows work on ${view.id}`, [
+            this.#status(
+              view.id,
+              'unknown_outcome',
+              `commit ${short(newest)} carries the task trailer: the previous holder may have finished; a person reviews it`,
+              null,
+              { commits },
+            ),
+          ])
+          if (!recorded.ok && recorded.error.code !== 'stale') return recorded
+        }
         return fail(
           'conflicting',
-          `commit ${commits[0]?.slice(0, 12)} already references this task: the previous holder may have finished. Submit a report for it, or ask a person to reset the task.`,
-          { changedRefs: commits.slice(0, 5) },
+          `commit ${short(newest)} already references this task: the previous holder may have finished. Kalyth recorded it on the task for a person to review. Submit a report for it, or ask a person to settle the task.`,
+          { changedRefs: commits },
         )
       }
       const reset = this.#commit(agent, projectId, `Resume ${view.id}`, [
@@ -315,63 +391,287 @@ export class TaskCoordinator {
     const agent = who.value.caller
 
     // A retry with the same key is answered with the original verdict, read back from the record.
-    const previous = this.#reportByKey(
-      caller,
-      located.projectId,
-      located.view.id,
-      report.idempotencyKey,
-    )
-    if (previous) {
-      return ok({
-        task: located.view,
-        reportId: previous.id,
-        verification: previous.verification
-          ? {
-              id: previous.verification.id,
-              outcome: previous.verification.outcome,
-              checks: parseSummary(previous.verification.summary),
-            }
-          : {
-              id: null,
-              outcome: 'inconclusive',
-              checks: [previous.commit ? NO_REPOSITORY : NO_COMMIT],
-            },
-        duplicate: true,
-      })
-    }
+    const previous = this.#previous(caller, located, report.idempotencyKey)
+    if (previous) return ok(previous)
     const held = this.#held(caller, report.taskId, report.leaseId, ['running', 'unknown_outcome'])
     if (!held.ok) return held
 
     // Stored as git writes paths, so what people see is what was compared.
     const filesChanged = normaliseFiles(report.filesChanged)
-    const repoPath = this.#repos.get(located.projectId).path
-    let outcome: 'pass' | 'fail' | 'inconclusive' = 'inconclusive'
-    let checks: VerificationCheck[] = []
-    if (!report.commit) {
-      checks = [NO_COMMIT]
-    } else if (!repoPath) {
-      checks = [NO_REPOSITORY]
+    const verdict = this.#verify(located, report.commit, filesChanged)
+    const ops = this.#reportOps(located.view.id, verdict, {
+      ...report,
+      filesChanged,
+      by: { leaseId: report.leaseId },
+    })
+    if (report.outcome === 'failed') {
+      ops.push(
+        this.#status(
+          located.view.id,
+          'failed',
+          `the agent reported failure: ${report.summary.slice(0, 300)}`,
+        ),
+      )
+    } else if (verdict.outcome === 'pass') {
+      ops.push(
+        this.#status(
+          located.view.id,
+          'review',
+          'the repository shows the reported work; a person reviews it',
+        ),
+      )
+    }
+    return this.#recordReport(
+      caller,
+      agent,
+      located,
+      `Execution report for ${located.view.id}`,
+      ops,
+      verdict,
+    )
+  }
+
+  // ---------- people (ADR 0024) ----------
+
+  /**
+   * A person files a report themselves, typically for work done outside an agent session. The task
+   * must be ready, running with an expired lease, or waiting on an unknown outcome. The report is
+   * stated by that person and verified against git exactly like an agent's; a pass moves the task
+   * to review. A failing verdict is recorded and changes no status.
+   */
+  fileReport(caller: unknown, input: unknown): Result<ReportResult> {
+    const q = parse(FileReportInput, input)
+    if (!q.ok) return q
+    const report = q.value
+    const found = this.#locate(caller, report.taskId)
+    if (!found.ok) return found
+    const located = found.value
+    const who = this.#person(caller, located.projectId, 'files a report themselves')
+    if (!who.ok) return who
+    const person = who.value
+
+    const previous = this.#previous(caller, located, report.idempotencyKey)
+    if (previous) return ok(previous)
+    const { view } = located
+    const fileable =
+      view.status === 'ready' ||
+      view.status === 'unknown_outcome' ||
+      (view.status === 'running' && view.leaseExpired)
+    if (!fileable) return fail('conflicting', notFileable(view))
+
+    const filesChanged = normaliseFiles(report.filesChanged)
+    const verdict = this.#verify(located, report.commit, filesChanged)
+    if (verdict.outcome === 'pass' && view.status === 'ready') {
+      // The kernel moves a task to review from running or an unknown outcome, so the person takes
+      // the task first, as an agent's claim would; review then ends that lease.
+      const lease: TaskLease = {
+        id: `lease_${uuidv7Hex()}`,
+        holder: person.principalId,
+        expiresAt: this.#expiry(PERSON_LEASE_MINUTES),
+      }
+      const taken = this.#commit(person, located.projectId, `Take ${view.id} to file a report`, [
+        this.#status(
+          view.id,
+          'running',
+          'a person files a report for work done outside an agent session',
+          lease,
+        ),
+      ])
+      if (!taken.ok) {
+        return taken.error.code === 'stale'
+          ? fail('conflicting', 'someone else changed this task first; read it again')
+          : taken
+      }
+    }
+    const ops = this.#reportOps(view.id, verdict, {
+      ...report,
+      filesChanged,
+      by: { filedBy: person.principalId },
+    })
+    if (verdict.outcome === 'pass') {
+      ops.push(
+        this.#status(
+          view.id,
+          'review',
+          'the repository shows the work a person reported; a person reviews it',
+        ),
+      )
+    }
+    return this.#recordReport(
+      caller,
+      person,
+      located,
+      `Execution report for ${view.id}, filed by a person`,
+      ops,
+      verdict,
+    )
+  }
+
+  /**
+   * Reconciles the model with a task's verified commit (ADR 0024). A person asks once the task is
+   * in review or completed. The analyzer, as its own principal, re-analyses the task repository at
+   * the commit of the latest report git verified, read-only, and its observed proposal is committed
+   * as ingest commits it. Then, for each decision the task implements: which direct changes the
+   * commit touched, and which proposed elements an observed element now matches. Each match gets
+   * a pending `realizes` proposal for a person to commit; nothing else is decided here.
+   */
+  async reconcile(caller: unknown, input: unknown): Promise<Result<ReconcileResult>> {
+    const q = parse(ReconcileTaskInput, input)
+    if (!q.ok) return q
+    const found = this.#locate(caller, q.value.taskId)
+    if (!found.ok) return found
+    const { projectId, view } = found.value
+    const who = this.#person(caller, projectId, 'reconciles the model with a task')
+    if (!who.ok) return who
+    if (view.status !== 'review' && view.status !== 'completed') {
+      return fail(
+        'conflicting',
+        `the task is ${view.status}: reconcile it once git has verified a report and the task is in review or completed`,
+      )
+    }
+    const report = [...view.reports]
+      .reverse()
+      .find((r) => r.verification?.outcome === 'pass' && r.commit !== null)
+    const commit = report?.commit
+    if (!report || !commit || !SHA.test(commit)) {
+      return fail('conflicting', 'the task has no report that git verified')
+    }
+    const repoPath = this.#repos.get(projectId).path
+    if (!repoPath) {
+      return fail('conflicting', 'no task repository is registered for this project')
+    }
+    const git = new TaskGit(repoPath)
+    let at: { repo: string; skip: string | null }
+    try {
+      if (!git.findCommit(commit)) {
+        return fail('conflicting', `commit ${short(commit)} is no longer in the task repository`)
+      }
+      const which = this.#modelRepository(projectId, repoPath, git, commit)
+      if (!which.ok) return which
+      at = which.value
+    } catch {
+      return fail('conflicting', 'git could not read the task repository; check that it is there')
+    }
+
+    let analysis: ReconcileResult['analysis']
+    if (at.skip) {
+      analysis = {
+        repo: at.repo,
+        commit,
+        status: 'skipped',
+        detail: at.skip,
+        proposalId: null,
+        created: 0,
+        refreshed: 0,
+        unchanged: 0,
+      }
     } else {
+      const analyzer = ensureAnalyzer(this.#services)
       try {
-        const verdict = verifyReport(new TaskGit(repoPath), {
-          taskId: located.view.id,
-          commit: report.commit,
-          filesChanged,
-          baseCommit: located.view.baseCommit,
+        const ingest = await ingestRepository({
+          services: this.#services,
+          caller: { principalId: analyzer.id, origin: 'tool' },
+          projectId,
+          git: new GitRepository(repoPath),
+          repo: at.repo,
+          ref: commit,
         })
-        outcome = verdict.outcome
-        checks = verdict.checks
-      } catch {
-        checks = [
+        analysis = {
+          repo: at.repo,
+          commit,
+          status: 'analysed',
+          detail: ingest.proposalId
+            ? `the analyzer's observations of ${short(commit)} were committed as r${ingest.revision}`
+            : `the model already matched ${short(commit)}; nothing changed`,
+          proposalId: ingest.proposalId,
+          created: ingest.stats.created,
+          refreshed: ingest.stats.refreshed,
+          unchanged: ingest.stats.unchanged,
+        }
+      } catch (error) {
+        return fail(
+          'conflicting',
+          error instanceof IngestError
+            ? `the analysis of ${short(commit)} was not committed: ${error.message}`
+            : `the analyzer could not read ${short(commit)} in the task repository`,
+        )
+      }
+    }
+
+    const head = this.#services.store.getProject(projectId)?.headRevision ?? 0
+    const model = this.#model(projectId, head)
+    const drafts = reconcileDecisions(model, view.implements, report.filesChanged)
+    const link = this.#linker(projectId, head, view, commit, model)
+    return ok({
+      taskId: view.id,
+      projectId,
+      report: { id: report.id, commit, filesChanged: report.filesChanged },
+      analysis,
+      revision: head,
+      decisions: drafts.map((d) => ({
+        ...d,
+        proposed: d.proposed.map((p) => ({ ...p, link: p.match ? link(p, p.match) : null })),
+      })),
+    })
+  }
+
+  // ---------- internals ----------
+
+  #status(
+    id: string,
+    status: TaskStatus,
+    rationale: string,
+    lease: TaskLease | null = null,
+    finding?: TaskFinding,
+  ): OperationInput {
+    return { op: 'setTaskStatus', id, status, rationale, lease, ...(finding ? { finding } : {}) }
+  }
+
+  /** The verifier's verdict on a reported commit, read-only, or why there is none. */
+  #verify(located: Located, commit: string | undefined, filesChanged: string[]): Verdict {
+    const repoPath = this.#repos.get(located.projectId).path
+    if (!commit) return { outcome: 'inconclusive', checks: [NO_COMMIT], repoPath }
+    if (!repoPath) return { outcome: 'inconclusive', checks: [NO_REPOSITORY], repoPath }
+    try {
+      const verdict = verifyReport(new TaskGit(repoPath), {
+        taskId: located.view.id,
+        commit,
+        filesChanged,
+        baseCommit: located.view.baseCommit,
+      })
+      return { outcome: verdict.outcome, checks: verdict.checks, repoPath }
+    } catch {
+      return {
+        outcome: 'inconclusive',
+        checks: [
           {
             name: 'repository',
             ok: false,
             detail: 'git could not read the task repository; check that it is still there',
           },
-        ]
+        ],
+        repoPath,
       }
     }
+  }
 
+  /**
+   * The report as stated, linked to the task, and, when git was read, the commit as evidence and
+   * the verifier's observed verdict on it. `by` names the agent's lease or the person who filed it.
+   */
+  #reportOps(
+    taskId: string,
+    verdict: Verdict,
+    report: {
+      outcome: string
+      summary: string
+      commit?: string | undefined
+      filesChanged: string[]
+      tests: TestRun[]
+      idempotencyKey: string
+      by: { leaseId: string } | { filedBy: string }
+    },
+  ): OperationInput[] {
     const ops: OperationInput[] = [
       {
         op: 'createObject',
@@ -382,14 +682,14 @@ export class TaskCoordinator {
           outcome: report.outcome,
           summary: report.summary,
           ...(report.commit ? { commit: report.commit } : {}),
-          filesChanged,
+          filesChanged: report.filesChanged,
           tests: report.tests.map((t) => ({
             command: t.command,
             passed: t.passed,
             failed: t.failed,
             ...(t.note ? { note: t.note } : {}),
           })),
-          leaseId: report.leaseId,
+          ...report.by,
           idempotencyKey: report.idempotencyKey,
         },
         claim: { basis: 'stated' },
@@ -398,12 +698,12 @@ export class TaskCoordinator {
         op: 'createRelation',
         type: 'reports',
         from: '$report',
-        to: located.view.id,
+        to: taskId,
         stance: 'asIs',
         claim: { basis: 'stated' },
       },
     ]
-    if (report.commit && repoPath) {
+    if (report.commit && verdict.repoPath) {
       const observed = {
         basis: 'observed' as const,
         observation: { ...VERIFIER, coverage: VERIFIER_COVERAGE },
@@ -416,7 +716,7 @@ export class TaskCoordinator {
           evidence: {
             source: {
               kind: 'document',
-              uri: `git:${repoPath.replace(/\\/g, '/')}@${report.commit}`,
+              uri: `git:${verdict.repoPath.replace(/\\/g, '/')}@${report.commit}`,
               version: report.commit,
               locator: 'commit',
             },
@@ -428,7 +728,11 @@ export class TaskCoordinator {
           ref: '$verification',
           type: 'core.Verification',
           stance: 'asIs',
-          attributes: { method: 'git commit check', outcome, summary: summarise(checks) },
+          attributes: {
+            method: 'git commit check',
+            outcome: verdict.outcome,
+            summary: summarise(verdict.checks),
+          },
           claim: observed,
         },
         {
@@ -441,48 +745,213 @@ export class TaskCoordinator {
         },
       )
     }
-    if (report.outcome === 'failed') {
-      ops.push(
-        this.#status(
-          located.view.id,
-          'failed',
-          `the agent reported failure: ${report.summary.slice(0, 300)}`,
-        ),
-      )
-    } else if (outcome === 'pass') {
-      ops.push(
-        this.#status(
-          located.view.id,
-          'review',
-          'the repository shows the reported work; a person reviews it',
-        ),
-      )
-    }
-    const committed = this.#commit(
-      agent,
-      located.projectId,
-      `Execution report for ${located.view.id}`,
-      ops,
-    )
+    return ops
+  }
+
+  #recordReport(
+    caller: unknown,
+    proposer: Caller,
+    located: Located,
+    rationale: string,
+    ops: OperationInput[],
+    verdict: Verdict,
+  ): Result<ReportResult> {
+    const committed = this.#commit(proposer, located.projectId, rationale, ops)
     if (!committed.ok) return committed
     const { refs } = committed.value
     return ok({
       task: this.#reread(caller, located.projectId, located.view.id) ?? located.view,
       reportId: refs.$report ?? '',
-      verification: { id: refs.$verification ?? null, outcome, checks },
+      verification: {
+        id: refs.$verification ?? null,
+        outcome: verdict.outcome,
+        checks: verdict.checks,
+      },
       duplicate: false,
     })
   }
 
-  // ---------- internals ----------
+  /** A retry with a key already used on this task, answered with the original verdict. */
+  #previous(caller: unknown, located: Located, key: string): ReportResult | undefined {
+    const previous = this.#reportByKey(caller, located.projectId, located.view.id, key)
+    if (!previous) return undefined
+    return {
+      task: located.view,
+      reportId: previous.id,
+      verification: previous.verification
+        ? {
+            id: previous.verification.id,
+            outcome: previous.verification.outcome,
+            checks: parseSummary(previous.verification.summary),
+          }
+        : {
+            id: null,
+            outcome: 'inconclusive',
+            checks: [previous.commit ? NO_REPOSITORY : NO_COMMIT],
+          },
+      duplicate: true,
+    }
+  }
 
-  #status(
-    id: string,
-    status: TaskStatus,
-    rationale: string,
-    lease: TaskLease | null = null,
-  ): OperationInput {
-    return { op: 'setTaskStatus', id, status, rationale, lease }
+  /** A person acting directly, with the scopes to change a task through a committed proposal. */
+  #person(caller: unknown, projectId: string, what: string): Result<Caller> {
+    const c = Caller.safeParse(caller)
+    const principal = c.success ? this.#services.store.getPrincipal(c.data.principalId) : undefined
+    if (!c.success || !principal) return fail('unauthenticated', 'no valid caller')
+    if (principal.kind !== 'human' || c.data.origin !== 'human') {
+      return fail(
+        'unauthorized',
+        `a person, acting directly, ${what}; agents report with submit_execution_report`,
+      )
+    }
+    const held = this.#authz.scopes(principal.id, projectId)
+    const missing = PERSON_SCOPES.filter((s) => !held.has(s))
+    if (missing.length > 0) {
+      return fail('unauthorized', `a person who ${what} needs ${missing.join(' and ')}`, {
+        requiredScopes: [...missing],
+      })
+    }
+    return ok(c.data)
+  }
+
+  /**
+   * Which repository of the model the task repository is: the source snapshot whose commit it
+   * holds, or, on a model with no snapshot yet, a new one named after the folder. The analysis is
+   * skipped when the model already reflects a later commit that contains the task's commit.
+   */
+  #modelRepository(
+    projectId: string,
+    repoPath: string,
+    git: TaskGit,
+    commit: string,
+  ): Result<{ repo: string; skip: string | null }> {
+    const project = this.#services.store.getProject(projectId)
+    const snapshots = this.#services.store
+      .objectsAt(projectId, project?.headRevision ?? 0, { types: ['core.SourceSnapshot'] })
+      .filter((o) => o.lifecycle === 'active')
+      .map((o) => ({ repo: text(o, 'repo'), commit: text(o, 'commit') }))
+      .sort((a, b) => (a.repo < b.repo ? -1 : 1))
+    if (snapshots.length === 0) return ok({ repo: basename(repoPath) || 'repository', skip: null })
+    const held = snapshots.find((s) => SHA.test(s.commit) && git.findCommit(s.commit) !== null)
+    if (!held) {
+      return fail(
+        'conflicting',
+        `the model was analysed from ${snapshots.map((s) => `${s.repo} at ${short(s.commit)}`).join(', ')}, and the task repository holds none of those commits: register the repository the model was built from`,
+      )
+    }
+    const later = held.commit !== commit && git.isAncestor(commit, held.commit)
+    return ok({
+      repo: held.repo,
+      skip: later
+        ? `the model already reflects ${short(held.commit)}, which contains ${short(commit)}`
+        : null,
+    })
+  }
+
+  /** The model at a revision, read once, with the source files each element's evidence cites. */
+  #model(projectId: string, revision: number): ReconcileModel {
+    const store = this.#services.store
+    const objects = store.objectsAt(projectId, revision, {})
+    const relations = store.relationsAt(projectId, revision, {})
+    const evidence = store.evidenceMapAt(projectId, revision)
+    const byId = new Map(objects.map((o) => [o.id, o]))
+    return {
+      objects: byId,
+      relations,
+      pathsOf: (id) => {
+        const o = byId.get(id)
+        if (!o) return []
+        return [
+          ...new Set(
+            o.claim.supports.flatMap((g) =>
+              g.allOf.flatMap((e) => {
+                const source = evidence.get(e)?.source
+                return source?.kind === 'sourceSpan' ? [source.path] : []
+              }),
+            ),
+          ),
+        ]
+      },
+    }
+  }
+
+  /**
+   * The `realizes` link for a matched proposed element: the committed relation when there is one,
+   * otherwise the reconciler's earlier proposal when it is pending or a person rejected it,
+   * otherwise a new pending proposal by the reconciler, inferred, for a person to commit.
+   */
+  #linker(projectId: string, head: number, task: TaskView, commit: string, model: ReconcileModel) {
+    const reconciler = ensureReconciler(this.#services)
+    const proposer: Caller = { principalId: reconciler.id, origin: 'tool' }
+    const realized = model.relations.filter(
+      (r) => r.type === 'realizes' && r.lifecycle === 'active',
+    )
+    const earlier = this.#services.store
+      .listProposals(projectId, undefined, 100_000)
+      .filter((p) => p.proposedBy === reconciler.id)
+      .reverse()
+    return (
+      element: Omit<ReconciledElement, 'link'>,
+      match: NonNullable<ReconciledElement['match']>,
+    ): ReconciledElement['link'] => {
+      const relation = realized.find((r) => r.from === match.id && r.to === element.id)
+      if (relation) {
+        return { state: 'committed', relationId: relation.id, proposalId: null, created: false }
+      }
+      const proposal = earlier.find(
+        (p) =>
+          (p.status === 'pending' || p.status === 'rejected') &&
+          p.ops.some(
+            (op) =>
+              op.op === 'createRelation' &&
+              op.type === 'realizes' &&
+              op.from === match.id &&
+              op.to === element.id,
+          ),
+      )
+      if (proposal) {
+        return {
+          state: proposal.status === 'pending' ? 'pending' : 'rejected',
+          relationId: null,
+          proposalId: proposal.id,
+          created: false,
+        }
+      }
+      const why = match.inCommit
+        ? `the commit changed the files its evidence cites`
+        : `the commit did not change the files its evidence cites`
+      const proposed = this.#services.proposeChange(proposer, {
+        projectId,
+        baseRevision: head,
+        rationale: `Reconciling task "${task.title}" at ${short(commit)}: the observed ${match.label} realizes the proposed ${element.label}.`,
+        ops: [
+          {
+            op: 'createRelation',
+            type: 'realizes',
+            from: match.id,
+            to: element.id,
+            stance: 'asIs',
+            properties: {},
+            claim: {
+              basis: 'inferred',
+              method: RECONCILE_METHOD,
+              confidence: {
+                level: match.inCommit ? 'high' : 'medium',
+                rationale: `The analyzer observed ${match.label} at ${short(commit)}, with the same type and name as the proposed ${element.label}; ${why}.`,
+              },
+              derivedFrom: [match.id, element.id],
+            },
+          },
+        ],
+      })
+      if (!proposed.ok || proposed.value.status !== 'pending') return null
+      return {
+        state: 'pending',
+        relationId: null,
+        proposalId: proposed.value.proposalId,
+        created: true,
+      }
+    }
   }
 
   #expiry(minutes: number): string {
@@ -680,20 +1149,34 @@ export class TaskCoordinator {
                     summary: text(verification, 'summary'),
                   }
                 : null,
+              filedBy: typeof ra.filedBy === 'string' ? ra.filedBy : null,
             }
           })
+          const acceptanceCriteria = (a.acceptanceCriteria as string[] | undefined) ?? []
+          const contextPackageId = text(t, 'contextPackageId') || null
+          const baseCommit = text(t, 'baseCommit') || null
+          const title = text(t, 'title')
           return {
             id: t.id,
             projectId,
-            title: text(t, 'title'),
+            title,
             description: text(t, 'description') || null,
-            acceptanceCriteria: (a.acceptanceCriteria as string[] | undefined) ?? [],
+            acceptanceCriteria,
             status,
             statusRationale: text(t, 'statusRationale') || null,
             lease,
             leaseExpired: status === 'running' && lease !== null && lease.expiresAt <= now,
-            contextPackageId: text(t, 'contextPackageId') || null,
-            baseCommit: text(t, 'baseCommit') || null,
+            contextPackageId,
+            baseCommit,
+            // The kernel clears a finding when the task leaves unknown_outcome.
+            finding: status === 'unknown_outcome' && a.finding ? (a.finding as TaskFinding) : null,
+            agentPrompt: agentPrompt({
+              id: t.id,
+              title,
+              acceptanceCriteria,
+              baseCommit,
+              contextPackageId,
+            }),
             implements: linked('implements').map((r) => {
               const target = byId.get(r.to)
               return {

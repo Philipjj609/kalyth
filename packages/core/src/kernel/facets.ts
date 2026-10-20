@@ -8,6 +8,14 @@ import type {
 /** Freshness that means a change needs review before anyone relies on it (ADR 0009). */
 const NEEDS_REVIEW = new Set(['stale', 'derived-stale', 'weakened'])
 
+/** A path as git writes it: forward slashes, without `./` or empty segments. */
+const gitPath = (path: string) =>
+  path
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter((s) => s !== '' && s !== '.')
+    .join('/')
+
 const text = (o: ObjectVersion, key: string) => {
   const v = (o.attributes as Record<string, unknown>)[key]
   return typeof v === 'string' ? v : ''
@@ -19,7 +27,10 @@ const text = (o: ObjectVersion, key: string) => {
  * - freshness: whether the direct changes it rests on still match the source. A change needs
  *   review when its own claim, or the claim of the element it changes, is stale or weakened.
  *   Once an alternative is accepted, only its changes count; while the decision is open, all do.
- * - implementation: how far the tasks that implement the decision or one of its alternatives got.
+ * - implementation: how far the tasks that implement the decision or one of its alternatives got,
+ *   and how many of the changes considered the verified reports touched: a file that the change
+ *   target's evidence cites is among the files changed of a task's latest report that passed
+ *   verification (ADR 0024). `pathsOf` gives the files an element's evidence cites.
  * - verification: what git confirmed about the latest report on each of those tasks.
  *
  * Acceptance is the decision's own status and is not repeated here. Nothing is written.
@@ -30,6 +41,7 @@ export function decisionFacets(
   relations: readonly RelationVersion[],
   freshness: ReadonlyMap<string, ClaimFreshness>,
   labelOf: (id: string) => string,
+  pathsOf: (elementId: string) => readonly string[] = () => [],
 ): DecisionFacets {
   const active = relations.filter((r) => r.lifecycle === 'active')
   const alternatives = active
@@ -113,6 +125,21 @@ export function decisionFacets(
     .map((v) => v.check as ObjectVersion)
     .sort((a, b) => (a.id < b.id ? 1 : -1))[0]
 
+  // Files the verified reports changed, and the changes whose target's evidence cites one.
+  const verifiedFiles = new Set(
+    passed.flatMap((v) => {
+      const files = (v.report?.attributes as Record<string, unknown> | undefined)?.filesChanged
+      // Stored normalised since 2026-10-19; earlier reports kept paths as typed.
+      return Array.isArray(files)
+        ? files.filter((f): f is string => typeof f === 'string').map(gitPath)
+        : []
+    }),
+  )
+  const touched =
+    verifiedFiles.size === 0
+      ? 0
+      : changes.filter((c) => pathsOf(c.to).some((p) => verifiedFiles.has(p))).length
+
   return {
     freshness: {
       status: stale.length > 0 ? 'stale' : checkable > 0 ? 'current' : 'unchecked',
@@ -122,6 +149,8 @@ export function decisionFacets(
     implementation: {
       state: implementation,
       tasks: tasks.map((t) => ({ id: t.id, title: text(t, 'title'), status: text(t, 'status') })),
+      touched,
+      changes: changes.length,
     },
     verification: {
       state: verification,

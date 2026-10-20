@@ -53,6 +53,20 @@ export const TaskLease = z.object({
 })
 export type TaskLease = z.infer<typeof TaskLease>
 
+/**
+ * What a claim found in the task repository when the last holder's outcome was unknown: commits
+ * whose message carries the task trailer, newest first (ADR 0013, amendment of 2026-10-20). Kept
+ * while the task is `unknown_outcome`, cleared when it leaves that state, and recorded only by the
+ * task coordinator.
+ */
+export const TaskFinding = z.object({
+  commits: z
+    .array(z.string().regex(/^[0-9a-f]{40}$/, 'expected a 40-hex commit sha'))
+    .min(1)
+    .max(5),
+})
+export type TaskFinding = z.infer<typeof TaskFinding>
+
 // ---------- Operations as submitted (may use local refs) ----------
 
 export const CreateObjectOp = z.object({
@@ -115,7 +129,9 @@ export const SetDecisionStatusOp = z.object({
 
 /**
  * The only way to change a Task's status and lease (ADR 0013). `lease` is required for `running`;
- * the kernel keeps the current lease on `unknown_outcome` and clears it otherwise.
+ * the kernel keeps the current lease on `unknown_outcome` and clears it otherwise. `finding`
+ * records what git showed, only with `unknown_outcome`; the kernel keeps it there and clears it
+ * when the task leaves that state.
  */
 export const SetTaskStatusOp = z.object({
   op: z.literal('setTaskStatus'),
@@ -123,6 +139,7 @@ export const SetTaskStatusOp = z.object({
   status: TaskStatus,
   rationale: reason,
   lease: TaskLease.nullable().default(null),
+  finding: TaskFinding.optional(),
 })
 
 export const OperationInput = z.discriminatedUnion('op', [
@@ -200,6 +217,8 @@ export const ResolvedOperation = z.discriminatedUnion('op', [
     status: TaskStatus,
     rationale: reason,
     lease: TaskLease.nullable(),
+    // Absent, not null, when nothing was found, so operations stored earlier are unchanged.
+    finding: TaskFinding.optional(),
   }),
 ])
 export type ResolvedOperation = z.infer<typeof ResolvedOperation>
