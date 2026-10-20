@@ -158,6 +158,8 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
     initial.focus ? [initial.focus] : null,
   )
   const [edit, setEdit] = useState<EditKind | null>(null)
+  /** The zoom floor for the next focus: lower when showing an alternative's spread of changes. */
+  const focusFloor = useRef<number | undefined>(undefined)
 
   const freshnessOf = useCallback(
     (id: string) => wb.freshness.index.get(id)?.status,
@@ -231,7 +233,10 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
     )
     if (closed.length > 0 && closed.length <= 12) setPrefs((p) => openAll(p, closed))
     const targets = chosen.alternative.directChanges.map((c) => c.target)
-    if (targets.length > 0) setFocusTarget(targets)
+    if (targets.length > 0) {
+      focusFloor.current = OVERVIEW_ZOOM
+      setFocusTarget(targets)
+    }
   }, [chosen, projection, prefs.expanded, prefs.collapsed])
 
   // ---------- selection and focus ----------
@@ -362,7 +367,7 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
     return abs
   }, [projection, layout])
   const showNodes = useCallback(
-    (ids: readonly string[], duration: number) => {
+    (ids: readonly string[], duration: number, floor?: number) => {
       if (paneWidth === 0) return false
       let minX = Number.POSITIVE_INFINITY
       let minY = Number.POSITIVE_INFINITY
@@ -382,7 +387,7 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
         paneWidth,
         paneHeight,
         insets,
-        undefined,
+        floor,
         1.1,
       )
       void flow.setViewport(vp, { duration })
@@ -399,8 +404,9 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
         const targets = [
           ...new Set(focusTarget.map((id) => projection.representative.get(id) ?? id)),
         ]
-        if (showNodes(targets, fitted.current ? duration : 0)) {
+        if (showNodes(targets, fitted.current ? duration : 0, focusFloor.current)) {
           fitted.current = true
+          focusFloor.current = undefined
           setFocusTarget(null)
         }
       } else if (!fitted.current) {
@@ -519,6 +525,17 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
         onEdit={setEdit}
         hasSelection={selectedNode !== undefined}
       />
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-border border-b bg-surface px-3 py-1">
+        <div className="min-w-0 flex-[1_1_320px]">
+          <Caption>{caption}</Caption>
+        </div>
+        {lens === 'impact' && chosen && chosen.alternative.directChanges.length > 1 && (
+          <ChangeStepper
+            changes={chosen.alternative.directChanges}
+            onShow={(target) => setFocusTarget([target])}
+          />
+        )}
+      </div>
       <div className="relative min-h-0 flex-1">
         <EdgeMarkers />
         <ReactFlow<FlowNode, RelationFlowEdge>
@@ -563,9 +580,6 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
           />
           <Controls showInteractive={false} position="bottom-left" />
         </ReactFlow>
-        <div className="pointer-events-none absolute top-2 right-3 left-3 flex">
-          <Caption>{caption}</Caption>
-        </div>
         <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
           {prefs.legend && wide && (
             <Legend
@@ -602,6 +616,42 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
         within={edit === 'add' ? addWithin : undefined}
         onClose={() => setEdit(null)}
       />
+    </div>
+  )
+}
+
+/** Below this zoom labels are no longer read, but an alternative's spread of changes still is. */
+const OVERVIEW_ZOOM = 0.45
+
+/**
+ * The alternative's direct changes as numbered balloons, matching the ones on the drawing: each
+ * brings its element into readable view, so a spread of changes can be read one by one.
+ */
+function ChangeStepper({
+  changes,
+  onShow,
+}: {
+  changes: readonly { relationId: string; target: string; label: string; change: string }[]
+  onShow: (target: string) => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="k-eyebrow mr-1">Changes</span>
+      {changes.map((c, i) => {
+        const label = `${withoutHandles(c.label)}${c.change ? `: ${withoutHandles(c.change)}` : ''}`
+        return (
+          <button
+            key={c.relationId}
+            type="button"
+            className="k-balloon cursor-pointer hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
+            title={label}
+            aria-label={`Show change ${i + 1}: ${label}`}
+            onClick={() => onShow(c.target)}
+          >
+            {i + 1}
+          </button>
+        )
+      })}
     </div>
   )
 }

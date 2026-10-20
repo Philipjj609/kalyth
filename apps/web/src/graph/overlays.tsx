@@ -16,7 +16,10 @@ import type { DecisionMarks } from './lens.ts'
 
 export function Caption({ children }: { children: ReactNode }) {
   return (
-    <p className="pointer-events-auto max-w-full truncate bg-[color-mix(in_oklab,var(--k-canvas)_88%,transparent)] px-1 text-[12.5px] text-fg-muted">
+    <p
+      className="max-w-full truncate text-[12.5px] text-fg-muted"
+      title={typeof children === 'string' ? children : undefined}
+    >
       {children}
     </p>
   )
@@ -76,10 +79,9 @@ function Entry({ swatch, children }: { swatch: ReactNode; children: ReactNode })
   )
 }
 
-const HATCH_IMPACT =
-  'repeating-linear-gradient(135deg, var(--k-impact-soft) 0 2px, transparent 2px 7px), var(--k-surface)'
-const HATCH_REVISION =
-  'repeating-linear-gradient(135deg, var(--k-revision-soft) 0 2px, transparent 2px 7px), var(--k-surface)'
+const TINT_IMPACT = 'linear-gradient(var(--k-impact-soft), var(--k-impact-soft)), var(--k-surface)'
+const TINT_REVISION =
+  'linear-gradient(var(--k-revision-soft), var(--k-revision-soft)), var(--k-surface)'
 
 export function Legend({
   lens,
@@ -115,7 +117,7 @@ export function Legend({
             <Entry
               swatch={
                 <Swatch
-                  style={{ border: '1.5px solid var(--k-revision)', background: HATCH_REVISION }}
+                  style={{ border: '1.5px solid var(--k-revision)', background: TINT_REVISION }}
                 />
               }
             >
@@ -131,7 +133,7 @@ export function Legend({
             <Entry
               swatch={
                 <Swatch
-                  style={{ border: '1.5px solid var(--k-accent)', background: HATCH_IMPACT }}
+                  style={{ border: '1.5px solid var(--k-accent)', background: TINT_IMPACT }}
                 />
               }
             >

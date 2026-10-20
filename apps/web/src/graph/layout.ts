@@ -341,8 +341,10 @@ export function layoutBlock(
 
 /**
  * Packs unconnected items. Large ones (open frames, at least four times the median area) stand
- * side by side; the small ones form a grid beside them, as tall as the large ones, or a grid near
- * the landscape ratio (and at least `minWidth` wide) when there are no large ones.
+ * side by side, wrapping into rows near the landscape ratio when there are many. The rest form a
+ * grid, beside or below the large ones, with as many columns as bring the whole block closest to a
+ * landscape sheet (and at least `minWidth` wide when there are no large ones). Taller items lead
+ * the grid and each row is as tall as its tallest item, so open frames do not stretch every row.
  */
 export function packIsolated(
   items: readonly Item[],
@@ -354,38 +356,86 @@ export function packIsolated(
   const median = areas[Math.floor(areas.length / 2)] ?? 0
   const isLarge = (i: Item) => i.width * i.height > median * 4
   const large = items.filter(isLarge)
-  const small = items.filter((i) => !isLarge(i))
+  // Stable: items of one height keep their order.
+  const small = items.filter((i) => !isLarge(i)).sort((a, b) => b.height - a.height)
+
+  // Large items in rows no wider than a landscape sheet holding everything would be.
+  const totalArea = items.reduce((sum, i) => sum + (i.width + gap) * (i.height + gap), 0)
+  const rowWidth = Math.max(
+    minWidth,
+    Math.sqrt(totalArea * TARGET_ASPECT),
+    ...large.map((i) => i.width),
+  )
   let x = 0
-  let largeHeight = 0
+  let y = 0
+  let rowHeight = 0
+  let largeWidth = 0
   for (const item of large) {
-    positions.set(item.id, { x, y: 0 })
+    if (x > 0 && x + item.width > rowWidth) {
+      y += rowHeight + gap
+      x = 0
+      rowHeight = 0
+    }
+    positions.set(item.id, { x, y })
     x += item.width + gap
-    largeHeight = Math.max(largeHeight, item.height)
+    largeWidth = Math.max(largeWidth, x - gap)
+    rowHeight = Math.max(rowHeight, item.height)
   }
-  let width = Math.max(0, x - gap)
-  let height = largeHeight
-  if (small.length > 0) {
-    const widest = Math.max(...small.map((i) => i.width))
-    const tallest = Math.max(...small.map((i) => i.height))
-    const columns =
-      large.length > 0
-        ? Math.ceil(small.length / Math.max(1, Math.floor((largeHeight + gap) / (tallest + gap))))
-        : Math.max(
-            1,
-            Math.round(
-              Math.sqrt((small.length * TARGET_ASPECT * (tallest + gap)) / (widest + gap)),
-            ),
-            Math.min(small.length, Math.floor((minWidth + gap) / (widest + gap))),
-          )
-    const left = large.length > 0 ? x : 0
+  const largeHeight = large.length > 0 ? y + rowHeight : 0
+  if (small.length === 0) return { positions, width: largeWidth, height: largeHeight }
+
+  const cell = Math.max(...small.map((i) => i.width)) + gap
+  const grid = (columns: number) => {
+    const rows: number[] = []
     small.forEach((item, i) => {
-      const col = i % columns
       const row = Math.floor(i / columns)
-      const p = { x: left + col * (widest + gap), y: row * (tallest + gap) }
-      positions.set(item.id, p)
-      width = Math.max(width, p.x + item.width)
-      height = Math.max(height, p.y + item.height)
+      rows[row] = Math.max(rows[row] ?? 0, item.height)
     })
+    const tops: number[] = []
+    let h = 0
+    for (const r of rows) {
+      tops.push(h)
+      h += r + gap
+    }
+    return { width: Math.min(columns, small.length) * cell - gap, height: h - gap, tops }
   }
+  const miss = (w: number, h: number) => Math.abs(Math.log((w || 1) / (h || 1) / TARGET_ASPECT))
+  const minColumns =
+    large.length === 0
+      ? Math.min(small.length, Math.max(1, Math.floor((minWidth + gap) / cell)))
+      : 1
+  let best = { miss: Number.POSITIVE_INFINITY, columns: 1, below: false }
+  for (let columns = minColumns; columns <= small.length; columns++) {
+    const g = grid(columns)
+    const options =
+      large.length === 0
+        ? [{ below: false, w: g.width, h: g.height }]
+        : [
+            {
+              below: false,
+              w: largeWidth + gap + g.width,
+              h: Math.max(largeHeight, g.height),
+            },
+            { below: true, w: Math.max(largeWidth, g.width), h: largeHeight + gap + g.height },
+          ]
+    for (const o of options) {
+      const m = miss(o.w, o.h)
+      if (m < best.miss - 1e-9) best = { miss: m, columns, below: o.below }
+    }
+  }
+  const g = grid(best.columns)
+  const left = large.length > 0 && !best.below ? largeWidth + gap : 0
+  const top = large.length > 0 && best.below ? largeHeight + gap : 0
+  let width = largeWidth
+  let height = largeHeight
+  small.forEach((item, i) => {
+    const p = {
+      x: left + (i % best.columns) * cell,
+      y: top + (g.tops[Math.floor(i / best.columns)] ?? 0),
+    }
+    positions.set(item.id, p)
+    width = Math.max(width, p.x + item.width)
+    height = Math.max(height, p.y + item.height)
+  })
   return { positions, width, height }
 }

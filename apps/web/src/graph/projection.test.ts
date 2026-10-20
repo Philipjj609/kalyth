@@ -396,15 +396,45 @@ describe('layoutProjection', () => {
     expect(back?.lanes).toEqual([...(forward?.lanes ?? [])].reverse())
   })
 
-  it('packs a large frame beside a grid of small items', () => {
+  it('packs a large frame and a grid of small items into one landscape block', () => {
     const items = [
       { id: 'big', width: 600, height: 400 },
       ...Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, width: 200, height: 50 })),
     ]
     const packed = packIsolated(items, 20)
     expect(packed.positions.get('big')).toEqual({ x: 0, y: 0 })
-    for (let i = 0; i < 6; i++) expect(packed.positions.get(`s${i}`)?.x).toBeGreaterThanOrEqual(620)
-    expect(packed.height).toBe(400)
+    expect(packed.width / packed.height).toBeGreaterThan(1)
+    expect(packed.width / packed.height).toBeLessThan(2.2)
+    expectNoOverlap(
+      items.map((it) => ({
+        ...(packed.positions.get(it.id) as { x: number; y: number }),
+        width: it.width,
+        height: it.height,
+      })),
+    )
+  })
+
+  it('keeps a block of frames and modules near a landscape sheet, not one long row', () => {
+    // The shape of backend/app/api/ in the FastAPI template with its route modules open: one tall
+    // frame, four shorter frames and four plain modules, none connected.
+    const items = [
+      { id: 'users', width: 264, height: 322 },
+      ...['init', 'deps', 'main', 'routes'].map((id) => ({ id, width: 200, height: 54 })),
+      { id: 'items', width: 264, height: 182 },
+      { id: 'login', width: 264, height: 182 },
+      { id: 'private', width: 264, height: 70 },
+      { id: 'utils', width: 264, height: 98 },
+    ]
+    const packed = packIsolated(items, 20)
+    expect(packed.width / packed.height).toBeLessThan(3)
+    expect(packed.width / packed.height).toBeGreaterThan(0.8)
+    expectNoOverlap(
+      items.map((it) => ({
+        ...(packed.positions.get(it.id) as { x: number; y: number }),
+        width: it.width,
+        height: it.height,
+      })),
+    )
   })
 })
 

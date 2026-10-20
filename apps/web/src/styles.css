@@ -623,16 +623,6 @@
 
 /* ---------- React Flow canvas ---------- */
 
-/* To-be (intended) elements: a light hatch over the node, never the only signal (a tag says it). */
-.k-intended {
-  pointer-events: none;
-  background-image: repeating-linear-gradient(
-    135deg,
-    color-mix(in oklab, var(--k-accent) 10%, transparent) 0 5px,
-    transparent 5px 11px
-  );
-}
-
 .kalyth-flow {
   --xy-background-color: var(--k-canvas);
   background: var(--k-canvas);

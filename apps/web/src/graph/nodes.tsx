@@ -10,8 +10,8 @@ import { objectTypeMeta } from '../model/semantics.ts'
  * Canvas nodes in the Drafting Table language (ADR 0020): ink outlines on the sheet colour, a
  * small mono type tag and a readable label. Endpoints are compact rows with their method, open
  * holders are frames with a mono title, collapsed holders are stacked sheets with member counts.
- * Lens marks sit on the outline: a cobalt hatch and numbered balloons for an alternative's direct
- * changes, a vermilion hatch and revision triangle for claims that need review, a cobalt flag for
+ * Lens marks sit on the outline: a cobalt tint and numbered balloons for an alternative's direct
+ * changes, a vermilion tint and revision triangle for claims that need review, a cobalt flag for
  * decisions, and line style for claim basis. Every mark is also in the node's accessible name.
  */
 
@@ -69,7 +69,7 @@ function Handles() {
   )
 }
 
-/** Outline and fill for a node's lens state; open frames get no fill and no hatch. */
+/** Outline and fill for a node's lens state; open frames get no fill. */
 function outline(marks: NodeMarks, selected: boolean, frame = false): CSSProperties {
   let borderColor = 'var(--k-fg)'
   let borderStyle: CSSProperties['borderStyle'] = 'solid'
@@ -93,7 +93,7 @@ function outline(marks: NodeMarks, selected: boolean, frame = false): CSSPropert
     borderColor = 'var(--k-accent)'
     borderWidth = 1.5
     if (!frame)
-      background = `repeating-linear-gradient(135deg, var(--k-impact-soft) 0 2px, transparent 2px 7px), var(--k-surface)`
+      background = 'linear-gradient(var(--k-impact-soft), var(--k-impact-soft)), var(--k-surface)'
   } else if (marks.reached) {
     borderColor = 'var(--k-accent)'
     borderWidth = 1
@@ -102,7 +102,8 @@ function outline(marks: NodeMarks, selected: boolean, frame = false): CSSPropert
     borderColor = 'var(--k-revision)'
     borderWidth = 1.5
     if (!frame)
-      background = `repeating-linear-gradient(135deg, var(--k-revision-soft) 0 2px, transparent 2px 7px), var(--k-surface)`
+      background =
+        'linear-gradient(var(--k-revision-soft), var(--k-revision-soft)), var(--k-surface)'
   }
   if (marks.decisions?.length) {
     borderColor = 'var(--k-accent)'
