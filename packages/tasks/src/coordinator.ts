@@ -1,6 +1,13 @@
 import { existsSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
-import { GitRepository, IngestError, ingestRepository } from '@kalyth/analyzer'
+import {
+  ANALYZER,
+  type AnalysisResult,
+  analyzeRepository,
+  GitRepository,
+  IngestError,
+  ingestRepository,
+} from '@kalyth/analyzer'
 import type { ContextCompiler } from '@kalyth/context'
 import {
   Caller,
@@ -50,9 +57,14 @@ import { agentPrompt } from './prompt.ts'
 import {
   ensureAnalyzer,
   ensureReconciler,
+  keyOf,
+  type ObservedChangeSet,
+  observeChange,
+  observedFor,
   RECONCILE_METHOD,
   type ReconcileModel,
   reconcileDecisions,
+  summariseObserved,
 } from './reconcile.ts'
 import { TaskRepositories } from './repository.ts'
 import {
@@ -553,6 +565,30 @@ export class TaskCoordinator {
       return fail('conflicting', 'git could not read the task repository; check that it is there')
     }
 
+    // The base and the verified commit, read by the same analyzer, so the difference is the
+    // commit's own and not a newer analyzer's (ADR 0024, amendment of 2026-10-20).
+    const sourceRepo = new GitRepository(repoPath)
+    let after: AnalysisResult | null = null
+    let seen: ObservedChangeSet | null = null
+    let note: string | null = null
+    let base: string | null = null
+    try {
+      base = sourceRepo.resolveCommit(view.baseCommit ?? `${commit}^`)
+    } catch {
+      note = view.baseCommit
+        ? `the base commit ${short(view.baseCommit)} is not in the task repository`
+        : 'the task names no base commit and the verified commit has no parent'
+    }
+    try {
+      after = await analyzeRepository({ git: sourceRepo, repo: at.repo, ref: commit })
+      if (base) {
+        const before = await analyzeRepository({ git: sourceRepo, repo: at.repo, ref: base })
+        seen = observeChange(before, after)
+      }
+    } catch {
+      note = `the analyzer could not read ${base ? `${short(base)} and ` : ''}${short(commit)}`
+    }
+
     let analysis: ReconcileResult['analysis']
     if (at.skip) {
       analysis = {
@@ -567,22 +603,30 @@ export class TaskCoordinator {
       }
     } else {
       const analyzer = ensureAnalyzer(this.#services)
+      const earlier = this.#analyzerVersions(projectId).filter((v) => v !== ANALYZER.toolVersion)
       try {
         const ingest = await ingestRepository({
           services: this.#services,
           caller: { principalId: analyzer.id, origin: 'tool' },
           projectId,
-          git: new GitRepository(repoPath),
+          git: sourceRepo,
           repo: at.repo,
           ref: commit,
+          ...(after ? { analysis: after } : {}),
         })
         analysis = {
           repo: at.repo,
           commit,
           status: 'analysed',
-          detail: ingest.proposalId
-            ? `the analyzer's observations of ${short(commit)} were committed as r${ingest.revision}`
-            : `the model already matched ${short(commit)}; nothing changed`,
+          detail: `${
+            ingest.proposalId
+              ? `the analyzer's observations of ${short(commit)} were committed as r${ingest.revision}`
+              : `the model already matched ${short(commit)}; nothing changed`
+          }${
+            earlier.length > 0 && ingest.proposalId
+              ? `. The model had been analysed with kalyth-analyzer ${earlier.join(', ')}, so this also refreshed what ${ANALYZER.toolVersion} observes differently; the comparison below is the commit's own`
+              : ''
+          }`,
           proposalId: ingest.proposalId,
           created: ingest.stats.created,
           refreshed: ingest.stats.refreshed,
@@ -600,8 +644,19 @@ export class TaskCoordinator {
 
     const head = this.#services.store.getProject(projectId)?.headRevision ?? 0
     const model = this.#model(projectId, head)
-    const drafts = reconcileDecisions(model, view.implements, report.filesChanged)
+    const drafts = reconcileDecisions(model, view.implements, report.filesChanged, seen)
     const link = this.#linker(projectId, head, view, commit, model)
+    // What the decisions name: the targets of their direct changes and their proposed elements.
+    const planned = new Set<string>()
+    for (const d of drafts) {
+      for (const id of [...d.changes.map((c) => c.target), ...d.proposed.map((p) => p.id)]) {
+        const o = model.objects.get(id)
+        const key = o ? keyOf(o) : undefined
+        if (key) planned.add(key)
+        const match = o && seen ? observedFor(seen, o) : undefined
+        if (match) planned.add(match.key)
+      }
+    }
     return ok({
       taskId: view.id,
       projectId,
@@ -612,6 +667,26 @@ export class TaskCoordinator {
         ...d,
         proposed: d.proposed.map((p) => ({ ...p, link: p.match ? link(p, p.match) : null })),
       })),
+      observed:
+        seen && base
+          ? {
+              base,
+              commit,
+              analyzer: `${ANALYZER.tool} ${ANALYZER.toolVersion}`,
+              ...summariseObserved(seen, planned),
+              note: null,
+            }
+          : note
+            ? {
+                base: base ?? commit,
+                commit,
+                analyzer: `${ANALYZER.tool} ${ANALYZER.toolVersion}`,
+                elementsChanged: 0,
+                modulesChanged: 0,
+                unplanned: [],
+                note,
+              }
+            : null,
     })
   }
 
@@ -849,6 +924,18 @@ export class TaskCoordinator {
   }
 
   /** The model at a revision, read once, with the source files each element's evidence cites. */
+  /** The analyzer versions the project's source snapshots were observed with. */
+  #analyzerVersions(projectId: string): string[] {
+    const head = this.#services.store.getProject(projectId)?.headRevision ?? 0
+    return [
+      ...new Set(
+        this.#services.store
+          .objectsAt(projectId, head, { types: ['core.SourceSnapshot'] })
+          .flatMap((o) => o.claim.observation?.toolVersion ?? []),
+      ),
+    ]
+  }
+
   #model(projectId: string, revision: number): ReconcileModel {
     const store = this.#services.store
     const objects = store.objectsAt(projectId, revision, {})

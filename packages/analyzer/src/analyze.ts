@@ -15,6 +15,7 @@ import {
   type PyClass,
   type PyFile,
   type PyRoute,
+  type PyType,
   type Value,
 } from './python.ts'
 import { extractTypeScript, makeTypeScriptResolver } from './typescript.ts'
@@ -282,10 +283,15 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
         excerpt: true,
       })
       const key = `entity:${cls.name}`
+      const fields = entityFields(cls, py.classes)
       facts.object(
         key,
         'software.DataEntity',
-        { name: cls.name, storage: 'SQL table (SQLModel)' },
+        {
+          name: cls.name,
+          storage: 'SQL table (SQLModel)',
+          ...(fields.length > 0 ? { fields } : {}),
+        },
         [span],
       )
       facts.relation('contains', moduleKey(file), key, [span])
@@ -394,4 +400,58 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
     limitations,
     stats: { ...stats, objects: objects.length, relations: relations.length },
   }
+}
+
+const MAX_FIELDS = 200
+
+/** A Python annotation as written, for example `uuid.UUID`, `str | None` or `list[Item]`. */
+function typeLabel(t: PyType): string {
+  switch (t.kind) {
+    case 'name':
+    case 'forward':
+      return t.name
+    case 'generic':
+      return `${t.name}[${t.args.map(typeLabel).join(', ')}]`
+    case 'union':
+      return t.options.map(typeLabel).join(' | ')
+    case 'none':
+      return 'None'
+    default:
+      return '?'
+  }
+}
+
+/**
+ * The fields of a table class as declared, including those of base classes in the same module
+ * (SQLModel's `UserBase` pattern), each with its annotation, the foreign key it holds and the
+ * entity a relationship points at. Later declarations override earlier ones of the same name.
+ */
+function entityFields(cls: PyClass, classes: readonly PyClass[]): Record<string, string>[] {
+  const byName = new Map(classes.map((c) => [c.name, c]))
+  const seen = new Set<string>()
+  const ordered: PyClass[] = []
+  const visit = (c: PyClass) => {
+    if (seen.has(c.name)) return
+    seen.add(c.name)
+    for (const base of c.bases) {
+      const b = byName.get(base)
+      if (b) visit(b)
+    }
+    ordered.push(c)
+  }
+  visit(cls)
+  const fields = new Map<string, Record<string, string>>()
+  for (const c of ordered) {
+    for (const f of c.fields) {
+      const field: Record<string, string> = { name: f.name }
+      if (f.type) field.type = typeLabel(f.type)
+      const fk = f.foreignKeys[0]
+      if (fk) field.references = 'literal' in fk ? fk.literal : fk.expr
+      const target = f.relationship ? (f.type ?? f.relationship.target) : null
+      if (target) field.relationship = typeLabel(target)
+      fields.delete(f.name)
+      fields.set(f.name, field)
+    }
+  }
+  return [...fields.values()].slice(0, MAX_FIELDS)
 }

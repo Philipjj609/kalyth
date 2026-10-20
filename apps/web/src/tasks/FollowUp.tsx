@@ -238,10 +238,65 @@ const LINK_TEXT = {
   rejected: 'link rejected earlier',
 } as const
 
+const OBSERVED_BADGE = {
+  changed: {
+    tone: 'success',
+    icon: CircleCheck,
+    label: 'Changed',
+    description: 'Its own source or structure changed between the base and the verified commit.',
+  },
+  nearby: {
+    tone: 'caution',
+    icon: CircleDashed,
+    label: 'Same file only',
+    description: 'Another part of a file it cites changed; its own source did not.',
+  },
+  unchanged: {
+    tone: 'warning',
+    icon: CircleDashed,
+    label: 'Not changed',
+    description: 'Nothing in the commit changed it.',
+  },
+} as const
+
+function ChangeBadge({
+  change,
+}: {
+  change: ReconcileResult['decisions'][number]['changes'][number]
+}) {
+  if (change.observed) {
+    const meta = OBSERVED_BADGE[change.observed]
+    return (
+      <StatusBadge
+        tone={meta.tone}
+        icon={meta.icon}
+        label={meta.label}
+        description={meta.description}
+        prefix="In the source:"
+        size="sm"
+      />
+    )
+  }
+  return change.proposed ? (
+    <StatusBadge tone="neutral" icon={CircleDashed} label="Proposed" prefix="Change:" size="sm" />
+  ) : change.touched ? (
+    <StatusBadge tone="success" icon={CircleCheck} label="Touched" prefix="Change:" size="sm" />
+  ) : (
+    <StatusBadge
+      tone="warning"
+      icon={CircleDashed}
+      label="Not touched"
+      prefix="Change:"
+      size="sm"
+    />
+  )
+}
+
 /**
- * What reconciliation found (ADR 0024): the analysis of the verified commit, and per decision the
- * direct changes it touched and the proposed elements an observed element now matches. Links are
- * pending proposals a person commits in Proposals.
+ * What reconciliation found (ADR 0024 and its amendment): the analysis of the verified commit; for
+ * each decision, what the source shows for each direct change, base against commit with one
+ * analyzer; what changed that the decision does not name; and the proposed elements an observed
+ * element now matches. Links are pending proposals a person commits in Proposals.
  */
 export function ReconcileSummary({
   result,
@@ -250,7 +305,7 @@ export function ReconcileSummary({
   result: ReconcileResult
   proposalLink: (proposalId: string, children: ReactNode) => ReactNode
 }) {
-  const { analysis } = result
+  const { analysis, observed } = result
   return (
     <div className="space-y-3">
       <p role="status" className="text-xs">
@@ -265,6 +320,24 @@ export function ReconcileSummary({
           </span>
         )}
       </p>
+      {observed &&
+        (observed.note ? (
+          <p className="text-fg-muted text-xs">
+            The base and the commit could not be compared: {observed.note}.
+          </p>
+        ) : (
+          <p className="text-xs">
+            <span className="font-medium">
+              Compared <code className="font-mono">{shortSha(observed.base)}</code> with{' '}
+              <code className="font-mono">{shortSha(observed.commit)}</code>
+            </span>{' '}
+            <span className="text-fg-muted">
+              using {observed.analyzer}: {plural(observed.elementsChanged, 'element')} and{' '}
+              {plural(observed.modulesChanged, 'file')} changed. Observed in the source, within the
+              analyzer's coverage; it says nothing about how the code runs.
+            </span>
+          </p>
+        ))}
       {result.decisions.length === 0 ? (
         <p className="text-fg-muted text-xs">
           The task implements no decision, so there is nothing to compare with it.
@@ -275,45 +348,34 @@ export function ReconcileSummary({
             <p className="text-sm">
               <span className="font-medium">{d.title}</span>{' '}
               <span className="text-fg-muted text-xs">
-                {d.changes.length > 0
-                  ? `The commit touched ${d.touched} of ${plural(d.changes.length, 'direct change')}.`
-                  : 'Its alternatives name no direct changes, so there is nothing to compare the commit with.'}
+                {d.changes.length === 0
+                  ? 'Its alternatives name no direct changes, so there is nothing to compare the commit with.'
+                  : observed && !observed.note
+                    ? `The source shows ${d.changed} of ${plural(d.changes.length, 'direct change')} changed.`
+                    : `The commit touched ${d.touched} of ${plural(d.changes.length, 'direct change')}.`}
               </span>
             </p>
             {d.changes.length > 0 && (
-              <ul className="space-y-1 text-xs">
+              <ul className="space-y-1.5 text-xs">
                 {d.changes.map((c) => (
-                  <li key={c.relationId} className="flex min-w-0 flex-wrap items-center gap-1.5">
-                    {c.proposed ? (
-                      <StatusBadge
-                        tone="neutral"
-                        icon={CircleDashed}
-                        label="Proposed"
-                        prefix="Change:"
-                        size="sm"
-                      />
-                    ) : c.touched ? (
-                      <StatusBadge
-                        tone="success"
-                        icon={CircleCheck}
-                        label="Touched"
-                        prefix="Change:"
-                        size="sm"
-                      />
-                    ) : (
-                      <StatusBadge
-                        tone="warning"
-                        icon={CircleDashed}
-                        label="Not touched"
-                        prefix="Change:"
-                        size="sm"
-                      />
-                    )}
-                    <span className="min-w-0 break-words font-medium">{c.label}</span>
-                    {c.files.length > 0 && (
-                      <span className="min-w-0 break-all font-mono text-[11px] text-fg-muted">
-                        {c.files.join(', ')}
-                      </span>
+                  <li key={c.relationId} className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <ChangeBadge change={c} />
+                      <span className="min-w-0 break-words font-medium">{c.label}</span>
+                      {!c.observed && c.files.length > 0 && (
+                        <span className="min-w-0 break-all font-mono text-[11px] text-fg-muted">
+                          {c.files.join(', ')}
+                        </span>
+                      )}
+                    </div>
+                    {c.details.length > 0 && (
+                      <ul className="mt-0.5 ml-4 list-disc space-y-0.5 pl-3 text-fg-muted">
+                        {c.details.map((detail) => (
+                          <li key={detail} className="break-words">
+                            {detail}
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </li>
                 ))}
@@ -351,6 +413,26 @@ export function ReconcileSummary({
             )}
           </section>
         ))
+      )}
+      {observed && observed.unplanned.length > 0 && (
+        <section aria-label="Changed, not named by the decision" className="space-y-1.5">
+          <p className="text-sm">
+            <span className="font-medium">Also changed</span>{' '}
+            <span className="text-fg-muted text-xs">
+              Not named by the decision's direct changes: review whether it belongs to this work.
+            </span>
+          </p>
+          <ul className="space-y-1 text-xs">
+            {observed.unplanned.map((u) => (
+              <li key={u.key} className="min-w-0">
+                <span className="font-medium">{u.label}</span>{' '}
+                <span className="text-fg-muted">
+                  {u.change}: {u.details.join('; ')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   )

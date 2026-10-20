@@ -231,10 +231,29 @@ export const softwarePack: ObjectTypeDef[] = [
   },
   {
     type: 'software.DataEntity',
+    // Still version 1: `fields` is optional and additive, as endpoint parameters are (ADR 0021).
     version: 1,
     pack: 'software',
     description: 'A persisted data structure such as a table or document type.',
-    attributes: z.strictObject({ name, storage: z.string().max(200).optional() }),
+    attributes: z.strictObject({
+      name,
+      storage: z.string().max(200).optional(),
+      /**
+       * Fields as declared, in order: the annotation, the key a field holds (`user.id`) and the
+       * entity a relationship points at. Observed by the analyzer; optional for every other source.
+       */
+      fields: z
+        .array(
+          z.strictObject({
+            name: z.string().min(1).max(200),
+            type: z.string().max(200).optional(),
+            references: z.string().max(200).optional(),
+            relationship: z.string().max(200).optional(),
+          }),
+        )
+        .max(200)
+        .optional(),
+    }),
   },
   {
     type: 'software.Library',

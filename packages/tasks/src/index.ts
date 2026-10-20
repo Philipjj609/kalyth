@@ -6,9 +6,13 @@ export {
   ensureAnalyzer,
   ensureReconciler,
   matchKey,
+  type ObservedChangeSet,
+  observeChange,
+  observedFor,
   RECONCILE_METHOD,
   type ReconcileModel,
   reconcileDecisions,
+  summariseObserved,
 } from './reconcile.ts'
 export { TaskRepositories } from './repository.ts'
 export {

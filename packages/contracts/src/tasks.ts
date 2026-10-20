@@ -164,7 +164,25 @@ export type FileReportInput = z.input<typeof FileReportInput>
 
 export const ReconcileTaskInput = z.object({ taskId: ObjectId })
 
-/** A direct change of the decision, and whether the task's verified commit touched it. */
+/**
+ * What the source shows changed for one element between a task's base commit and its verified
+ * commit, both read by the same analyzer (ADR 0024, amendment of 2026-10-20). Observed in the
+ * source within the analyzer's coverage; it says nothing about how the code behaves when run.
+ */
+export const ObservedElementChange = z.object({
+  /** The analyzer's stable key for the element, such as `entity:Item`. */
+  key: z.string(),
+  type: z.string(),
+  label: z.string(),
+  change: z.enum(['added', 'removed', 'changed']),
+  /** The source the element's evidence cites changed, not only other parts of its file. */
+  sourceChanged: z.boolean(),
+  /** What changed, in words: fields, parameters and relations added or removed. */
+  details: z.array(z.string()).max(50),
+})
+export type ObservedElementChange = z.infer<typeof ObservedElementChange>
+
+/** A direct change of the decision, and what the task's verified commit did to its target. */
 export const ReconciledChange = z.object({
   relationId: RelationId,
   alternativeId: ObjectId,
@@ -178,6 +196,15 @@ export const ReconciledChange = z.object({
   touched: z.boolean(),
   /** Those files. */
   files: z.array(z.string()),
+  /**
+   * What the source shows for the target between the base and the verified commit: `changed` when
+   * its own source or structure changed (or, for a proposed element, an element of its type and
+   * name appeared), `nearby` when only another part of a file it cites changed, `unchanged`
+   * otherwise. Null when the two commits could not be compared.
+   */
+  observed: z.enum(['changed', 'nearby', 'unchanged']).nullable().default(null),
+  /** What changed for the target, in words. */
+  details: z.array(z.string()).default([]),
 })
 export type ReconciledChange = z.infer<typeof ReconciledChange>
 
@@ -216,6 +243,8 @@ export const ReconciledDecision = z.object({
   changes: z.array(ReconciledChange),
   /** How many of `changes` the commit touched. */
   touched: z.int().min(0),
+  /** How many of `changes` the source shows as changed. */
+  changed: z.int().min(0).default(0),
   proposed: z.array(ReconciledElement),
 })
 export type ReconciledDecision = z.infer<typeof ReconciledDecision>
@@ -246,6 +275,26 @@ export const ReconcileResult = z.object({
   /** The revision the summary was computed at: the head after the analysis. */
   revision: z.int().min(0),
   decisions: z.array(ReconciledDecision),
+  /**
+   * The base and the verified commit compared by one analyzer, so the difference is the commit's
+   * and not a newer analyzer's. Null when the base could not be read.
+   */
+  observed: z
+    .object({
+      base: sha,
+      commit: sha,
+      analyzer: z.string(),
+      /** Elements whose source or structure changed, of any kind except modules. */
+      elementsChanged: z.int().min(0),
+      /** Modules (files) whose source changed. */
+      modulesChanged: z.int().min(0),
+      /** Changed elements that no direct change of the decisions names. */
+      unplanned: z.array(ObservedElementChange).max(100),
+      /** Why there is no comparison, or what limits it. */
+      note: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
 })
 export type ReconcileResult = z.infer<typeof ReconcileResult>
 

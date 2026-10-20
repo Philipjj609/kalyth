@@ -1,4 +1,4 @@
-import { GitRepository, ingestRepository } from '@kalyth/analyzer'
+import { analyzeRepository, GitRepository, ingestRepository } from '@kalyth/analyzer'
 import { ContextCompiler } from '@kalyth/context'
 import type { Caller, ObjectVersion, OperationInput, Result } from '@kalyth/contracts'
 import { ensureLocalAgent, ensureLocalOwner, KalythServices, SqliteStore } from '@kalyth/core'
@@ -7,7 +7,9 @@ import { FixtureRepo, V1, V2 } from '../../analyzer/test/fixture-repo.ts'
 import {
   ensureAnalyzer,
   matchKey,
+  observeChange,
   RECONCILE_METHOD,
+  summariseObserved,
   TaskCoordinator,
   taskTrailer,
 } from '../src/index.ts'
@@ -220,6 +222,63 @@ async function world() {
   }
 }
 
+describe('what the source shows changed (ADR 0024, amendment of 2026-10-20)', () => {
+  it('reports fields, new entities and references, and tells own source from a shared file', async () => {
+    const repo = new FixtureRepo()
+    repos.push(repo)
+    repo.write(V1)
+    const base = repo.commit('v1')
+    repo.write({
+      'backend/app/models.py': [
+        'from sqlmodel import Field, SQLModel',
+        '',
+        '',
+        'class Team(SQLModel, table=True):',
+        '    id: int | None = Field(default=None, primary_key=True)',
+        '',
+        '',
+        'class ItemBase(SQLModel):',
+        '    title: str',
+        '',
+        '',
+        'class Item(ItemBase, table=True):',
+        '    id: int | None = Field(default=None, primary_key=True)',
+        '    team_id: int | None = Field(default=None, foreign_key="team.id")',
+        '',
+      ].join('\n'),
+      // Only create_item changes; read_items, in the same file, keeps its source.
+      [ITEMS]: (V1[ITEMS] as string).replace(
+        '    return item',
+        '    item.title = item.title.strip()\n    return item',
+      ),
+    })
+    const commit = repo.commit('teams')
+    const git = new GitRepository(repo.path)
+    const seen = observeChange(
+      await analyzeRepository({ git, repo: REPO, ref: base }),
+      await analyzeRepository({ git, repo: REPO, ref: commit }),
+    )
+    expect(seen.byKey.get('entity:Team')).toMatchObject({ change: 'added', sourceChanged: true })
+    expect(seen.byKey.get('entity:Item')?.details).toEqual(
+      expect.arrayContaining([
+        'field team_id (int | None, references team.id) added',
+        'now references Team',
+      ]),
+    )
+    expect(seen.byKey.get('endpoint:POST /api/v1/items/')).toMatchObject({
+      change: 'changed',
+      sourceChanged: true,
+    })
+    expect(seen.byKey.has('endpoint:GET /api/v1/items/')).toBe(false)
+    const summary = summariseObserved(seen, new Set(['entity:Item']))
+    expect(summary.unplanned.map((e) => e.key)).toEqual([
+      'endpoint:POST /api/v1/items/',
+      'entity:Team',
+    ])
+    expect(summary.modulesChanged).toBe(2)
+  })
+})
+
 describe('reconciling the model with a task (ADR 0024)', () => {
   it('matches observed elements by type and name, endpoints by method and path', () => {
     const key = (type: string, attributes: Record<string, string>) => matchKey({ type, attributes })
@@ -277,6 +336,17 @@ describe('reconciling the model with a task (ADR 0024)', () => {
       change: 'add the POST handler',
     })
     expect(change(w.post)).toMatchObject({ proposed: true, touched: false, files: [] })
+
+    // What the source shows, base against commit with one analyzer: the module's own source
+    // changed, the proposed endpoint now exists, and nothing was observed for the entity.
+    expect(result.observed).toMatchObject({ base: w.base, commit: sha, unplanned: [], note: null })
+    expect(result.observed?.analyzer).toMatch(/^kalyth-analyzer /)
+    expect(decision?.changed).toBe(2)
+    expect(change(w.itemsModule.id)?.observed).toBe('changed')
+    expect(change(w.itemsModule.id)?.details[0]).toMatch(/^its source changed \(/)
+    expect(change(w.post)?.observed).toBe('changed')
+    expect(change(w.post)?.details[0]).toMatch(/^observed in backend\/app\/api\/routes\/items\.py:/)
+    expect(change(w.org)).toMatchObject({ observed: 'unchanged', details: [] })
 
     // The proposed endpoint now has an observed match, linked by a pending proposal.
     const post = decision?.proposed.find((p) => p.id === w.post)

@@ -293,6 +293,24 @@ const relationsFrom = (from: string, types = ['reads', 'writes']) =>
 const groups = (type: string, from: string, to: string) =>
   relation(type, from, to)?.supports.map((g) => g.map((s) => `${s.path}#${s.symbol}`))
 
+describe('entity fields', () => {
+  it('records each field with its annotation, the key it holds and its relationship', () => {
+    const user = result.objects.find((o) => o.key === 'entity:User')
+    expect(user?.attributes.fields).toEqual([
+      { name: 'id', type: 'uuid.UUID' },
+      { name: 'email', type: 'str' },
+      { name: 'team_id', type: 'int | None', references: 'teams.id' },
+      { name: 'items', type: 'list[Item]', relationship: 'list[Item]' },
+    ])
+    const item = result.objects.find((o) => o.key === 'entity:Item')
+    expect(item?.attributes.fields).toContainEqual({
+      name: 'owner_id',
+      type: 'uuid.UUID',
+      references: 'user.id',
+    })
+  })
+})
+
 describe('data access from route handlers (ADR 0021)', () => {
   it('reads entities named in select, select_from and session.get', () => {
     expect(relationsFrom(ep('GET', '/items/'))).toEqual(['reads entity:Item'])

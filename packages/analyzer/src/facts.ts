@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { JsonValue } from '@kalyth/contracts'
 
-export const ANALYZER = { tool: 'kalyth-analyzer', toolVersion: '0.2.0' } as const
+export const ANALYZER = { tool: 'kalyth-analyzer', toolVersion: '0.3.0' } as const
 
 /** One piece of source evidence: a line span of one file at one blob. */
 export interface EvidenceSpan {

@@ -954,12 +954,12 @@ function ReconcileStage({ decision, tasks }: { decision: DecisionSummary; tasks:
       {implementation.touched !== undefined && (implementation.changes ?? 0) > 0 && (
         <p>
           <span className="font-medium">
-            Verified work touched {implementation.touched} of {implementation.changes} direct
-            changes.
+            Verified work changed files behind {implementation.touched} of {implementation.changes}{' '}
+            direct changes.
           </span>{' '}
           <span className="text-fg-muted">
-            Observed in git: a file the change’s evidence cites is among the files the commit
-            changed.
+            Observed in git, by file. Reconciling compares the element itself: its own source, its
+            fields and its relations.
           </span>
         </p>
       )}
@@ -1017,7 +1017,7 @@ function Facets({ decision }: { decision: DecisionSummary }) {
       implementation.tasks.length > 0
         ? `${implementation.tasks.filter((t) => t.status === 'completed').length} of ${implementation.tasks.length} tasks completed${
             implementation.touched !== undefined && implementation.changes
-              ? `; verified work touched ${implementation.touched} of ${implementation.changes} changes`
+              ? `; verified work changed files behind ${implementation.touched} of ${implementation.changes} changes`
               : ''
           }`
         : 'No task yet',

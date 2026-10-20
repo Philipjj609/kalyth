@@ -1,6 +1,6 @@
 # 0024. Reconciliation after an agent's work
 
-Date: 2026-10-20. Status: Proposed (technical lead review). Builds on ADRs 0011, 0013, 0022 and
+Date: 2026-10-20. Status: Proposed (technical lead review); amended 2026-10-20. Builds on ADRs 0011, 0013, 0022 and
 0023; part of the direction in ADR 0020 (the "agent report" and "reconcile" stages).
 
 ## Context
@@ -127,3 +127,51 @@ earlier results still parse; Kalyth always sets them.
   snapshot to that commit. Ingest the main line again after merging.
 - The two web requests live in `apps/web/src/tasks` while the shared client is redesigned; they
   can move to `apps/web/src/api` afterwards.
+
+## Amendment of 2026-10-20: what the source shows, not only which files changed
+
+A real reconciliation on the FastAPI template (alternative A4 of the multi-tenancy decision,
+implemented as an actual commit) showed three gaps in the first version:
+
+- **Files overstated the work.** `GET /items/{id}` counted as touched because another handler
+  in the same file changed; its own code had not.
+- **A newer analyzer looked like the commit's work.** The template had been analysed with
+  analyzer 0.1.0. Re-analysing with 0.2.0 created and refreshed some 80 records unrelated to the
+  task, and nothing told them apart.
+- **Fields were invisible.** "Add org_id to User" could not be confirmed: the model recorded a
+  data entity's name, not its fields.
+
+Reconcile now also compares the task's base commit with its verified commit, both read by the
+same analyzer, by the analyzer's stable element keys (`observeChange` in packages/tasks):
+
+- an element is **changed** when it was added or removed, when the source its evidence cites
+  changed (span content hashes differ; moving lines does not count), or when its fields,
+  parameters or relations changed. Details say what, in words: "field org_id (uuid.UUID,
+  references organisation.id) added", "now references Organisation";
+- each direct change of the decision is **changed**, **nearby** (only another part of a file it
+  cites changed) or **unchanged**. A proposed element is matched by type and name, as for links;
+- changed containers, components, entities and endpoints that no direct change names are listed
+  as **also changed**, for a person to judge whether they belong to the work. Modules are
+  counted, not listed;
+- when the model had been analysed with another analyzer version, the analysis line says so, and
+  the comparison above it is the commit's own.
+
+The analysis of the verified commit is handed to the ingest, so it is read once. When the model
+already reflects a later commit (the ingest is skipped), the comparison is still reported.
+
+Data entities carry their **fields** as the analyzer observed them (name, annotation, the key a
+field holds, the entity a relationship points at; at most 200), including fields declared on base
+classes in the same module. `fields` is optional and additive, so `software.DataEntity` stays at
+version 1, as endpoint parameters did (ADR 0021). The analyzer is now 0.3.0; its output for the
+template changes, so the demo recordings are re-recorded with D5.
+
+The ingest reads the current model page by page (`after` cursor on object and relation queries).
+It used to read 1,000 records per type, so on a larger repository it would have planned against
+a partial model and added again what it did not see.
+
+What this does not claim: everything here is observed in the source within the analyzer's
+coverage (R4). "Changed" says the element's code or structure changed, not that the change is
+correct, complete or behaves as the decision intends; the decision's change text ("remove the
+superuser bypass") is not checked semantically. The implementation facet keeps counting by file
+(a file the change's evidence cites is among the files the verified report changed), because the
+kernel has no git access; the thread labels it as a count by file.

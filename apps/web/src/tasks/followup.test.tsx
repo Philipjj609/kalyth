@@ -229,6 +229,8 @@ describe('reconciliation', () => {
             change: 'add the handler',
             touched: true,
             files: ['app/routes/items.py'],
+            observed: null,
+            details: [],
           },
           {
             relationId: id('rel', 2),
@@ -240,9 +242,12 @@ describe('reconciliation', () => {
             change: 'new endpoint',
             touched: false,
             files: [],
+            observed: null,
+            details: [],
           },
         ],
         touched: 1,
+        changed: 0,
         proposed: [
           {
             id: PROPOSED,
@@ -254,6 +259,7 @@ describe('reconciliation', () => {
         ],
       },
     ],
+    observed: null,
   }
 
   it('says what the commit touched and links the pending proposal', () => {
@@ -274,6 +280,58 @@ describe('reconciliation', () => {
       'POST /items is now observed as POST /items/ (link proposed, waiting for you: review it in Proposals )',
     )
     expect(html).toContain(`href="?view=proposals&amp;proposal=${id('prp', 2)}"`)
+  })
+
+  it('says what the source shows for each change, and what changed beyond the decision', () => {
+    const [decision] = result.decisions
+    if (!decision) throw new Error('no decision')
+    const [module, endpoint] = decision.changes
+    if (!module || !endpoint) throw new Error('no changes')
+    const observed: ReconcileResult = {
+      ...result,
+      observed: {
+        base: '0'.repeat(40),
+        commit: COMMIT,
+        analyzer: 'kalyth-analyzer 0.3.0',
+        elementsChanged: 2,
+        modulesChanged: 1,
+        unplanned: [
+          {
+            key: 'entity:Team',
+            type: 'software.DataEntity',
+            label: 'Team',
+            change: 'added',
+            sourceChanged: true,
+            details: ['observed in app/models.py:4-6'],
+          },
+        ],
+        note: null,
+      },
+      decisions: [
+        {
+          ...decision,
+          changed: 1,
+          changes: [
+            {
+              ...module,
+              observed: 'changed',
+              details: ['its source changed (app/routes/items.py:1-20)'],
+            },
+            { ...endpoint, observed: 'unchanged' },
+          ],
+        },
+      ],
+    }
+    const text = textOf(render(<ReconcileSummary result={observed} proposalLink={(_, c) => c} />))
+    expect(text).toContain('Compared 00000000 with 1a2b3c4d using kalyth-analyzer 0.3.0')
+    expect(text).toContain('it says nothing about how the code runs')
+    expect(text).toContain('The source shows 1 of 2 direct changes changed.')
+    expect(text).toContain(
+      'Changed app/routes/items.py its source changed (app/routes/items.py:1-20)',
+    )
+    expect(text).toContain('Not changed POST /items')
+    expect(text).toContain('Also changed')
+    expect(text).toContain('Team added: observed in app/models.py:4-6')
   })
 
   it('is offered once a verified report has moved the task on', () => {

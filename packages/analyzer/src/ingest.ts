@@ -39,6 +39,7 @@ const OBJECT_TYPES = [
   'software.Library',
 ]
 const RELATION_TYPES = ['contains', 'dependsOn', 'exposes', 'reads', 'writes', 'references']
+const PAGE = 1000
 
 /**
  * Analyses a commit and submits the result as one proposal through the shared services, then
@@ -52,33 +53,59 @@ export async function ingestRepository(options: {
   git: GitRepository
   repo: string
   ref: string
+  /** The analysis of `ref`, when the caller has it already. */
+  analysis?: AnalysisResult
 }): Promise<IngestReport> {
   const { services, caller, projectId } = options
-  const analysis = await analyzeRepository({
-    git: options.git,
-    repo: options.repo,
-    ref: options.ref,
-  })
+  const analysis =
+    options.analysis ??
+    (await analyzeRepository({
+      git: options.git,
+      repo: options.repo,
+      ref: options.ref,
+    }))
   const unwrap = <T>(r: { ok: true; value: T } | { ok: false; error: KernelError }): T => {
     if (!r.ok) throw new IngestError(r.error.message, r.error)
     return r.value
   }
 
   const head = unwrap(services.getProjectOverview(caller, { projectId })).project.headRevision
+  // The whole current state, page by page: planning against a partial model would add again
+  // what it did not see.
   const objects: ObjectVersion[] = []
-  for (const type of OBJECT_TYPES)
-    objects.push(
-      ...unwrap(
-        services.queryObjects(caller, { projectId, revision: head, types: [type], limit: 1000 }),
-      ).objects,
-    )
+  for (const type of OBJECT_TYPES) {
+    for (let after: string | undefined; ; ) {
+      const page = unwrap(
+        services.queryObjects(caller, {
+          projectId,
+          revision: head,
+          types: [type],
+          limit: PAGE,
+          ...(after ? { after } : {}),
+        }),
+      ).objects
+      objects.push(...page)
+      if (page.length < PAGE) break
+      after = page[page.length - 1]?.id
+    }
+  }
   const relations: RelationVersion[] = []
-  for (const type of RELATION_TYPES)
-    relations.push(
-      ...unwrap(
-        services.queryRelations(caller, { projectId, revision: head, types: [type], limit: 1000 }),
-      ).relations,
-    )
+  for (const type of RELATION_TYPES) {
+    for (let after: string | undefined; ; ) {
+      const page = unwrap(
+        services.queryRelations(caller, {
+          projectId,
+          revision: head,
+          types: [type],
+          limit: PAGE,
+          ...(after ? { after } : {}),
+        }),
+      ).relations
+      relations.push(...page)
+      if (page.length < PAGE) break
+      after = page[page.length - 1]?.id
+    }
+  }
   const evidenceIds = [
     ...new Set([...objects, ...relations].flatMap((r) => r.claim.supports.flatMap((g) => g.allOf))),
   ]
