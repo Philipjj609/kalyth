@@ -951,7 +951,7 @@ function ReconcileStage({ decision, tasks }: { decision: DecisionSummary; tasks:
         the change as observed and the decision’s evidence is current again. Links to proposed
         elements come back as proposals for you to commit.
       </p>
-      {implementation.touched !== undefined && implementation.changes !== undefined && (
+      {implementation.touched !== undefined && (implementation.changes ?? 0) > 0 && (
         <p>
           <span className="font-medium">
             Verified work touched {implementation.touched} of {implementation.changes} direct
@@ -1052,7 +1052,7 @@ function Facets({ decision }: { decision: DecisionSummary }) {
                 {v}
               </span>
               {d && (
-                <span className="line-clamp-3 block text-fg-muted text-xs" title={d}>
+                <span className="line-clamp-3 text-fg-muted text-xs" title={d}>
                   {d}
                 </span>
               )}

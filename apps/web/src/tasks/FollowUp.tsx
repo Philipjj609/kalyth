@@ -275,7 +275,9 @@ export function ReconcileSummary({
             <p className="text-sm">
               <span className="font-medium">{d.title}</span>{' '}
               <span className="text-fg-muted text-xs">
-                The commit touched {d.touched} of {plural(d.changes.length, 'direct change')}.
+                {d.changes.length > 0
+                  ? `The commit touched ${d.touched} of ${plural(d.changes.length, 'direct change')}.`
+                  : 'Its alternatives name no direct changes, so there is nothing to compare the commit with.'}
               </span>
             </p>
             {d.changes.length > 0 && (
