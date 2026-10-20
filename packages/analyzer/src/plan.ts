@@ -47,9 +47,9 @@ export function objectKey(o: Pick<ObjectVersion, 'type' | 'attributes'>): string
     case 'software.Module':
       return `module:${a.path}`
     case 'software.Endpoint':
-      return `endpoint:${a.method} ${a.path}`
+      return `endpoint:${a.method} ${a.path}${a.scope ? `@${a.scope}` : ''}`
     case 'software.DataEntity':
-      return `entity:${a.name}`
+      return `entity:${a.name}${a.scope ? `@${a.scope}` : ''}`
     case 'software.Library':
       return `library:${a.ecosystem}:${a.name}`
     default:

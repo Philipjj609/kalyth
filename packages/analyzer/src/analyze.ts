@@ -36,6 +36,8 @@ export interface AnalysisResult {
 const MANIFESTS = new Set(['pyproject.toml', 'package.json', 'tsconfig.json'])
 const MAX_FILE_BYTES = 512 * 1024
 const MAX_PARAMETERS = 100
+/** Prefixes kept per router: the paths one route is served at. */
+const MAX_MOUNTS = 16
 
 export interface AnalyzeOptions {
   git: GitRepository
@@ -244,45 +246,76 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
     }
   }
   /** Full prefixes at which a router is served, or undefined when it is not mounted on an app. */
-  const prefixesOf = (
-    r: RouterRef,
-    depth = 0,
-  ): { prefix: string; conditional: boolean }[] | undefined => {
+  // Routers included into routers many times over (test suites do this) multiply prefixes, so
+  // each router's prefixes are computed once, without repeats, and at most MAX_MOUNTS are kept.
+  type Mount = { prefix: string; conditional: boolean }
+  const prefixMemo = new Map<string, Mount[] | undefined>()
+  const resolving = new Set<string>()
+  const prefixesOf = (r: RouterRef, depth = 0): Mount[] | undefined => {
+    const id = `${r.file}#${r.variable}`
+    if (prefixMemo.has(id)) return prefixMemo.get(id)
     const router = routerOf(r)
-    if (!router || depth > 12) return undefined
+    if (!router || depth > 12 || resolving.has(id)) return undefined
     if (router.kind === 'FastAPI') return [{ prefix: '', conditional: false }]
+    resolving.add(id)
     const own = fold(router.prefix)
-    const result: { prefix: string; conditional: boolean }[] = []
-    for (const m of mounts.get(`${r.file}#${r.variable}`) ?? []) {
+    const result = new Map<string, Mount>()
+    for (const m of mounts.get(id) ?? []) {
       for (const p of prefixesOf(m.parent, depth + 1) ?? []) {
-        result.push({
+        const mount = {
           prefix: p.prefix + m.prefix + own,
           conditional: p.conditional || m.conditional,
-        })
+        }
+        const key = `${mount.prefix}|${mount.conditional}`
+        if (!result.has(key)) result.set(key, mount)
       }
     }
-    return result.length > 0 ? result : undefined
+    resolving.delete(id)
+    let list = [...result.values()]
+    if (list.length > MAX_MOUNTS) {
+      bump('routerMountsCapped')
+      list = list.slice(0, MAX_MOUNTS)
+    }
+    const value = list.length > 0 ? list : undefined
+    prefixMemo.set(id, value)
+    return value
   }
 
   // Data access, entity references and endpoint parameters (ADR 0021).
   const isTable = (cls: PyClass) => cls.keywords.table === 'True'
-  const model = new PythonModel(pyFiles, importMaps, (_file, cls) =>
-    isTable(cls) ? `entity:${cls.name}` : undefined,
+  // A name declared in more than one place (several services, or tutorial code, each with its own
+  // `User`) would make several elements one. Those carry the module or handler that tells them
+  // apart as `scope`, which their key includes; a name declared once keeps its plain key.
+  const tableNames = new Map<string, number>()
+  for (const py of pyFiles.values())
+    for (const cls of py.classes)
+      if (isTable(cls)) tableNames.set(cls.name, (tableNames.get(cls.name) ?? 0) + 1)
+  const entityScope = (file: string, cls: PyClass) =>
+    (tableNames.get(cls.name) ?? 0) > 1 ? file : undefined
+  const entityKey = (file: string, cls: PyClass) => {
+    const scope = entityScope(file, cls)
+    return `entity:${cls.name}${scope ? `@${scope}` : ''}`
+  }
+  const model = new PythonModel(pyFiles, importMaps, (file, cls) =>
+    isTable(cls) ? entityKey(file, cls) : undefined,
   )
   const spanOf = (ref: SourceRef) =>
     facts.span(ref.file, ref.lines.start, ref.lines.end, { symbol: ref.symbol, excerpt: true })
 
   // FastAPI serves "/items/" and "/items" as different paths, so trailing slashes are kept.
   const joinPath = (...parts: string[]) => `/${parts.join('')}`.replace(/\/{2,}/g, '/')
+  type Served = { file: string; route: PyRoute; path: string; conditional: boolean }
+  const served: Served[] = []
   for (const [file, py] of pyFiles) {
-    for (const route of py.routes) addRoute(file, route)
+    for (const route of py.routes) for (const one of serve(file, route)) served.push(one)
     for (const cls of py.classes) {
       if (!isTable(cls)) continue
       const span = facts.span(file, cls.lines.start, cls.lines.end, {
         symbol: cls.name,
         excerpt: true,
       })
-      const key = `entity:${cls.name}`
+      const key = entityKey(file, cls)
+      const scope = entityScope(file, cls)
       const fields = entityFields(cls, py.classes)
       facts.object(
         key,
@@ -291,6 +324,7 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
           name: cls.name,
           storage: 'SQL table (SQLModel)',
           ...(fields.length > 0 ? { fields } : {}),
+          ...(scope ? { scope } : {}),
         },
         [span],
       )
@@ -298,41 +332,58 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
       bump('dataEntities')
     }
   }
-  function addRoute(file: string, route: PyRoute) {
-    const ref = { file, variable: route.receiver }
+  /**
+   * Where a route decorator is served. Only a decorator on a FastAPI app or APIRouter counts:
+   * `@mock.patch(...)` or a Flask blueprint's `.get` is not one of these routes.
+   */
+  function serve(file: string, route: PyRoute): Served[] {
+    const ref: RouterRef | undefined = routerOf({ file, variable: route.receiver })
+      ? { file, variable: route.receiver }
+      : targetOf(file, route.receiver)
+    const router = ref ? routerOf(ref) : undefined
+    if (!ref || !router) {
+      bump('decoratorsNotOnARouter')
+      return []
+    }
     const routePath = fold(route.path)
     let mountsFound = prefixesOf(ref)
     if (!mountsFound) {
       bump('unmountedRoutes')
-      mountsFound = [
-        {
-          prefix: routerOf(ref) ? fold((routerOf(ref) as { prefix: Value }).prefix) : '',
-          conditional: false,
-        },
-      ]
+      mountsFound = [{ prefix: fold(router.prefix), conditional: false }]
     }
+    return mountsFound.map((m) => ({
+      file,
+      route,
+      path: joinPath(m.prefix, routePath),
+      conditional: m.conditional,
+    }))
+  }
+  const routeCounts = new Map<string, number>()
+  for (const s of served) {
+    const k = `${s.route.method} ${s.path}`
+    routeCounts.set(k, (routeCounts.get(k) ?? 0) + 1)
+  }
+  for (const { file, route, path, conditional } of served) {
+    const handler = `${file}:${route.handler}`
+    const scope = (routeCounts.get(`${route.method} ${path}`) ?? 0) > 1 ? handler : undefined
+    const key = `endpoint:${route.method} ${path}${scope ? `@${scope}` : ''}`
     const span = facts.span(file, route.lines.start, route.lines.end, {
       symbol: route.handler,
       excerpt: true,
     })
     const root: SourceRef = { file, lines: route.lines, symbol: route.handler }
-    const accesses = model.accesses(file, route.fn, root)
-    for (const m of mountsFound) {
-      const path = joinPath(m.prefix, routePath)
-      const key = `endpoint:${route.method} ${path}`
-      const parameters = model.parameters(file, route.fn, path).slice(0, MAX_PARAMETERS)
-      facts.object(
-        key,
-        'software.Endpoint',
-        { method: route.method, path, handler: `${file}:${route.handler}`, parameters },
-        [span],
-      )
-      facts.relation('exposes', moduleKey(file), key, [span])
-      for (const access of accesses)
-        facts.relation(access.kind, key, access.entity, access.support.map(spanOf))
-      if (m.conditional) bump('conditionallyMountedRoutes')
-      bump('endpoints')
-    }
+    const parameters = model.parameters(file, route.fn, path).slice(0, MAX_PARAMETERS)
+    facts.object(
+      key,
+      'software.Endpoint',
+      { method: route.method, path, handler, parameters, ...(scope ? { scope } : {}) },
+      [span],
+    )
+    facts.relation('exposes', moduleKey(file), key, [span])
+    for (const access of model.accesses(file, route.fn, root))
+      facts.relation(access.kind, key, access.entity, access.support.map(spanOf))
+    if (conditional) bump('conditionallyMountedRoutes')
+    bump('endpoints')
   }
 
   const entityReferences = model.references()

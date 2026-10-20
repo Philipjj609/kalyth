@@ -33,7 +33,7 @@ function project() {
   ])
   const tool: Caller = { principalId: analyzer.id, origin: 'tool' }
   const projectId = unwrap(services.createProject(owner, { name: 'Fixture app' })).id
-  const ingest = (ref: string) =>
+  const ingest = (ref: string, maxOps?: number) =>
     ingestRepository({
       services,
       caller: tool,
@@ -41,6 +41,7 @@ function project() {
       git: new GitRepository(fixture.path),
       repo: REPO,
       ref,
+      ...(maxOps ? { maxOps } : {}),
     })
   return { services, owner, tool, projectId, ingest }
 }
@@ -159,6 +160,31 @@ describe('ingest and staleness', () => {
 
     const again = await p.ingest(v1)
     expect(again).toMatchObject({ revision: 1, proposalId: null })
+  })
+
+  it('commits a large observation in parts that add up to the same model', async () => {
+    const whole = project()
+    await whole.ingest(v1)
+    const split = project()
+    const report = await split.ingest(v1, 7)
+    expect(report.revision).toBeGreaterThan(5)
+    const shape = (p: ReturnType<typeof project>) => {
+      const objects = unwrap(p.services.queryObjects(p.owner, { projectId: p.projectId })).objects
+      const names = new Map(objects.map((o) => [o.id, `${o.type}:${JSON.stringify(o.attributes)}`]))
+      const relations = unwrap(
+        p.services.queryRelations(p.owner, { projectId: p.projectId, limit: 1000 }),
+      ).relations
+      return {
+        objects: [...names.values()].sort(),
+        relations: relations.map((r) => `${r.type} ${names.get(r.from)} ${names.get(r.to)}`).sort(),
+      }
+    }
+    expect(shape(split)).toEqual(shape(whole))
+    const freshness = unwrap(
+      split.services.assessFreshness(split.owner, { projectId: split.projectId }),
+    )
+    expect(Object.keys(freshness.summary)).toEqual(['current'])
+    expect((await split.ingest(v1, 7)).proposalId).toBeNull()
   })
 
   it('advancing to a newer commit refreshes re-observed facts and leaves vanished ones stale for review', async () => {

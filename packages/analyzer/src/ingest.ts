@@ -1,9 +1,11 @@
 import type {
   Caller,
+  ClaimInput,
   EvidenceRecord,
   Issue,
   KernelError,
   ObjectVersion,
+  OperationInput,
   RelationVersion,
 } from '@kalyth/contracts'
 import type { KalythServices } from '@kalyth/core'
@@ -55,6 +57,8 @@ export async function ingestRepository(options: {
   ref: string
   /** The analysis of `ref`, when the caller has it already. */
   analysis?: AnalysisResult
+  /** Operations per proposal; the contract's maximum unless a test asks for fewer. */
+  maxOps?: number
 }): Promise<IngestReport> {
   const { services, caller, projectId } = options
   const analysis =
@@ -133,18 +137,62 @@ export async function ingestRepository(options: {
   })
   if (ops.length === 0) return report(head, null)
 
-  const proposed = unwrap(
-    services.proposeChange(caller, {
-      projectId,
-      baseRevision: head,
-      rationale: `Analyzer observation of ${analysis.repo} at ${analysis.commit}`,
-      idempotencyKey: `ingest:${analysis.repo}@${analysis.commit}:base-${head}`,
-      ops,
-    }),
-  )
-  if (proposed.status !== 'pending') {
-    throw new IngestError(`analyzer proposal is ${proposed.status}`, proposed.issues)
+  // A proposal holds at most MAX_OPS operations, so a large repository is committed in parts.
+  // The plan lists evidence, then elements, then relations, then the snapshot, so an operation
+  // only ever names local refs defined before it: refs a committed part defined are replaced with
+  // the ids it created. The snapshot comes last, so the model reports the new commit only once
+  // every observation has landed; an interrupted ingest leaves valid observations, and running
+  // it again completes it.
+  const size = Math.min(MAX_OPS, Math.max(1, options.maxOps ?? MAX_OPS))
+  const parts = Math.ceil(ops.length / size)
+  const resolved = new Map<string, string>()
+  let revision = head
+  let firstProposal: string | null = null
+  for (let n = 0; n < parts; n++) {
+    const part = ops.slice(n * size, (n + 1) * size).map((op) => resolveRefs(op, resolved))
+    const proposed = unwrap(
+      services.proposeChange(caller, {
+        projectId,
+        baseRevision: revision,
+        rationale:
+          parts === 1
+            ? `Analyzer observation of ${analysis.repo} at ${analysis.commit}`
+            : `Analyzer observation of ${analysis.repo} at ${analysis.commit} (part ${n + 1} of ${parts})`,
+        idempotencyKey: `ingest:${analysis.repo}@${analysis.commit}:base-${head}${parts === 1 ? '' : `:part-${n + 1}`}`,
+        ops: part,
+      }),
+    )
+    if (proposed.status !== 'pending') {
+      throw new IngestError(`analyzer proposal is ${proposed.status}`, proposed.issues)
+    }
+    const committed = unwrap(services.commitProposal(caller, { proposalId: proposed.proposalId }))
+    for (const [ref, id] of Object.entries(committed.refs)) resolved.set(ref, id)
+    revision = committed.revision
+    firstProposal ??= proposed.proposalId
   }
-  const committed = unwrap(services.commitProposal(caller, { proposalId: proposed.proposalId }))
-  return report(committed.revision, proposed.proposalId)
+  return report(revision, firstProposal)
+}
+
+/** The most operations one proposal may hold (the ProposeChange contract). */
+const MAX_OPS = 5000
+
+/**
+ * An operation with the local refs that earlier parts defined replaced by their ids: the ends of a
+ * relation and the evidence its claim cites. Attributes are left as they are.
+ */
+function resolveRefs(op: OperationInput, resolved: ReadonlyMap<string, string>): OperationInput {
+  if (resolved.size === 0) return op
+  const id = (ref: string) => resolved.get(ref) ?? ref
+  const claim = (c: ClaimInput): ClaimInput =>
+    c.supports ? { ...c, supports: c.supports.map((g) => ({ ...g, allOf: g.allOf.map(id) })) } : c
+  switch (op.op) {
+    case 'createRelation':
+      return { ...op, from: id(op.from), to: id(op.to), claim: claim(op.claim) }
+    case 'createObject':
+    case 'updateObject':
+    case 'updateRelation':
+      return op.claim ? { ...op, claim: claim(op.claim) } : op
+    default:
+      return op
+  }
 }

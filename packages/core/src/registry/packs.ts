@@ -215,6 +215,8 @@ export const softwarePack: ObjectTypeDef[] = [
       method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'ANY']),
       path: z.string().min(1).max(1000),
       handler: z.string().max(500).optional(),
+      /** Set only when another endpoint has this method and path: the handler that is this one. */
+      scope: z.string().max(1000).optional(),
       /** Request parameters from the handler's signature, in order; dependencies are left out. */
       parameters: z
         .array(
@@ -253,6 +255,8 @@ export const softwarePack: ObjectTypeDef[] = [
         )
         .max(200)
         .optional(),
+      /** Set only when another entity of this name is declared elsewhere: where this one is. */
+      scope: z.string().max(1000).optional(),
     }),
   },
   {
