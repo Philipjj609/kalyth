@@ -219,6 +219,13 @@ export const DecisionFacets = z.object({
   implementation: z.object({
     state: z.enum(['none', 'planned', 'in-progress', 'reported', 'partial', 'complete']),
     tasks: z.array(z.object({ id: ObjectId, title: z.string(), status: z.string() })),
+    /**
+     * How many of the `changes` considered (as for freshness) the verified reports touched: a file
+     * the change target's evidence cites is among the files changed of a task's latest report
+     * that passed verification (ADR 0024). Optional for readers of earlier results.
+     */
+    touched: z.int().min(0).optional(),
+    changes: z.int().min(0).optional(),
   }),
   verification: z.object({
     state: z.enum(['none', 'failed', 'partial', 'passed']),

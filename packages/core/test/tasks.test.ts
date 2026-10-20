@@ -1,6 +1,6 @@
-import type { Caller, OperationInput } from '@kalyth/contracts'
+import { type Caller, canonicalJson, type OperationInput } from '@kalyth/contracts'
 import { describe, expect, it } from 'vitest'
-import { ensurePrincipal } from '../src/index.ts'
+import { ensurePrincipal, replayEvents, SqliteStore } from '../src/index.ts'
 import { errorOf, setup, unwrap } from './helpers.ts'
 
 const stated = { basis: 'stated' as const }
@@ -199,5 +199,54 @@ describe('task lifecycle in the kernel (ADR 0013)', () => {
       },
     ])
     expect(cycle.ok).toBe(false)
+  })
+
+  it('keeps a finding while the outcome is unknown, clears it after, and lets only the coordinator record one', () => {
+    const w = world()
+    const sha = (c: string) => c.repeat(40)
+    const finding = { commits: [sha('a')] }
+    w.set(w.owner, 'ready')
+    w.set(w.coordinator, 'running', { lease: lease(w.agentPrincipal.id) })
+    // Only with unknown_outcome, and only the coordinator, which searched git.
+    expect(errorOf(w.set(w.coordinator, 'ready', { finding })).issues.map((i) => i.code)).toContain(
+      'task.finding_unexpected',
+    )
+    expect(errorOf(w.set(w.owner, 'unknown_outcome', { finding })).code).toBe('unauthorized')
+    expect(w.set(w.coordinator, 'unknown_outcome', { finding }).ok).toBe(true)
+    expect(w.status()).toMatchObject({
+      status: 'unknown_outcome',
+      finding,
+      lease: { holder: w.agentPrincipal.id },
+    })
+
+    // A later search records what git shows now, keeping the state and the last holder's lease.
+    const newer = { commits: [sha('b'), sha('a')] }
+    expect(w.set(w.coordinator, 'unknown_outcome', { finding: newer }).ok).toBe(true)
+    expect(w.status()).toMatchObject({ finding: newer, lease: { holder: w.agentPrincipal.id } })
+    // Without a finding, staying in unknown_outcome is no transition at all.
+    expect(errorOf(w.set(w.coordinator, 'unknown_outcome')).issues.map((i) => i.code)).toContain(
+      'task.transition_invalid',
+    )
+    // No one edits it by hand.
+    const edited = unwrap(
+      w.services.proposeChange(w.owner, {
+        projectId: w.projectId,
+        baseRevision: unwrap(w.services.getProjectOverview(w.owner, { projectId: w.projectId }))
+          .project.headRevision,
+        rationale: 'cheat',
+        ops: [{ op: 'updateObject', id: w.taskId, set: { finding: null } }],
+      }),
+    )
+    expect(edited.issues.map((i) => i.message).join()).toMatch(/use setTaskStatus/)
+
+    // Leaving unknown_outcome clears it; the history keeps the version that had it.
+    expect(w.set(w.owner, 'ready').ok).toBe(true)
+    expect(w.status()).toMatchObject({ status: 'ready', lease: null })
+    expect(w.status()).not.toHaveProperty('finding')
+    const replica = new SqliteStore(':memory:')
+    replayEvents(replica, w.store.listEvents(w.projectId))
+    expect(canonicalJson(replica.dumpRevisionedState(w.projectId))).toBe(
+      canonicalJson(w.store.dumpRevisionedState(w.projectId)),
+    )
   })
 })

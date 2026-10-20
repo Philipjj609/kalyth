@@ -260,12 +260,24 @@ export function applyOperations(
           break
         }
         const from = current.attributes.status as TaskStatus
-        if (!TASK_TRANSITIONS[from]?.includes(op.status)) {
+        // Recording what git showed keeps a task in unknown_outcome; the transition table is
+        // otherwise unchanged (ADR 0013, amendment of 2026-10-20).
+        const recordsFinding =
+          from === 'unknown_outcome' && op.status === 'unknown_outcome' && op.finding !== undefined
+        if (!recordsFinding && !TASK_TRANSITIONS[from]?.includes(op.status)) {
           add('task.transition_invalid', `a task cannot go from ${from} to ${op.status}`)
           break
         }
         if (op.status === 'running' && !op.lease) {
           add('task.lease_required', 'a running task needs a lease')
+          break
+        }
+        if (op.finding !== undefined && op.status !== 'unknown_outcome') {
+          add(
+            'task.finding_unexpected',
+            'a finding is recorded only while the outcome is unknown',
+            ['finding'],
+          )
           break
         }
         const lease =
@@ -274,15 +286,19 @@ export function applyOperations(
             : op.status === 'unknown_outcome'
               ? ((current.attributes.lease as JsonValue | undefined) ?? null)
               : null
+        // A finding is kept while the outcome stays unknown and cleared when the task leaves it.
+        const { finding: kept, ...rest } = current.attributes
+        const finding = op.status === 'unknown_outcome' ? (op.finding ?? kept) : undefined
         write({
           kind: 'object',
           version: {
             ...current,
             attributes: {
-              ...current.attributes,
+              ...rest,
               status: op.status,
               statusRationale: op.rationale,
               lease,
+              ...(finding === undefined || finding === null ? {} : { finding }),
             },
             revision,
           },

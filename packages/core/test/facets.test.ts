@@ -76,6 +76,7 @@ const facets = (
   objects: ObjectVersion[],
   relations: RelationVersion[],
   freshness: [string, ClaimFreshness][] = [],
+  paths: Record<string, string[]> = {},
 ) =>
   decisionFacets(
     'd',
@@ -83,6 +84,7 @@ const facets = (
     relations,
     new Map(freshness),
     labelOf,
+    (id) => paths[id] ?? [],
   )
 
 describe('decision facets (ADR 0023)', () => {
@@ -119,6 +121,8 @@ describe('decision facets (ADR 0023)', () => {
         { id: 't1', title: 'API filter', status: 'completed' },
         { id: 't2', title: 'Docs', status: 'ready' },
       ],
+      touched: 0,
+      changes: 1,
     })
     expect(both.verification).toEqual({ state: 'partial', coverage: 'Commits 84c5a9e..96fbcbe.' })
 
@@ -142,6 +146,68 @@ describe('decision facets (ADR 0023)', () => {
     )
     expect(failed.implementation.state).toBe('reported')
     expect(failed.verification).toEqual({ state: 'failed', coverage: null })
-    expect(facets(base, links).implementation).toEqual({ state: 'none', tasks: [] })
+    expect(facets(base, links).implementation).toEqual({
+      state: 'none',
+      tasks: [],
+      touched: 0,
+      changes: 1,
+    })
+  })
+
+  it('counts the changes whose target the verified reports touched (ADR 0024)', () => {
+    // The open decision counts both alternatives' changes: the endpoint and the UI module.
+    const open = base.map((o) =>
+      o.id === 'd' || o.id === 'a1' || o.id === 'a2'
+        ? { ...o, attributes: { ...o.attributes, status: o.id === 'd' ? 'open' : 'proposed' } }
+        : o,
+    )
+    const paths = {
+      ep: ['backend/app/api/routes/items.py'],
+      ui: ['frontend/items.tsx'],
+    }
+    const task = obj('t1', 'core.Task', { title: 'API filter', status: 'review' })
+    const report = (id: string, files: string[]) => ({
+      ...obj(id, 'core.ExecutionReport', { outcome: 'succeeded' }),
+      attributes: { outcome: 'succeeded', filesChanged: files },
+    })
+    const verdict = (id: string, outcome: string) =>
+      obj(id, 'core.Verification', { outcome }, 'Commits checked.')
+    const linked = (reportId: string, verificationId: string) => [
+      rel('i1', 'implements', 't1', 'd'),
+      rel(`p-${reportId}`, 'reports', reportId, 't1'),
+      rel(`v-${verificationId}`, 'verifies', verificationId, reportId),
+    ]
+
+    // A passing report that changed the endpoint's file (as typed before paths were normalised).
+    const passed = facets(
+      [
+        ...open,
+        task,
+        report('rep1', ['backend\\app\\api\\routes\\items.py']),
+        verdict('ver1', 'pass'),
+      ],
+      [...links, ...linked('rep1', 'ver1')],
+      [],
+      paths,
+    ).implementation
+    expect(passed).toMatchObject({ state: 'reported', touched: 1, changes: 2 })
+
+    // The same files under a failed verification touch nothing.
+    const failed = facets(
+      [...open, task, report('rep1', ['backend/app/api/routes/items.py']), verdict('ver1', 'fail')],
+      [...links, ...linked('rep1', 'ver1')],
+      [],
+      paths,
+    ).implementation
+    expect(failed).toMatchObject({ touched: 0, changes: 2 })
+
+    // Once an alternative is accepted, only its changes count.
+    const accepted = facets(
+      [...base, task, report('rep1', ['frontend/items.tsx']), verdict('ver1', 'pass')],
+      [...links, ...linked('rep1', 'ver1')],
+      [],
+      paths,
+    ).implementation
+    expect(accepted).toMatchObject({ touched: 0, changes: 1 })
   })
 })
