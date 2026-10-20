@@ -38,7 +38,14 @@ export interface AppLocation {
   taskLayout?: 'board' | 'graph' | undefined
   /** The decision whose alternatives are compared (Decisions view only). */
   decision?: string | undefined
+  /** The canvas lens (Graph view only; ADR 0020). */
+  lens?: Lens | undefined
+  /** The alternative whose impact the canvas shows (Graph view, impact lens). */
+  alternative?: string | undefined
 }
+
+export const LENSES = ['basis', 'freshness', 'impact', 'decisions'] as const
+export type Lens = (typeof LENSES)[number]
 
 /** Context package ids are content addresses: `ctx_` and 32 hex digits (ADR 0011). */
 const PACKAGE_ID = /^ctx_[0-9a-f]{32}$/
@@ -61,6 +68,10 @@ export function parseLocation(search: string): AppLocation {
     task: OBJECT_ID.test(q.get('task') ?? '') ? (q.get('task') as string) : undefined,
     taskLayout: q.get('layout') === 'graph' ? 'graph' : undefined,
     decision: OBJECT_ID.test(q.get('decision') ?? '') ? (q.get('decision') as string) : undefined,
+    lens: (LENSES as readonly string[]).includes(q.get('lens') ?? '')
+      ? (q.get('lens') as Lens)
+      : undefined,
+    alternative: OBJECT_ID.test(q.get('alt') ?? '') ? (q.get('alt') as string) : undefined,
   }
 }
 
@@ -77,6 +88,8 @@ export function formatLocation(loc: AppLocation): string {
   if (loc.task && loc.view === 'tasks') q.set('task', loc.task)
   if (loc.taskLayout === 'graph' && loc.view === 'tasks') q.set('layout', 'graph')
   if (loc.decision && loc.view === 'decisions') q.set('decision', loc.decision)
+  if (loc.lens && loc.view === 'graph') q.set('lens', loc.lens)
+  if (loc.alternative && loc.view === 'graph') q.set('alt', loc.alternative)
   const s = q.toString()
   return s ? `?${s}` : ''
 }
