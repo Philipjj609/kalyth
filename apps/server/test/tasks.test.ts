@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { FixtureRepo } from '../../../packages/analyzer/test/fixture-repo.ts'
-import { harness, stated } from './fixture.ts'
+import { harness, stated, TOKEN } from './fixture.ts'
 
 let h: Awaited<ReturnType<typeof harness>>
 let repo: FixtureRepo | undefined
@@ -205,5 +205,99 @@ describe('tasks over HTTP and MCP (ADR 0013)', () => {
     expect(viaMcp.body).toMatchObject({ status: 'running', leaseExpired: true })
     expect((await h.mcp('list_tasks', { projectId })).body.tasks[0].leaseExpired).toBe(true)
     expect(await head()).toBe(before)
+  })
+})
+
+describe('closing the loop after an agent’s work (ADR 0024)', () => {
+  it('gives the same agent prompt over HTTP and MCP, with no secret in it', async () => {
+    const { projectId, taskId } = await readyTask()
+    const viaHttp = (await h.http('GET', `/api/v1/tasks/${taskId}`)).body
+    expect(viaHttp.agentPrompt).toContain(`Call claim_task with taskId "${taskId}"`)
+    expect(viaHttp.agentPrompt).toContain(`Kalyth-Task: ${taskId}`)
+    expect(viaHttp.agentPrompt).not.toContain(TOKEN)
+    expect(viaHttp.agentPrompt).not.toMatch(/kalyth_at_/)
+    expect((await h.mcp('get_task', { taskId })).body.agentPrompt).toBe(viaHttp.agentPrompt)
+    expect((await h.mcp('list_tasks', { projectId })).body.tasks[0].agentPrompt).toBe(
+      viaHttp.agentPrompt,
+    )
+  })
+
+  it('shows the commit a claim found, and takes a person’s report for it over HTTP', async () => {
+    let now = Date.parse('2026-10-20T12:00:00.000Z')
+    const { projectId, taskId, repo } = await readyTask({
+      clock: () => new Date(now).toISOString(),
+    })
+    await h.http('PUT', `/api/v1/projects/${projectId}/task-repository`, { path: repo.path })
+    expect((await h.mcp('claim_task', { taskId, leaseMinutes: 5 })).isError).toBe(false)
+    repo.write({ 'app/models.py': 'class Item:\n    tenant_id: int\n' })
+    const sha = repo.commit(`Add tenant_id\n\nKalyth-Task: ${taskId}`)
+    now += 6 * 60_000
+    const refused = await h.mcp('claim_task', { taskId })
+    expect(refused.body.error.code).toBe('conflicting')
+    expect((await h.http('GET', `/api/v1/tasks/${taskId}`)).body).toMatchObject({
+      status: 'unknown_outcome',
+      finding: { commits: [sha] },
+    })
+
+    // A report that names the wrong files fails verification and keeps the finding.
+    const wrong = await h.http('POST', `/api/v1/tasks/${taskId}/reports`, {
+      idempotencyKey: 'person-0001',
+      summary: 'Reviewed the commit git found.',
+      commit: sha,
+      filesChanged: ['app/model.py'],
+    })
+    expect(wrong.status).toBe(201)
+    expect(wrong.body.verification.outcome).toBe('fail')
+    expect(wrong.body.task).toMatchObject({
+      status: 'unknown_outcome',
+      finding: { commits: [sha] },
+    })
+
+    const right = await h.http('POST', `/api/v1/tasks/${taskId}/reports`, {
+      idempotencyKey: 'person-0002',
+      summary: 'Reviewed the commit git found.',
+      commit: sha,
+      filesChanged: ['app/models.py'],
+    })
+    expect(right.status).toBe(201)
+    expect(right.body.verification.outcome).toBe('pass')
+    expect(right.body.task).toMatchObject({ status: 'review', finding: null })
+    expect(right.body.task.reports[1]).toMatchObject({ filedBy: h.owner.id, commit: sha })
+
+    const invalid = await h.http('POST', `/api/v1/tasks/${taskId}/reports`, {
+      idempotencyKey: 'x',
+      summary: '',
+    })
+    expect(invalid.status).toBe(422)
+  })
+
+  it('reconciles over HTTP once a report is verified', async () => {
+    const { projectId, taskId, repo } = await readyTask()
+    await h.http('PUT', `/api/v1/projects/${projectId}/task-repository`, { path: repo.path })
+    const early = await h.http('POST', `/api/v1/tasks/${taskId}/reconcile`)
+    expect(early.status).toBe(409)
+    repo.write({ 'app/models.py': 'class Item:\n    tenant_id: int\n' })
+    const sha = repo.commit(`Add tenant_id\n\nKalyth-Task: ${taskId}`)
+    const filed = await h.http('POST', `/api/v1/tasks/${taskId}/reports`, {
+      idempotencyKey: 'person-0003',
+      summary: 'Done by hand.',
+      commit: sha,
+      filesChanged: ['app/models.py'],
+    })
+    expect(filed.body.task.status).toBe('review')
+    const reconciled = await h.http('POST', `/api/v1/tasks/${taskId}/reconcile`)
+    expect(reconciled.status).toBe(200)
+    expect(reconciled.body).toMatchObject({
+      taskId,
+      projectId,
+      report: { commit: sha },
+      analysis: { status: 'analysed', commit: sha },
+      decisions: [],
+    })
+    // The model now holds what the analyzer observed at the commit.
+    const objects = (
+      await h.http('GET', `/api/v1/projects/${projectId}/objects?type=software.Module`)
+    ).body.objects as { attributes: { path: string } }[]
+    expect(objects.map((o) => o.attributes.path)).toContain('app/models.py')
   })
 })

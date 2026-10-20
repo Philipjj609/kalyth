@@ -4,7 +4,7 @@ import { canonicalJson } from '@kalyth/contracts'
 import { ensureLocalOwner, ensurePrincipal, KalythServices, SqliteStore } from '@kalyth/core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { FixtureRepo, V1, V2 } from '../../analyzer/test/fixture-repo.ts'
-import { ContextCompiler } from '../src/index.ts'
+import { AGENT_POLICY, ContextCompiler, TASK_AGENT_POLICY } from '../src/index.ts'
 
 const unwrap = <T>(r: Result<T>): T => {
   if (!r.ok)
@@ -239,6 +239,30 @@ describe('context packages (ADR 0011)', () => {
       ).length,
     )
     expect(result.callerScopes).toContain('proposal.commit')
+  })
+
+  it('gives a package for a task the task policy, and a package without one the generic policy (ADR 0024)', async () => {
+    const { compiler, owner, projectId, decision } = await setup()
+    const forTask = unwrap(
+      compiler.compile(owner, {
+        projectId,
+        focus: [decision.id],
+        task: { title: 'Add organisations', acceptanceCriteria: ['Items are listed per tenant'] },
+      }),
+    ).package
+    expect(forTask.mandatory.policy).toEqual(TASK_AGENT_POLICY)
+    const policy = forTask.mandatory.policy.join('\n')
+    expect(policy).toMatch(/Claim the task with claim_task before you change anything/)
+    expect(policy).toMatch(/"Kalyth-Task: <task id>"/)
+    expect(policy).toMatch(/call submit_execution_report with your last commit/)
+    expect(policy).toMatch(/Say plainly what you did not run/)
+    expect(policy).toMatch(/propose_change only when a person asks for them/)
+    // The generic line that invites proposals is not there.
+    expect(policy).not.toContain(AGENT_POLICY[1])
+
+    const plain = unwrap(compiler.compile(owner, { projectId, focus: [decision.id] })).package
+    expect(plain.mandatory.policy).toEqual(AGENT_POLICY)
+    expect(plain.id).not.toBe(forTask.id)
   })
 
   it('is deterministic and content-addressed, and keeps its revision after the head moves', async () => {

@@ -390,7 +390,8 @@ export function registerApiRoutes(
     )
 
     // Tasks (ADR 0013). People read tasks here and change them through proposals; agents claim
-    // and report over MCP only. The task repository is registered by a person, acting directly.
+    // and report over MCP only. The task repository is registered by a person, acting directly,
+    // who may also file a report and reconcile the model with a task here (ADR 0024).
     app.get('/api/v1/projects/:projectId/tasks', async (req, reply) => {
       const status = query(req).status
       return send(
@@ -403,6 +404,27 @@ export function registerApiRoutes(
     })
     app.get('/api/v1/tasks/:taskId', async (req, reply) =>
       send(reply, tasks(req).getTask(workspaceOf(req).caller, { taskId: params(req).taskId })),
+    )
+    // A person files a report themselves, verified against git like an agent's (ADR 0024).
+    app.post('/api/v1/tasks/:taskId/reports', async (req, reply) =>
+      send(
+        reply,
+        tasks(req).fileReport(workspaceOf(req).caller, {
+          ...body(req),
+          taskId: params(req).taskId,
+        }),
+        201,
+      ),
+    )
+    // Re-analyses the task repository at the verified commit and reconciles the model with it
+    // (ADR 0024). It reads a path on this machine, so the hosted demo refuses it like registration.
+    app.post('/api/v1/tasks/:taskId/reconcile', async (req, reply) =>
+      features.taskRepository
+        ? send(
+            reply,
+            await tasks(req).reconcile(workspaceOf(req).caller, { taskId: params(req).taskId }),
+          )
+        : off(reply, 'Reconciling with a repository'),
     )
     app.get('/api/v1/projects/:projectId/task-repository', async (req, reply) =>
       send(

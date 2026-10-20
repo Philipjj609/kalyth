@@ -205,7 +205,7 @@ export const TOOLS: readonly ToolSpec[] = [
     name: 'get_task',
     title: 'Get a task',
     description:
-      'One task: description, acceptance criteria, links, lease (leaseExpired is true once the lease of a running task has run out; the next claim checks git for its commit first) and every execution report with its verification.',
+      'One task: description, acceptance criteria, links, lease (leaseExpired is true once the lease of a running task has run out; the next claim checks git for its commit first), every execution report with its verification, the commits git showed for it while its outcome is unknown (finding), and agentPrompt: the steps for working on it.',
     input: TaskQuery,
     readOnly: true,
     run: (d, c, i) => d.tasks.getTask(c, i),
@@ -214,7 +214,7 @@ export const TOOLS: readonly ToolSpec[] = [
     name: 'claim_task',
     title: 'Claim a task',
     description:
-      'Takes a ready task with a lease (default 60 minutes) and returns the context package to read first and the commit trailer to use. Refused while another agent holds the task, while its requirements are unmet, or when an expired holder may already have committed. Renew the lease with renew_task_lease if the work runs longer.',
+      'Takes a ready task with a lease (default 60 minutes) and returns the context package to read first and the commit trailer to use. Refused while another agent holds the task, while its requirements are unmet, or when an expired holder may already have committed (the commit is then recorded on the task for a person to review). Renew the lease with renew_task_lease if the work runs longer.',
     input: ClaimTaskInput,
     readOnly: false,
     run: (d, c, i) => d.tasks.claim(c, i),
