@@ -16,6 +16,8 @@ export const VIEWS = [
   'handoff',
   'tasks',
   'decisions',
+  'change',
+  'compare',
 ] as const
 export type View = (typeof VIEWS)[number]
 
@@ -51,6 +53,8 @@ export type Lens = (typeof LENSES)[number]
 const PACKAGE_ID = /^ctx_[0-9a-f]{32}$/
 /** Tasks are kernel objects (ADR 0013). */
 const OBJECT_ID = /^obj_[0-9a-f]{32}$/
+/** Navigator runs (ADR 0010). */
+const RUN_ID = /^nav_[0-9a-f]{32}$/
 
 export function parseLocation(search: string): AppLocation {
   const q = new URLSearchParams(search)
@@ -62,7 +66,7 @@ export function parseLocation(search: string): AppLocation {
     view: (VIEWS as readonly string[]).includes(view ?? '') ? (view as View) : 'overview',
     revision,
     selection: q.get('sel') ?? undefined,
-    run: q.get('run') ?? undefined,
+    run: RUN_ID.test(q.get('run') ?? '') ? (q.get('run') as string) : undefined,
     proposal: q.get('proposal') ?? undefined,
     package: PACKAGE_ID.test(q.get('package') ?? '') ? (q.get('package') as string) : undefined,
     task: OBJECT_ID.test(q.get('task') ?? '') ? (q.get('task') as string) : undefined,
@@ -82,12 +86,13 @@ export function formatLocation(loc: AppLocation): string {
   if (loc.view !== 'overview') q.set('view', loc.view)
   if (loc.revision !== undefined) q.set('rev', String(loc.revision))
   if (loc.selection) q.set('sel', loc.selection)
-  if (loc.run && loc.view === 'navigator') q.set('run', loc.run)
+  if (loc.run && (loc.view === 'navigator' || loc.view === 'change')) q.set('run', loc.run)
   if (loc.proposal && loc.view === 'proposals') q.set('proposal', loc.proposal)
   if (loc.package && loc.view === 'handoff') q.set('package', loc.package)
   if (loc.task && loc.view === 'tasks') q.set('task', loc.task)
   if (loc.taskLayout === 'graph' && loc.view === 'tasks') q.set('layout', 'graph')
-  if (loc.decision && loc.view === 'decisions') q.set('decision', loc.decision)
+  if (loc.decision && (loc.view === 'decisions' || loc.view === 'change' || loc.view === 'compare'))
+    q.set('decision', loc.decision)
   if (loc.lens && loc.view === 'graph') q.set('lens', loc.lens)
   if (loc.alternative && loc.view === 'graph') q.set('alt', loc.alternative)
   const s = q.toString()

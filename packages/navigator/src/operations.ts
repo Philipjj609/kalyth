@@ -53,6 +53,18 @@ function statementEvidence(context: ModelContext, cited: ReadonlySet<string>): O
   )
 }
 
+/**
+ * Model prose with the context handles replaced by names: "User (N1)" becomes "User", a bare
+ * "N1" or "P2" becomes the element's name, and evidence or statement handles in brackets go. A
+ * handle the run did not provide is left as it is.
+ */
+export function humanize(text: string, nameOf: (handle: string) => string | undefined): string {
+  return text
+    .replace(/\s*\((?:[NEPS]\d{1,4})(?:\s*(?:,|and)\s*[NEPS]\d{1,4})*\)/g, '')
+    .replace(/\b[NP]\d{1,4}\b/g, (handle) => nameOf(handle) ?? handle)
+    .replace(/ {2,}/g, ' ')
+}
+
 const ENDPOINT_NAME = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|ANY)\s+(\/\S*)$/
 
 /** A proposed element's attributes for its type, or why it cannot be one (ADR 0022). */
@@ -231,6 +243,9 @@ export function mapAlternatives(
   const reject = (item: string, reason: string, ref?: string) => {
     grounding.itemsRejected.push(ref === undefined ? { item, reason } : { item, reason, ref })
   }
+  // People read names, not the handles the model was given (N1, P2, E3, S1).
+  const newNames = new Map(out.newElements.map((e) => [e.ref, e.name]))
+  const named = (text: string) => humanize(text, (h) => elements.get(h)?.label ?? newNames.get(h))
   const method = existing ? 'navigator.refine' : 'navigator.alternatives'
   const framing = {
     level: 'medium' as const,
@@ -290,7 +305,7 @@ export function mapAlternatives(
       ref: '$decision',
       type: 'core.Decision',
       stance: 'toBe',
-      attributes: { title: out.decision.title, question: out.decision.question },
+      attributes: { title: named(out.decision.title), question: named(out.decision.question) },
       claim: inferred(model, method, framing),
     })
   }
@@ -308,14 +323,18 @@ export function mapAlternatives(
   out.alternatives.forEach((alt, a) => {
     const ref = `$alt${a + 1}`
     const own = offset + a + 1
-    const confidence = { level: alt.confidence, rationale: alt.rationale }
+    const confidence = { level: alt.confidence, rationale: named(alt.rationale) }
     altOps.push(
       {
         op: 'createObject',
         ref,
         type: 'core.Alternative',
         stance: 'toBe',
-        attributes: { title: alt.title, summary: alt.summary, tradeoffs: alt.tradeoffs },
+        attributes: {
+          title: named(alt.title),
+          summary: named(alt.summary),
+          tradeoffs: named(alt.tradeoffs),
+        },
         claim: inferred(model, method, confidence),
       },
       {
@@ -374,7 +393,7 @@ export function mapAlternatives(
         from: ref,
         to: target,
         stance: 'toBe',
-        properties: { change: change.change },
+        properties: { change: named(change.change) },
         claim: inferred(model, method, confidence, keep(check.evidenceIds)),
       })
     })
@@ -438,7 +457,7 @@ export function mapAlternatives(
         type: 'core.Question',
         stance: 'toBe',
         attributes: {
-          text: q.text,
+          text: named(q.text),
           inquiryRole: q.inquiryRole,
           status: 'open',
           ...(q.options.length > 0 ? { options: q.options } : {}),

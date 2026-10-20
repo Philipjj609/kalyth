@@ -10,7 +10,8 @@ export const VIEWS = [
   'navigator',
   'handoff',
   'tasks',
-  'decisions',
+  'change',
+  'compare',
 ] as const
 
 function env(name: string): string {

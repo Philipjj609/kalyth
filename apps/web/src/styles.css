@@ -219,7 +219,6 @@
   }
 }
 
-
 :root[data-theme="dark"] {
   color-scheme: dark;
   --k-bg: #0f1419;
@@ -396,6 +395,200 @@
 }
 
 @layer components {
+  /* ---------- Drafting Table vocabulary (ADR 0020) ---------- */
+
+  /* A small mono label above a value or a heading. */
+  .k-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    line-height: 1.4;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--k-fg-subtle);
+  }
+
+  /* What a person said: a solid ink bar, quoted (ADR 0022). */
+  .k-stated {
+    border-left: 3px solid var(--k-fg);
+    padding: 2px 0 2px 12px;
+  }
+
+  /* The model's interpretation: a dashed graphite rule, never styled as observed. */
+  .k-inferred {
+    border-left: 2px dashed var(--k-fg-subtle);
+    padding-left: 10px;
+  }
+
+  /* An alternative's key: A1, A2, ... */
+  .k-key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    height: 24px;
+    padding: 0 5px;
+    border: 1.5px solid var(--k-fg);
+    font: 600 12px / 1 var(--font-mono);
+    color: var(--k-fg);
+    background: var(--k-surface);
+  }
+
+  /* A numbered balloon, as on an engineering drawing. */
+  .k-balloon {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    border: 1.5px solid var(--k-accent);
+    color: var(--k-accent);
+    background: var(--k-surface);
+    font: 600 11px / 1 var(--font-mono);
+  }
+
+  /* The stage rail of a change thread: orientation and links, not a forced sequence. */
+  .k-stage {
+    position: relative;
+    display: block;
+    padding: 12px 8px 4px 0;
+    font-size: 13px;
+    color: var(--k-fg);
+    text-decoration: none;
+  }
+  .k-stage::before {
+    content: "";
+    position: absolute;
+    top: -5px;
+    left: 0;
+    width: 9px;
+    height: 9px;
+    border: 1.5px solid var(--k-fg);
+    background: var(--k-bg);
+  }
+  .k-stage[data-state="done"]::before {
+    background: var(--k-fg);
+  }
+  .k-stage[data-state="current"] {
+    font-weight: 600;
+  }
+  .k-stage[data-state="current"]::before {
+    background: var(--k-accent);
+    border-color: var(--k-accent);
+  }
+  .k-stage[data-state="upcoming"] {
+    color: var(--k-fg-muted);
+  }
+  .k-stage:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* A place in the workspace rail. */
+  .k-rail-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 32px;
+    padding: 0 8px;
+    border-radius: 3px;
+    color: var(--k-fg-muted);
+    font-size: 13px;
+    text-decoration: none;
+  }
+  .k-rail-link:hover {
+    background: var(--k-surface-2);
+    color: var(--k-fg);
+  }
+  .k-rail-active {
+    background: var(--k-bg);
+    color: var(--k-fg);
+    font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--k-accent);
+  }
+
+  /* A link that looks like a button, for actions that navigate. */
+  .k-button-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--k-border-strong);
+    border-radius: 3px;
+    background: var(--k-surface);
+    color: var(--k-fg);
+    font-weight: 500;
+    font-size: 13px;
+    text-decoration: none;
+  }
+  .k-button-link:hover {
+    border-color: var(--k-fg-muted);
+    text-decoration: none;
+  }
+  .k-button-link.primary {
+    background: var(--k-accent);
+    border-color: var(--k-accent);
+    color: var(--k-accent-fg);
+  }
+  .k-button-link.primary:hover {
+    background: var(--k-accent-hover);
+  }
+
+  /* The comparison table: hairline rules, sticky headers and a hatched chosen column. */
+  .k-ctable {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+    text-align: left;
+  }
+  .k-ctable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  .k-ctable .k-sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+  }
+  .k-ctable thead .k-sticky-col {
+    z-index: 3;
+  }
+  .k-cth,
+  .k-ctd {
+    vertical-align: top;
+  }
+  .k-cth,
+  .k-ctd {
+    padding: 8px 12px;
+    border-right: 1px solid var(--k-border);
+    border-bottom: 1px solid var(--k-border);
+    background: var(--k-surface);
+    font-size: 13px;
+  }
+  .k-cth {
+    border-bottom-color: var(--k-fg);
+  }
+  .k-picked {
+    background:
+      repeating-linear-gradient(135deg, var(--k-impact-soft) 0 2px, transparent 2px 8px),
+      var(--k-surface);
+  }
+  .k-cth.k-picked {
+    box-shadow: inset 0 3px 0 var(--k-accent);
+  }
+  .k-cgroup {
+    text-align: left;
+    padding: 6px 12px;
+    background: var(--k-bg);
+    border-bottom: 1px solid var(--k-fg-muted);
+  }
+  .k-cgroup-inferred {
+    border-left: 2px dashed var(--k-fg-subtle);
+  }
+
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: var(--k-border-strong) transparent;

@@ -420,7 +420,7 @@ const FRESHNESS: Record<string, string> = {
  * Where the decision stands besides acceptance, one facet per row (ADR 0023). Each is tracked on
  * its own: an accepted decision may be partly built, and built work may rest on changed evidence.
  */
-function DecisionFacetsList({ decision }: { decision: DecisionSummary }) {
+export function DecisionFacetsList({ decision }: { decision: DecisionSummary }) {
   const { implementation, verification, freshness } = decision.facets
   const tasks = implementation.tasks.filter((t) => t.status !== 'cancelled')
   const done = tasks.filter((t) => t.status === 'completed').length
@@ -478,7 +478,7 @@ function DecisionFacetsList({ decision }: { decision: DecisionSummary }) {
   )
 }
 
-function QuestionList({
+export function QuestionList({
   questions,
   compact,
   answerable = false,
@@ -598,7 +598,13 @@ function AnswerForm({ questionId, options }: { questionId: string; options: read
  * and proposes more alternatives and hybrids for it. People start runs; the output is a proposal
  * to review like any other.
  */
-function ExploreAgain({ decision, answered }: { decision: DecisionSummary; answered: number }) {
+export function ExploreAgain({
+  decision,
+  answered,
+}: {
+  decision: DecisionSummary
+  answered: number
+}) {
   const wb = useWorkbench()
   const start = useStartNavigatorRun(wb.projectId)
   const run = start.data

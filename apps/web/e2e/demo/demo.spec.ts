@@ -32,7 +32,8 @@ test('opens a private copy without any token', async ({ page }) => {
 
 test('runs a recorded preset and accepts an alternative, by keyboard', async ({ page }) => {
   await open(page)
-  await press(page, '6')
+  // 4: New change, the Navigator.
+  await press(page, '4')
   const presets = panel(page, 'Try a change request')
   await expect(presets).toBeVisible()
   // Only the recorded presets can run while live runs are off.
@@ -58,7 +59,8 @@ test('runs a recorded preset and accepts an alternative, by keyboard', async ({ 
   await expect(page.getByRole('button', { name: 'Commit', exact: true })).toHaveCount(0)
 
   await page.locator('body').focus()
-  await press(page, '9')
+  // 3: Changes.
+  await press(page, '3')
   const decision = page
     .getByRole('main')
     .getByRole('link', { name: /multi-tenancy/i })
@@ -66,7 +68,7 @@ test('runs a recorded preset and accepts an alternative, by keyboard', async ({ 
   await decision.focus()
   await press(page, 'Enter')
   await expect(page).toHaveURL(/decision=/)
-  const accept = page.getByRole('button', { name: /Accept/ }).first()
+  const accept = page.getByRole('button', { name: /^Accept A\d/ }).first()
   await accept.focus()
   await press(page, 'Enter')
   const dialog = page.getByRole('dialog')

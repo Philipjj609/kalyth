@@ -1,20 +1,21 @@
 import { expect, type Page, test } from '@playwright/test'
-import { axeViolations, open, VIEWS } from './app.ts'
+import { axeViolations, open } from './app.ts'
 
 // The main flows, with the keyboard only (G4). Each test starts from the session link, as a person
 // would. The flows change the shared sample project; with one worker they run in file order.
 
-const LABELS: Record<(typeof VIEWS)[number], string> = {
-  overview: 'Overview',
-  graph: 'Graph',
-  records: 'Records',
-  proposals: 'Proposals',
-  history: 'History',
-  navigator: 'Navigator',
-  handoff: 'Handoff',
-  tasks: 'Tasks',
-  decisions: 'Decisions',
-}
+/** The places of the workspace rail, in the order number keys reach them. */
+const PLACES = [
+  'Situation',
+  'Canvas',
+  'Changes',
+  'New change',
+  'Records',
+  'Proposals',
+  'Tasks',
+  'Agents and packages',
+  'History',
+]
 
 const press = (page: Page, key: string) => page.keyboard.press(key)
 
@@ -33,18 +34,32 @@ test('the skip link moves past the header to the content', async ({ page }) => {
   expect({ inMain, inHeader }).toEqual({ inMain: true, inHeader: false })
 })
 
-test('number keys and arrow keys switch views', async ({ page }) => {
+test('number keys reach every place in the rail', async ({ page }) => {
   await open(page)
-  const tabs = page.getByRole('tablist', { name: 'Workbench views' })
-  for (const [i, view] of VIEWS.entries()) {
+  const rail = page.getByRole('navigation', { name: 'Workspace' })
+  for (const [i, label] of PLACES.entries()) {
     await press(page, String(i + 1))
-    await expect(tabs.getByRole('tab', { selected: true })).toContainText(LABELS[view])
+    await expect(rail.locator('[aria-current="page"]').first()).toContainText(label)
   }
   await press(page, '1')
-  await tabs.getByRole('tab', { selected: true }).focus()
-  await press(page, 'ArrowRight')
-  await expect(tabs.getByRole('tab', { selected: true })).toContainText('Graph')
-  await expect(tabs.getByRole('tab', { name: /Graph/ })).toBeFocused()
+  await expect(page.getByRole('main', { name: 'Situation' })).toBeVisible()
+})
+
+test('the palette finds an element and opens it on the canvas', async ({ page }) => {
+  await open(page)
+  await press(page, 'Control+k')
+  const search = page.getByRole('combobox', { name: 'Search elements, changes or actions' })
+  await expect(search).toBeFocused()
+  await page.keyboard.type('crud.py')
+  const results = page.getByRole('listbox', { name: 'Results' })
+  await expect(results.getByRole('option').first()).toContainText('crud.py')
+  expect(await axeViolations(page)).toEqual([])
+  await press(page, 'Enter')
+  await expect(page).toHaveURL(/view=graph/)
+  await expect(page).toHaveURL(/sel=/)
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toContainText('crud.py')
+  await press(page, 'Escape')
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toHaveCount(0)
 })
 
 test('records: search, open a record in the Inspector, and clear it', async ({ page }) => {
@@ -113,7 +128,8 @@ test('proposals: commit the pending proposal from the keyboard', async ({ page }
 test('navigator: start a mock alternatives run from the keyboard', async ({ page }) => {
   await open(page, 'view=navigator')
   await page.waitForLoadState('networkidle')
-  const run = page.getByRole('link', { name: /Add multi-tenancy to the API/ })
+  // The run appears in the Navigator's list and, awaiting review, in the rail as well.
+  const run = page.getByRole('main').getByRole('link', { name: /Add multi-tenancy to the API/ })
   await expect(run).toHaveCount(0)
   const request = page.getByRole('textbox', { name: /change/i })
   await request.focus()
@@ -130,15 +146,33 @@ test('navigator: start a mock alternatives run from the keyboard', async ({ page
   expect(await axeViolations(page)).toEqual([])
 })
 
-test('decisions: compare alternatives and accept one from the keyboard', async ({ page }) => {
-  await open(page, 'view=decisions')
+test('changes: open a change, compare, and accept an alternative from the keyboard', async ({
+  page,
+}) => {
+  await open(page, 'view=change')
   await page.waitForLoadState('networkidle')
-  const decision = page.getByRole('main').getByRole('link').first()
-  await decision.focus()
+  // A decision, not a run that still awaits review.
+  const change = page.getByRole('main').locator('li a[href*="decision="]').first()
+  await change.focus()
   await press(page, 'Enter')
   await expect(page).toHaveURL(/decision=/)
-  await expect(page.getByRole('main')).not.toContainText('Decision status: Accepted')
-  const accept = page.getByRole('button', { name: /Accept/ }).first()
+  const main = page.getByRole('main')
+  await expect(main.getByRole('region', { name: 'Next step' })).toBeVisible()
+  await expect(main).not.toContainText('Decision status: Accepted')
+  expect(await axeViolations(page)).toEqual([])
+
+  // The comparison: every alternative, and its interpretation kept apart from evidence.
+  await main
+    .getByRole('link', { name: /Compare side by side/ })
+    .first()
+    .focus()
+  await press(page, 'Enter')
+  await expect(page).toHaveURL(/view=compare/)
+  await expect(page.getByRole('table')).toContainText('generated interpretation')
+  expect(await axeViolations(page)).toEqual([])
+  await page.goBack()
+
+  const accept = page.getByRole('button', { name: /^Accept A\d/ }).first()
   await accept.focus()
   await press(page, 'Enter')
   const dialog = page.getByRole('dialog')
@@ -157,7 +191,7 @@ test('decisions: compare alternatives and accept one from the keyboard', async (
   await expect(dialog.getByRole('button', { name: 'Accept alternative' })).toBeFocused()
   await press(page, 'Enter')
   await expect(dialog).toBeHidden()
-  await expect(page.getByRole('main')).toContainText('Decision status: Accepted')
+  await expect(main).toContainText('Decision status: Accepted')
 })
 
 test('history: open a past revision and return to the head', async ({ page }) => {

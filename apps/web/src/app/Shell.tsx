@@ -1,24 +1,14 @@
 import type { ProjectSummary } from '@kalyth/contracts'
 import * as Popover from '@radix-ui/react-popover'
-import * as Tabs from '@radix-ui/react-tabs'
 import {
   ChevronDown,
-  Compass,
   FolderGit2,
-  GitPullRequest,
-  Handshake,
   ClockArrowLeft as HistoryIcon,
   Keyboard,
-  LayoutDashboard,
   Monitor,
   Moon,
-  Network,
-  PanelRightClose,
-  PanelRightOpen,
-  Scale,
-  SquareKanban,
+  Search,
   Sun,
-  Table2,
 } from 'lucide-react'
 import {
   lazy,
@@ -38,24 +28,22 @@ import {
   useProposals,
   useRevisionModel,
 } from '../api/queries.ts'
+import { ChangeView } from '../change/ChangeThread.tsx'
+import { CompareView } from '../change/CompareView.tsx'
 import { FreshnessBadge } from '../components/badges.tsx'
 import { Button, Kbd, Spinner, Tip } from '../components/ui.tsx'
-import { DecisionsView } from '../decisions/DecisionsView.tsx'
-import { HandoffView } from '../handoff/HandoffView.tsx'
 import { Inspector } from '../inspector/Inspector.tsx'
 import { cn } from '../lib/cn.ts'
 import { relativeTime } from '../model/format.ts'
 import { NavigatorIndicator } from '../navigator/NavigatorActions.tsx'
-import { NavigatorView } from '../navigator/NavigatorView.tsx'
-import { TasksView } from '../tasks/TasksView.tsx'
-import { HistoryView } from '../views/HistoryView.tsx'
 import { OverviewView } from '../views/OverviewView.tsx'
 import { ProjectsLanding } from '../views/ProjectsLanding.tsx'
-import { ProposalsView } from '../views/ProposalsView.tsx'
 import { RecordsView } from '../views/RecordsView.tsx'
 import { ErrorNotice } from '../views/shared.tsx'
 import { DemoBanner } from './DemoBanner.tsx'
-import { useAppLocation, VIEWS, type View } from './location.ts'
+import { useAppLocation, type View } from './location.ts'
+import { Palette } from './Palette.tsx'
+import { PLACES, Rail } from './Rail.tsx'
 import { type ThemePreference, theme, useTheme } from './theme.ts'
 import {
   type RelationGroupSelection,
@@ -64,21 +52,43 @@ import {
   WorkbenchContext,
 } from './workbench.ts'
 
+// Views loaded on first use, so the first screen stays light.
 const GraphView = lazy(() => import('../graph/GraphView.tsx'))
+const ProposalsView = lazy(() =>
+  import('../views/ProposalsView.tsx').then((m) => ({ default: m.ProposalsView })),
+)
+const HistoryView = lazy(() =>
+  import('../views/HistoryView.tsx').then((m) => ({ default: m.HistoryView })),
+)
+const NavigatorView = lazy(() =>
+  import('../navigator/NavigatorView.tsx').then((m) => ({ default: m.NavigatorView })),
+)
+const HandoffView = lazy(() =>
+  import('../handoff/HandoffView.tsx').then((m) => ({ default: m.HandoffView })),
+)
+const TasksView = lazy(() =>
+  import('../tasks/TasksView.tsx').then((m) => ({ default: m.TasksView })),
+)
 
-const VIEW_META: Record<View, { label: string; icon: typeof Network }> = {
-  overview: { label: 'Overview', icon: LayoutDashboard },
-  graph: { label: 'Graph', icon: Network },
-  records: { label: 'Records', icon: Table2 },
-  proposals: { label: 'Proposals', icon: GitPullRequest },
-  history: { label: 'History', icon: HistoryIcon },
-  navigator: { label: 'Navigator', icon: Compass },
-  handoff: { label: 'Handoff', icon: Handshake },
-  tasks: { label: 'Tasks', icon: SquareKanban },
-  decisions: { label: 'Decisions', icon: Scale },
+const INSPECTOR_WIDTH_KEY = 'kalyth.inspector.width'
+const RAIL_KEY = 'kalyth.rail'
+const INSPECTOR_MIN = 300
+const INSPECTOR_MAX = 680
+
+function stored(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return null
+  }
 }
-
-const INSPECTOR_KEY = 'kalyth.inspector'
+function store(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    // Not persisted.
+  }
+}
 
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -137,40 +147,39 @@ function ProjectWorkbench({
   const freshness = useFreshness(projectId, revision)
   const proposals = useProposals(projectId)
   const [group, setGroup] = useState<RelationGroupSelection | null>(null)
-  const [inspectorOpen, setInspectorOpen] = useState(() => {
-    try {
-      return window.localStorage.getItem(INSPECTOR_KEY) !== 'closed'
-    } catch {
-      return true
-    }
+  // The inspector shows what is selected and folds away when nothing is (ADR 0020).
+  const inspectorOpen = loc.selection !== undefined || group !== null
+  const [inspectorWidth, setInspectorWidth] = useState(() => {
+    const n = Number(stored(INSPECTOR_WIDTH_KEY))
+    return Number.isFinite(n) && n >= INSPECTOR_MIN && n <= INSPECTOR_MAX ? n : 384
   })
-  const toggleInspector = useCallback((open?: boolean) => {
-    setInspectorOpen((prev) => {
-      const next = open ?? !prev
-      try {
-        window.localStorage.setItem(INSPECTOR_KEY, next ? 'open' : 'closed')
-      } catch {
-        // Not persisted.
-      }
-      return next
+  const resizeInspector = useCallback((width: number) => {
+    const w = Math.round(Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, width)))
+    setInspectorWidth(w)
+    store(INSPECTOR_WIDTH_KEY, String(w))
+  }, [])
+  const [railFolded, setRailFolded] = useState(() => stored(RAIL_KEY) === 'folded')
+  const toggleRail = useCallback(() => {
+    setRailFolded((prev) => {
+      store(RAIL_KEY, prev ? 'open' : 'folded')
+      return !prev
     })
   }, [])
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   const select = useCallback(
     (id: string | undefined) => {
       setGroup(null)
       navigate({ selection: id }, 'replace')
-      if (id) toggleInspector(true)
     },
-    [navigate, toggleInspector],
+    [navigate],
   )
   const selectGroup = useCallback(
     (g: RelationGroupSelection) => {
       setGroup(g)
       navigate({ selection: undefined }, 'replace')
-      toggleInspector(true)
     },
-    [navigate, toggleInspector],
+    [navigate],
   )
   const setView = useCallback((view: View) => navigate({ view }), [navigate])
   const setRevision = useCallback(
@@ -178,15 +187,26 @@ function ProjectWorkbench({
     [navigate],
   )
 
-  // Keyboard shortcuts: 1-9 switch views, "/" focuses the view's search, "i" toggles the
-  // Inspector, Escape clears the selection.
+  // Keyboard: Ctrl+K or Cmd+K opens the palette; 1-9 reach the rail's places, "/" focuses the
+  // view's search, Escape (or "i") clears the selection and folds the inspector.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.defaultPrevented) return
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
+        setPaletteOpen(true)
+        e.preventDefault()
+        return
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return
       if (isTyping(e.target) || document.querySelector('dialog[open]')) return
       const index = Number(e.key) - 1
-      if (Number.isInteger(index) && index >= 0 && index < VIEWS.length) {
-        setView(VIEWS[index] as View)
+      const place = Number.isInteger(index) && index >= 0 ? PLACES[index] : undefined
+      if (place) {
+        navigate(
+          place.view === 'change'
+            ? { view: 'change', decision: undefined, run: undefined }
+            : { view: place.view },
+        )
         e.preventDefault()
       } else if (e.key === '/') {
         const search = document.querySelector<HTMLInputElement>('[data-view-search]')
@@ -194,15 +214,13 @@ function ProjectWorkbench({
           search.focus()
           e.preventDefault()
         }
-      } else if (e.key === 'i') {
-        toggleInspector()
-      } else if (e.key === 'Escape' && (loc.selection || group)) {
+      } else if ((e.key === 'Escape' || e.key === 'i') && (loc.selection || group)) {
         select(undefined)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [setView, toggleInspector, select, loc.selection, group])
+  }, [navigate, select, loc.selection, group])
 
   const pending = proposals.data?.proposals.filter((p) => p.status === 'pending').length
 
@@ -244,140 +262,133 @@ function ProjectWorkbench({
     setRevision,
   }
 
+  const place = PLACES.find((p) => p.view === loc.view)
   return (
     <WorkbenchContext.Provider value={workbench}>
       <Frame
         projects={projects}
         currentId={projectId}
         revisionControl={<RevisionSelect />}
+        search={<PaletteButton onOpen={() => setPaletteOpen(true)} />}
         actions={
           <>
+            <FreshnessSummary />
             <NavigatorIndicator />
-            <Tip label={inspectorOpen ? 'Hide Inspector (i)' : 'Show Inspector (i)'}>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={inspectorOpen ? 'Hide Inspector' : 'Show Inspector'}
-                aria-pressed={inspectorOpen}
-                onClick={() => toggleInspector()}
-              >
-                {inspectorOpen ? <PanelRightClose aria-hidden /> : <PanelRightOpen aria-hidden />}
-              </Button>
-            </Tip>
           </>
         }
       >
         <DemoBanner />
-        <Tabs.Root
-          value={loc.view}
-          onValueChange={(v) => setView(v as View)}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <div className="flex h-10 shrink-0 items-center gap-3 border-border border-b bg-surface px-3">
-            <Tabs.List aria-label="Workbench views" className="flex h-full items-stretch gap-1">
-              {VIEWS.map((view, i) => {
-                const { label, icon: Icon } = VIEW_META[view]
-                return (
-                  <Tabs.Trigger
-                    key={view}
-                    value={view}
-                    className="group relative inline-flex items-center gap-1.5 px-2.5 font-medium text-fg-muted text-sm transition-colors hover:text-fg focus-visible:bg-surface-2 focus-visible:-outline-offset-2 data-[state=active]:text-fg"
-                    title={`${label} (${i + 1})`}
-                  >
-                    <Icon aria-hidden className="size-4" />
-                    {label}
-                    {view === 'proposals' && pending !== undefined && pending > 0 && (
-                      <span className="tone-warning rounded-full border border-tone-bd bg-tone-bg px-1.5 font-semibold text-2xs text-tone-fg tabular-nums">
-                        <span className="sr-only">, pending: </span>
-                        {pending}
-                      </span>
-                    )}
-                    <span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-accent opacity-0 transition-opacity group-data-[state=active]:opacity-100" />
-                  </Tabs.Trigger>
-                )
-              })}
-            </Tabs.List>
-            <div className="ml-auto flex min-w-0 items-center gap-2 text-fg-muted text-xs">
-              <FreshnessSummary />
-              {model?.truncated && (
-                <span className="tone-warning rounded border border-tone-bd bg-tone-bg px-1.5 text-tone-fg">
-                  Showing the first 1,000 records
-                </span>
-              )}
-            </div>
-          </div>
-          {workbench.isHistorical && <HistoricalBanner />}
-          <div className="relative flex min-h-0 flex-1">
-            <main className="flex min-w-0 flex-1 flex-col">
-              <Tabs.Content
-                value="overview"
-                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
-              >
-                <OverviewView />
-              </Tabs.Content>
-              <Tabs.Content
-                value="graph"
-                className="min-h-0 flex-1 focus-visible:-outline-offset-2"
-              >
-                <Suspense fallback={<ViewLoading label="Loading the graph" />}>
-                  <GraphView />
-                </Suspense>
-              </Tabs.Content>
-              <Tabs.Content
-                value="records"
-                className="flex min-h-0 flex-1 flex-col focus-visible:-outline-offset-2"
-              >
-                <RecordsView />
-              </Tabs.Content>
-              <Tabs.Content
-                value="proposals"
-                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
-              >
-                <ProposalsView />
-              </Tabs.Content>
-              <Tabs.Content
-                value="history"
-                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
-              >
-                <HistoryView />
-              </Tabs.Content>
-              <Tabs.Content
-                value="navigator"
-                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
-              >
-                <NavigatorView />
-              </Tabs.Content>
-              <Tabs.Content
-                value="handoff"
-                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
-              >
-                <HandoffView />
-              </Tabs.Content>
-              <Tabs.Content
-                value="tasks"
-                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
-              >
-                <TasksView />
-              </Tabs.Content>
-              <Tabs.Content
-                value="decisions"
-                className="relative min-h-0 flex-1 overflow-auto focus-visible:-outline-offset-2"
-              >
-                <DecisionsView />
-              </Tabs.Content>
-            </main>
-            {inspectorOpen && (
+        {workbench.isHistorical && <HistoricalBanner />}
+        {model?.truncated && (
+          <p className="tone-warning border-tone-bd border-b bg-tone-bg px-4 py-1 text-tone-fg text-xs">
+            Showing the first 1,000 records.
+          </p>
+        )}
+        <div className="relative flex min-h-0 flex-1">
+          <Rail collapsed={railFolded} onToggle={toggleRail} pendingProposals={pending} />
+          <main
+            aria-label={place?.label ?? (loc.view === 'compare' ? 'Compare' : 'Change')}
+            className={cn(
+              'relative flex min-h-0 min-w-0 flex-1 flex-col',
+              loc.view !== 'graph' && 'overflow-auto',
+            )}
+          >
+            <Suspense fallback={<ViewLoading label="Loading" />}>
+              <CurrentView view={loc.view} />
+            </Suspense>
+          </main>
+          {inspectorOpen && (
+            <>
+              <InspectorSplitter width={inspectorWidth} onResize={resizeInspector} />
               <aside
                 aria-label="Inspector"
-                className="flex w-[384px] shrink-0 flex-col border-border border-l bg-surface max-[1180px]:absolute max-[1180px]:inset-y-0 max-[1180px]:right-0 max-[1180px]:z-30 max-[1180px]:shadow-pop"
+                style={{ width: inspectorWidth }}
+                className="flex shrink-0 flex-col bg-surface max-[1100px]:absolute max-[1100px]:inset-y-0 max-[1100px]:right-0 max-[1100px]:z-30 max-[1100px]:shadow-pop"
               >
-                <Inspector onClose={() => toggleInspector(false)} />
+                <Inspector onClose={() => select(undefined)} />
               </aside>
-            )}
-          </div>
-        </Tabs.Root>
+            </>
+          )}
+        </div>
+        <Palette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       </Frame>
     </WorkbenchContext.Provider>
+  )
+}
+
+function CurrentView({ view }: { view: View }) {
+  switch (view) {
+    case 'overview':
+      return <OverviewView />
+    case 'graph':
+      return <GraphView />
+    case 'records':
+      return <RecordsView />
+    case 'proposals':
+      return <ProposalsView />
+    case 'history':
+      return <HistoryView />
+    case 'navigator':
+      return <NavigatorView />
+    case 'handoff':
+      return <HandoffView />
+    case 'tasks':
+      return <TasksView />
+    case 'compare':
+      return <CompareView />
+    case 'change':
+    case 'decisions':
+      return <ChangeView />
+  }
+}
+
+/** Drag, or use the arrow keys, to give the inspector or the view more room. */
+function InspectorSplitter({ width, onResize }: { width: number; onResize: (w: number) => void }) {
+  const start = useRef<{ x: number; width: number } | null>(null)
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a focusable window splitter (WAI-ARIA separator pattern); an hr cannot take focus or pointer drags
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the inspector"
+      aria-valuemin={INSPECTOR_MIN}
+      aria-valuemax={INSPECTOR_MAX}
+      aria-valuenow={width}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') onResize(width + 24)
+        else if (e.key === 'ArrowRight') onResize(width - 24)
+        else return
+        e.preventDefault()
+      }}
+      onPointerDown={(e) => {
+        start.current = { x: e.clientX, width }
+        e.currentTarget.setPointerCapture(e.pointerId)
+      }}
+      onPointerMove={(e) => {
+        if (start.current) onResize(start.current.width + start.current.x - e.clientX)
+      }}
+      onPointerUp={() => {
+        start.current = null
+      }}
+      className="w-1.5 shrink-0 cursor-col-resize border-border border-l bg-surface hover:bg-accent-soft focus-visible:bg-accent-soft max-[1100px]:hidden"
+    />
+  )
+}
+
+function PaletteButton({ onOpen }: { onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="ml-2 flex h-8 min-w-0 max-w-[420px] flex-[1_1_240px] items-center gap-2 rounded-md border border-border-strong bg-bg px-2.5 text-left text-fg-muted text-sm hover:border-fg-muted"
+    >
+      <Search aria-hidden className="size-4 shrink-0" />
+      <span className="truncate">Search elements, changes or actions…</span>
+      <span className="ml-auto shrink-0">
+        <Kbd>Ctrl K</Kbd>
+      </span>
+    </button>
   )
 }
 
@@ -396,12 +407,14 @@ function Frame({
   projects,
   currentId,
   revisionControl,
+  search,
   actions,
   children,
 }: {
   projects: ProjectSummary[] | undefined
   currentId: string | undefined
   revisionControl?: ReactNode
+  search?: ReactNode
   actions?: ReactNode
   children: ReactNode
 }) {
@@ -434,6 +447,7 @@ function Frame({
         <span aria-hidden className="h-5 w-px bg-border" />
         <ProjectSwitcher projects={projects} currentId={currentId} />
         {revisionControl}
+        {search}
         <div className="ml-auto flex items-center gap-1">
           <ShortcutsHelp />
           <ThemeToggle />
@@ -447,19 +461,25 @@ function Frame({
   )
 }
 
+/** A drafting mark: a sheet with a K in ink and a cobalt signal point. */
 function Logo() {
   return (
-    <svg viewBox="0 0 32 32" className="size-6" aria-hidden>
-      <rect width="32" height="32" rx="7" style={{ fill: 'var(--k-fg)' }} />
-      <path
-        d="M10 8v16M10 16l9-8M13.5 13l6.5 11"
-        fill="none"
-        style={{ stroke: 'var(--k-surface)' }}
-        strokeWidth="2.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+    <svg viewBox="0 0 24 24" className="size-6" aria-hidden>
+      <rect
+        x="1.25"
+        y="1.25"
+        width="21.5"
+        height="21.5"
+        style={{ fill: 'none', stroke: 'var(--k-fg)' }}
+        strokeWidth="1.5"
       />
-      <circle cx="22.5" cy="9.5" r="2.2" style={{ fill: 'var(--k-tone-observed-fg)' }} />
+      <path
+        d="M8 6v12M8 12.5l7-6.5M10.8 10.4l5.2 7.6"
+        fill="none"
+        style={{ stroke: 'var(--k-fg)' }}
+        strokeWidth="1.6"
+      />
+      <circle cx="17.5" cy="6.5" r="1.4" style={{ fill: 'var(--k-accent)' }} />
     </svg>
   )
 }
@@ -650,15 +670,15 @@ function ThemeToggle() {
 
 function ShortcutsHelp() {
   const rows: [ReactNode, string][] = [
+    [<Kbd key="k">Ctrl K</Kbd>, 'Search elements, changes or actions'],
     [
       <>
-        <Kbd>1</Kbd>–<Kbd>{VIEWS.length}</Kbd>
+        <Kbd>1</Kbd>–<Kbd>{PLACES.length}</Kbd>
       </>,
-      'Switch view',
+      'Go to a place in the rail',
     ],
-    [<Kbd key="slash">/</Kbd>, 'Search in Graph or Records'],
-    [<Kbd key="i">i</Kbd>, 'Show or hide the Inspector'],
-    [<Kbd key="esc">Esc</Kbd>, 'Clear the selection'],
+    [<Kbd key="slash">/</Kbd>, 'Search in the canvas or the records'],
+    [<Kbd key="esc">Esc</Kbd>, 'Clear the selection and fold the inspector'],
     [
       <>
         <Kbd>Tab</Kbd> <Kbd>Enter</Kbd>

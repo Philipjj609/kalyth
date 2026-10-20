@@ -252,6 +252,42 @@ export function AppLink({
   )
 }
 
+/** A place in the workbench, drawn as a button: for actions that navigate. */
+export function ButtonLink({
+  to,
+  primary = false,
+  className,
+  children,
+}: {
+  to: Partial<AppLocation>
+  primary?: boolean
+  className?: string
+  children: ReactNode
+}) {
+  const [loc, navigate] = useAppLocation()
+  const href = formatLocation({ ...loc, ...to }) || '?'
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+        e.preventDefault()
+        navigate(to)
+      }}
+      className={cn('k-button-link', primary && 'primary', className)}
+    >
+      {children}
+    </a>
+  )
+}
+
+/** Model prose without the handles the Navigator used for elements and evidence (N1, E2, S1). */
+export function withoutHandles(text: string): string {
+  return text
+    .replace(/\s*\((?:[NEPS]\d{1,4})(?:\s*,\s*[NEPS]\d{1,4})*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+}
+
 export function ViewHeader({
   title,
   description,

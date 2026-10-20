@@ -1,7 +1,7 @@
 import { sha256Hex } from '@kalyth/core'
 import { describe, expect, it } from 'vitest'
 import { type ContextEvidence, checkCitations, type ModelContext } from '../src/index.ts'
-import { mapSummary } from '../src/operations.ts'
+import { humanize, mapSummary } from '../src/operations.ts'
 
 // Excerpts from the pinned FastAPI template (backend/app/models.py and api/routes/items.py).
 const MODEL = [
@@ -234,5 +234,24 @@ describe('grounding metrics', () => {
         },
       ],
     })
+  })
+})
+
+describe('model prose for people', () => {
+  const names: Record<string, string> = { N1: 'User', N2: 'Item', P1: 'Organisation' }
+  const nameOf = (h: string) => names[h]
+  it('replaces handles with names and drops bracketed handles', () => {
+    expect(
+      humanize(
+        'How should organisations be enforced across User (N1) and Item (N2) entities?',
+        nameOf,
+      ),
+    ).toBe('How should organisations be enforced across User and Item entities?')
+    expect(humanize('Add org_id to N1, linked to P1 (E3, E4).', nameOf)).toBe(
+      'Add org_id to User, linked to Organisation.',
+    )
+    expect(humanize('Unknown N9 stays; UN12 is not a handle.', nameOf)).toBe(
+      'Unknown N9 stays; UN12 is not a handle.',
+    )
   })
 })
