@@ -26,16 +26,18 @@ test('journey 1: start a project from an idea and commit a first model', async (
   await at(`project=${projectId}&view=navigator`)
   await expect(page.getByRole('textbox', { name: 'What should it be?' })).toHaveValue(IDEA)
   await page.getByRole('button', { name: 'Propose alternatives' }).click()
+  // The run opens as a change thread, which offers its review as soon as it is done.
+  await expect(page).toHaveURL(/view=change&run=nav_/)
   const main = page.getByRole('main')
-  await expect(main).toContainText('Run status: Completed', { timeout: 15_000 })
+  await expect(main.getByRole('region', { name: 'Next step' })).toContainText(
+    'Review the proposed alternatives',
+    { timeout: 15_000 },
+  )
   await expect(main).toContainText('Web application (proposed)')
   expect(await axeViolations(page)).toEqual([])
 
-  await at(`project=${projectId}&view=proposals`)
-  const commit = page.getByRole('button', { name: 'Commit', exact: true })
-  await expect(commit).toHaveCount(1)
-  await commit.click()
-  await expect(commit).toHaveCount(0)
+  await main.getByRole('button', { name: 'Commit the alternatives' }).click()
+  await expect(page).toHaveURL(/view=change&decision=obj_/)
 
   await at(`project=${projectId}&view=records`)
   await expect(main).toContainText('Web application')

@@ -100,6 +100,12 @@ export function SituationHeader() {
     return list
   }, [decisions.data, runs.data, proposals.data, wb.model, wb.freshness.report])
 
+  // A project created from an idea, before any run: no software elements and no change.
+  const empty =
+    !Object.entries(wb.overview.objectCounts).some(
+      ([type, n]) => type.startsWith('software.') && n > 0,
+    ) && (runs.data?.runs ?? []).length === 0
+
   const system = useMemo(() => {
     const objects = wb.model?.objects ?? []
     const of = (type: string) => objects.filter((o) => o.type === type && o.lifecycle === 'active')
@@ -130,7 +136,24 @@ export function SituationHeader() {
         <h2 id="needs-you" className="k-eyebrow">
           Needs you
         </h2>
-        {needs.length === 0 ? (
+        {needs.length === 0 && empty ? (
+          <div className="flex flex-wrap items-center gap-4 border border-accent bg-accent-soft px-5 py-3.5">
+            <div className="min-w-0 flex-[1_1_360px]">
+              <p className="text-fg-muted text-sm">Your idea has no model yet</p>
+              <p className="font-semibold text-[17px] leading-snug">
+                Sketch the first designs from your idea
+              </p>
+              <p className="text-fg-muted text-sm">
+                The Navigator proposes two to four ways to build it and the questions that decide
+                between them. Nothing is added until you accept it.
+              </p>
+            </div>
+            <ButtonLink to={{ view: 'navigator' }} primary>
+              Sketch from the idea
+              <ArrowRight aria-hidden className="ml-1.5 inline size-4" />
+            </ButtonLink>
+          </div>
+        ) : needs.length === 0 ? (
           <div className="flex flex-wrap items-center gap-4 border border-border bg-surface px-5 py-4">
             <p className="flex-[1_1_320px] font-medium">
               Nothing waits on you. Describe a change, or explore the model on the canvas.

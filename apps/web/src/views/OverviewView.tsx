@@ -63,120 +63,123 @@ export function OverviewView() {
       {exportError !== null && <ErrorNotice error={exportError} title="Export refused" />}
 
       <SituationHeader />
+      {objectTotal === 0 ? null : (
+        <>
+          <h2 className="k-eyebrow pt-2">Details</h2>
 
-      <h2 className="k-eyebrow pt-2">Details</h2>
-
-      <dl className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Stat
-          label="Revision"
-          value={`r${wb.revision}`}
-          hint={wb.isHistorical ? `head is r${wb.headRevision}` : 'head'}
-          mono
-        />
-        <Stat
-          label="Objects"
-          value={objectTotal}
-          hint={`${Object.keys(overview.objectCounts).length} types`}
-        />
-        <Stat
-          label="Relations"
-          value={relationTotal}
-          hint={`${Object.keys(overview.relationCounts).length} types`}
-        />
-        <Stat label="Evidence" value={overview.evidenceCount} hint="pinned source records" />
-        <Stat
-          label="Pending proposals"
-          value={overview.pendingProposals}
-          hint="waiting for review"
-          tone={overview.pendingProposals > 0 ? 'warning' : undefined}
-          action={
-            overview.pendingProposals > 0 ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="-mr-1"
-                onClick={() => wb.setView('proposals')}
-              >
-                Review <ArrowRight aria-hidden />
-              </Button>
-            ) : undefined
-          }
-        />
-      </dl>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Objects by type" aside={<Total n={objectTotal} />}>
-          <BarList
-            rows={Object.entries(overview.objectCounts)
-              .sort(([a], [b]) => compareTypes(a, b))
-              .map(([type, n]) => ({ key: type, label: <TypeLabel type={type} />, n }))}
-            empty="No objects at this revision."
-          />
-        </Panel>
-        <Panel title="Relations by type" aside={<Total n={relationTotal} />}>
-          <BarList
-            rows={Object.entries(overview.relationCounts)
-              .sort(([, a], [, b]) => b - a)
-              .map(([type, n]) => ({
-                key: type,
-                label: (
-                  <span
-                    className="inline-flex items-center gap-2"
-                    title={relationMeta(type).description}
+          <dl className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <Stat
+              label="Revision"
+              value={`r${wb.revision}`}
+              hint={wb.isHistorical ? `head is r${wb.headRevision}` : 'head'}
+              mono
+            />
+            <Stat
+              label="Objects"
+              value={objectTotal}
+              hint={`${Object.keys(overview.objectCounts).length} types`}
+            />
+            <Stat
+              label="Relations"
+              value={relationTotal}
+              hint={`${Object.keys(overview.relationCounts).length} types`}
+            />
+            <Stat label="Evidence" value={overview.evidenceCount} hint="pinned source records" />
+            <Stat
+              label="Pending proposals"
+              value={overview.pendingProposals}
+              hint="waiting for review"
+              tone={overview.pendingProposals > 0 ? 'warning' : undefined}
+              action={
+                overview.pendingProposals > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="-mr-1"
+                    onClick={() => wb.setView('proposals')}
                   >
-                    <EdgeSample color={relationMeta(type).color} dash={undefined} width={18} />
-                    <span className="font-mono text-xs">{type}</span>
-                  </span>
-                ),
-                n,
-                color: relationMeta(type).color,
-              }))}
-            empty="No relations at this revision."
-          />
-        </Panel>
-      </div>
+                    Review <ArrowRight aria-hidden />
+                  </Button>
+                ) : undefined
+              }
+            />
+          </dl>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel
-          title="Claim basis"
-          aside={<span className="text-fg-subtle text-xs">objects and relations</span>}
-        >
-          {wb.model ? (
-            <BasisMix counts={basisCounts} />
-          ) : (
-            <div className="p-4">
-              <Skeleton className="h-16" />
-            </div>
-          )}
-        </Panel>
-        {wb.freshness.available && wb.freshness.report ? (
-          <Panel
-            title="Freshness"
-            aside={
-              <span className="text-fg-subtle text-xs">against the latest source snapshot</span>
-            }
-          >
-            <div className="flex flex-wrap gap-2 p-4">
-              {FRESHNESS_STATUSES.filter((s) => (wb.freshness.report?.summary[s] ?? 0) > 0).map(
-                (s) => (
-                  <span
-                    key={s}
-                    className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1"
-                  >
-                    <FreshnessBadge status={s} size="sm" />
-                    <span className="font-semibold tabular-nums">
-                      {wb.freshness.report?.summary[s]}
-                    </span>
-                  </span>
-                ),
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Panel title="Objects by type" aside={<Total n={objectTotal} />}>
+              <BarList
+                rows={Object.entries(overview.objectCounts)
+                  .sort(([a], [b]) => compareTypes(a, b))
+                  .map(([type, n]) => ({ key: type, label: <TypeLabel type={type} />, n }))}
+                empty="No objects at this revision."
+              />
+            </Panel>
+            <Panel title="Relations by type" aside={<Total n={relationTotal} />}>
+              <BarList
+                rows={Object.entries(overview.relationCounts)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([type, n]) => ({
+                    key: type,
+                    label: (
+                      <span
+                        className="inline-flex items-center gap-2"
+                        title={relationMeta(type).description}
+                      >
+                        <EdgeSample color={relationMeta(type).color} dash={undefined} width={18} />
+                        <span className="font-mono text-xs">{type}</span>
+                      </span>
+                    ),
+                    n,
+                    color: relationMeta(type).color,
+                  }))}
+                empty="No relations at this revision."
+              />
+            </Panel>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Panel
+              title="Claim basis"
+              aside={<span className="text-fg-subtle text-xs">objects and relations</span>}
+            >
+              {wb.model ? (
+                <BasisMix counts={basisCounts} />
+              ) : (
+                <div className="p-4">
+                  <Skeleton className="h-16" />
+                </div>
               )}
-            </div>
-          </Panel>
-        ) : (
-          <RecentChanges />
-        )}
-      </div>
-      {wb.freshness.available && <RecentChanges />}
+            </Panel>
+            {wb.freshness.available && wb.freshness.report ? (
+              <Panel
+                title="Freshness"
+                aside={
+                  <span className="text-fg-subtle text-xs">against the latest source snapshot</span>
+                }
+              >
+                <div className="flex flex-wrap gap-2 p-4">
+                  {FRESHNESS_STATUSES.filter((s) => (wb.freshness.report?.summary[s] ?? 0) > 0).map(
+                    (s) => (
+                      <span
+                        key={s}
+                        className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1"
+                      >
+                        <FreshnessBadge status={s} size="sm" />
+                        <span className="font-semibold tabular-nums">
+                          {wb.freshness.report?.summary[s]}
+                        </span>
+                      </span>
+                    ),
+                  )}
+                </div>
+              </Panel>
+            ) : (
+              <RecentChanges />
+            )}
+          </div>
+          {wb.freshness.available && <RecentChanges />}
+        </>
+      )}
     </div>
   )
 }

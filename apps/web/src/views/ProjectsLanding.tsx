@@ -22,7 +22,7 @@ export function ProjectsLanding({
       <div className="mx-auto w-full max-w-4xl p-8">
         <ViewHeader
           title="Projects"
-          description="Each project is a revisioned, evidence-backed model that people and coding agents share."
+          description="Each project is a shared map of a software system: what exists, what is proposed and why. People decide; coding agents read it to do the work."
         />
         <NewProject onCreated={onOpen} />
         <div className="mt-6">
@@ -36,8 +36,9 @@ export function ProjectsLanding({
           ) : !projects || projects.length === 0 ? (
             <div className="rounded-lg border border-border border-dashed bg-surface">
               <EmptyState icon={<FolderGit2 />} title="No projects yet">
-                <p>
-                  Start one above from an idea, or load the sample with{' '}
+                <p>Start one above from an idea.</p>
+                <p className="mt-1 text-fg-muted text-xs">
+                  Developers can load a sample project with{' '}
                   <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
                     pnpm dev:seed
                   </code>{' '}
@@ -132,7 +133,7 @@ function NewProject({ onCreated }: { onCreated: (id: string) => void }) {
           maxLength={4000}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="What should it do, and for whom? You can ask the Navigator for a first model next."
+          placeholder="What should it do, and for whom? Next, the Navigator (a language model) sketches two to four ways to build it, for you to compare."
           className="w-full resize-y rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-sm"
         />
       </label>

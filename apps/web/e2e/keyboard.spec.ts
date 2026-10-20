@@ -141,8 +141,20 @@ test('navigator: start a mock alternatives run from the keyboard', async ({ page
     await press(page, 'Tab')
   }
   await press(page, 'Enter')
-  await expect(run).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('main')).toContainText('Run status: Completed', { timeout: 15_000 })
+  // The run opens as a change thread and is listed in the rail while it awaits review.
+  await expect(page).toHaveURL(/view=change&run=nav_/)
+  await expect(
+    page.getByRole('main').getByRole('heading', { level: 1, name: /Add multi-tenancy to the API/ }),
+  ).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('main').getByRole('region', { name: 'Next step' })).toContainText(
+    'Review the proposed alternatives',
+    { timeout: 15_000 },
+  )
+  await expect(
+    page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', {
+      name: /Add multi-tenancy to the API/,
+    }),
+  ).toBeVisible()
   expect(await axeViolations(page)).toEqual([])
 })
 

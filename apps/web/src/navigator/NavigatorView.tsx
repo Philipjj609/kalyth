@@ -53,9 +53,8 @@ export function NavigatorView() {
     <div className="mx-auto w-full max-w-[1200px] space-y-4 p-6">
       <ViewHeader
         title="Navigator"
-        description="Grounded summaries, and alternatives with typed impact for a change request. Everything a run produces is one pending proposal of inferred records that a person commits or rejects."
+        description="Describe what you want. The Navigator, a language model, proposes two to four ways to do it, what each one changes, and the questions that decide between them. Nothing is added to the model until you accept it."
       />
-      <SituationPanel />
       {status.error ? (
         <ErrorNotice error={status.error} title="The Navigator status could not be loaded" />
       ) : status.isLoading ? (
@@ -69,7 +68,6 @@ export function NavigatorView() {
         </div>
       ) : (
         <>
-          <StatusStrip status={status.data} />
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
             <div className="space-y-4">
               {demo && <DemoPresets runs={runList} />}
@@ -83,8 +81,10 @@ export function NavigatorView() {
             />
           </div>
           {selectedRunId && <RunDetail key={selectedRunId} runId={selectedRunId} />}
+          <StatusStrip status={status.data} />
         </>
       )}
+      <SituationPanel />
     </div>
   )
 }
@@ -427,7 +427,12 @@ function ChangeRequestForm({
               onSuccess: (run) => {
                 setRequest('')
                 setFocus([])
-                navigate({ run: run.id })
+                // The change thread follows the run and offers its review when it is done.
+                navigate(
+                  run.input.kind === 'alternatives'
+                    ? { view: 'change', run: run.id, decision: undefined }
+                    : { run: run.id },
+                )
                 notify({
                   tone: run.status === 'failed' ? 'danger' : 'neutral',
                   title: run.status === 'running' ? 'Navigator run started' : `Run ${run.status}`,
@@ -464,7 +469,7 @@ function ChangeRequestForm({
               : 'The model proposes two to four alternatives, possibly with a hybrid of two of them, the elements each one changes or adds directly, and open questions. Kalyth computes the propagated impact itself.'}
           </p>
         </div>
-        <fieldset className="space-y-1.5">
+        <fieldset className={cn('space-y-1.5', idea && 'hidden')}>
           <legend className="font-medium text-xs">
             Focus <span className="font-normal text-fg-muted">(optional)</span>
           </legend>

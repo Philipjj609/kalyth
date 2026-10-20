@@ -11,9 +11,11 @@ import {
   useProposal,
   useProposals,
   useRejectProposal,
+  useTaskRepository,
   useTasks,
 } from '../api/queries.ts'
 import { useAppLocation } from '../app/location.ts'
+import { useSessionMode } from '../app/session.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import { ConfidenceBadge, DecisionStatusBadge, TaskStatusBadge } from '../components/badges.tsx'
 import { useToast } from '../components/toast.tsx'
@@ -156,19 +158,33 @@ function RunThread({ runId }: { runId: string }) {
       </header>
       <NextStepCallout
         step={
-          pending
+          run.status === 'running'
             ? {
-                text: 'Review the proposed alternatives, then commit them to start comparing',
-                detail:
-                  'Nothing is in the model until you commit. Rejecting keeps the run record and adds nothing.',
+                text: 'The Navigator is working on it',
+                detail: 'This page shows the alternatives as soon as they are ready.',
                 stage: 'alternatives',
                 tone: 'action',
               }
-            : {
-                text: proposal.data?.status === 'committed' ? 'Committed' : 'Not committed',
-                stage: 'alternatives',
-                tone: 'done',
-              }
+            : run.status === 'failed'
+              ? {
+                  text: 'The Navigator could not propose alternatives',
+                  detail: run.error?.message ?? 'The run failed; nothing was added.',
+                  stage: 'alternatives',
+                  tone: 'attention',
+                }
+              : pending
+                ? {
+                    text: 'Review the proposed alternatives, then commit them to start comparing',
+                    detail:
+                      'Nothing is in the model until you commit. Rejecting keeps the run record and adds nothing.',
+                    stage: 'alternatives',
+                    tone: 'action',
+                  }
+                : {
+                    text: proposal.data?.status === 'committed' ? 'Committed' : 'Not committed',
+                    stage: 'alternatives',
+                    tone: 'done',
+                  }
         }
         action={
           pending && run.proposalId ? (
@@ -811,8 +827,13 @@ function HandoffStage({
 }) {
   const wb = useWorkbench()
   const compile = useCompileContext(wb.projectId)
+  const repository = useTaskRepository(wb.projectId)
+  const demo = useSessionMode() === 'demo'
   const [creating, setCreating] = useState(false)
   const chosen = acceptedAlternative(decision)
+  const noCode = !Object.entries(wb.overview.objectCounts).some(
+    ([type, n]) => type === 'core.SourceSnapshot' && n > 0,
+  )
   if (decision.status !== 'accepted') {
     return (
       <p className="text-fg-muted text-sm">
@@ -824,6 +845,19 @@ function HandoffStage({
   const latest = packages[0]
   return (
     <div className="space-y-3">
+      {!demo && repository.data && !repository.data.path && (
+        <p className="border border-border border-l-4 border-l-accent bg-surface px-4 py-3 text-sm">
+          <span className="font-medium">
+            {noCode ? 'This project has no code yet.' : 'No task repository is registered.'}
+          </span>{' '}
+          <span className="text-fg-muted">
+            {noCode ? 'An agent can start the repository from the context package. ' : ''}
+            Kalyth verifies an agent's commits in a repository you register: create it, then{' '}
+            <AppLink to={{ view: 'tasks' }}>register it in Tasks</AppLink>, before the agent
+            reports.
+          </span>
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-3 border border-border bg-surface px-4 py-3 text-sm">
         <div className="min-w-0 flex-[1_1_320px]">
           <p className="font-medium">Context package</p>
@@ -951,18 +985,20 @@ function ReconcileStage({ decision, tasks }: { decision: DecisionSummary; tasks:
         the change as observed and the decision’s evidence is current again. Links to proposed
         elements come back as proposals for you to commit.
       </p>
-      {implementation.touched !== undefined && (implementation.changes ?? 0) > 0 && (
-        <p>
-          <span className="font-medium">
-            Verified work changed files behind {implementation.touched} of {implementation.changes}{' '}
-            direct changes.
-          </span>{' '}
-          <span className="text-fg-muted">
-            Observed in git, by file. Reconciling compares the element itself: its own source, its
-            fields and its relations.
-          </span>
-        </p>
-      )}
+      {tasks.length > 0 &&
+        implementation.touched !== undefined &&
+        (implementation.changes ?? 0) > 0 && (
+          <p>
+            <span className="font-medium">
+              Verified work changed files behind {implementation.touched} of{' '}
+              {implementation.changes} direct changes.
+            </span>{' '}
+            <span className="text-fg-muted">
+              Observed in git, by file. Reconciling compares the element itself: its own source, its
+              fields and its relations.
+            </span>
+          </p>
+        )}
       {ready.length === 0 && tasks.length > 0 && (
         <p className="text-fg-muted">
           Nothing to reconcile until a report passes git verification.

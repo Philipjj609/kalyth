@@ -62,10 +62,10 @@ function Comparison({ decision }: { decision: DecisionSummary }) {
   const accept = useAcceptAlternative(wb.projectId)
   const notify = useToast()
   const [diffOnly, setDiffOnly] = useState(false)
-  const [pick, setPick] = useState(() => {
-    const accepted = decision.alternatives.findIndex((a) => a.status === 'accepted')
-    return accepted >= 0 ? accepted : Math.max(0, decision.alternatives.length - 1)
-  })
+  // Nothing is chosen until the person chooses: a preselected column would read as advice.
+  const [pick, setPick] = useState(() =>
+    decision.alternatives.findIndex((a) => a.status === 'accepted'),
+  )
   const [step, setStep] = useState<'idle' | 'warn'>('idle')
   const [choosing, setChoosing] = useState<{ id: string; title: string } | null>(null)
 
@@ -224,7 +224,7 @@ function Comparison({ decision }: { decision: DecisionSummary }) {
     },
   ]
   const hidden = diffOnly ? groups.flatMap((g) => g.rows).filter((r) => r.same).length : 0
-  const chosen = alts[pick]
+  const chosen = pick >= 0 ? alts[pick] : undefined
 
   const startAccept = () => {
     if (!chosen) return
@@ -357,6 +357,12 @@ function Comparison({ decision }: { decision: DecisionSummary }) {
         </ScrollRegion>
       </div>
 
+      {decision.status === 'open' && !chosen && (
+        <div className="sticky bottom-0 z-[5] border-fg border-t bg-surface px-8 py-3 text-sm">
+          <span className="k-eyebrow mr-3">Choose</span>
+          Select an alternative's column to choose it, then accept it here.
+        </div>
+      )}
       {decision.status === 'open' && chosen && (
         <div className="sticky bottom-0 z-[5] space-y-3 border-fg border-t bg-surface px-8 py-3">
           {step === 'warn' && (

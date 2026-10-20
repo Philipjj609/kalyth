@@ -203,7 +203,10 @@ export function nextStep(s: ThreadState): NextStep {
     }
     if (s.decisiveOpen > 0) {
       return {
-        text: `Answer ${s.decisiveOpen} question${s.decisiveOpen === 1 ? '' : 's'} that decide between the alternatives`,
+        text:
+          s.decisiveOpen === 1
+            ? 'Answer the question that decides between the alternatives'
+            : `Answer ${s.decisiveOpen} questions that decide between the alternatives`,
         detail: 'Or compare them and accept one now; open questions travel with the decision.',
         stage: 'questions',
         tone: 'action',
