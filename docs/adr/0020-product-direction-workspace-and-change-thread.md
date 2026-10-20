@@ -110,3 +110,31 @@ restricts redistribution, so none of its code is copied.
 - Navigator prompt and schema changes alter recorded request hashes. They are batched, and the
   hosted demo's presets are re-recorded once, with Philip's go-ahead (D5).
 - New surfaces get the same automated accessibility and keyboard checks as the current views.
+
+## Amendment: the prototypes approved, with refinements (20 October)
+
+Philip and ChatGPT reviewed the three prototype screens: the canvas with lenses, the change thread,
+and the comparison. They approved them as the basis of the redesign. These concepts are to be kept:
+
+- one semantic model seen through several lenses;
+- one coherent change thread;
+- meaningful engineering annotations;
+- clear distinctions between observed evidence, inference and what a person said or intends.
+
+The redesign also follows these refinements:
+
+- The inspector collapses by itself when nothing is selected. The space between the canvas and the
+  panels can be adjusted.
+- The stage rail orients and links. The thread scrolls naturally, and any stage can be reached
+  directly; no sequence is forced.
+- The drafting language stays distinctive but restrained. Information clarity comes before any
+  decorative technical detail.
+- The comparison keeps "what changes for people". Generated interpretation is marked apart from
+  verified evidence.
+- The current objective, the consequential facts and the next action are the most prominent things
+  on a screen.
+- Generated graph layouts are tested on unfamiliar repositories and on idea-first projects, not
+  only on the arranged demonstration data.
+- Direct semantic editing goes through proposals, with clear approval and provenance.
+
+The integrated screens are shown to Philip before the interface is treated as final.
