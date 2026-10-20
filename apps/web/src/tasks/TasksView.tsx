@@ -19,6 +19,7 @@ import { AppLink, ErrorNotice, RecordLink, ViewHeader } from '../views/shared.ts
 import { AgentTasksNote } from './AgentTasksNote.tsx'
 import { CreateTaskForm } from './CreateTaskForm.tsx'
 import { DecisionsToPlan } from './DecisionsToPlan.tsx'
+import { TaskFollowUp } from './FollowUp.tsx'
 import { TaskActionsPanel } from './TaskActions.tsx'
 import { TaskBoard, type TaskLinks } from './TaskBoard.tsx'
 import { TaskDetailView } from './TaskDetail.tsx'
@@ -319,7 +320,10 @@ function TaskSection({
           </>
         }
         actions={
-          <TaskActionsPanel task={task} baseRevision={listed ? baseRevision : wb.headRevision} />
+          <>
+            <TaskActionsPanel task={task} baseRevision={listed ? baseRevision : wb.headRevision} />
+            <TaskFollowUp task={task} />
+          </>
         }
       />
     </div>

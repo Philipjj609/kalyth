@@ -16,15 +16,25 @@ import { LeaseLine, type TaskLinks, When } from './TaskBoard.tsx'
 
 // ---------- execution reports ----------
 
-/** Tests the agent says it ran. Kalyth never runs analysed code, so these stay stated. */
-export function ReportedTests({ tests }: { tests: TaskReport['tests'] }) {
+/** Who stated a report: the agent under its lease, or a person who filed it (ADR 0024). */
+const reporter = (report: Pick<TaskReport, 'filedBy'>) =>
+  report.filedBy ? 'a person' : 'the agent'
+
+/** Tests the reporter says it ran. Kalyth never runs analysed code, so these stay stated. */
+export function ReportedTests({
+  tests,
+  by = 'the agent',
+}: {
+  tests: TaskReport['tests']
+  by?: string
+}) {
   const captionId = useId()
   return (
     <div className="space-y-1">
       <p id={captionId} className="flex flex-wrap items-center gap-1.5 text-xs">
         <FlaskConical aria-hidden className="size-3.5 text-fg-subtle" />
         <span className="font-medium">Tests</span>
-        <span className="text-fg-muted">reported by the agent, not run by Kalyth</span>
+        <span className="text-fg-muted">reported by {by}, not run by Kalyth</span>
       </p>
       {tests.length === 0 ? (
         <p className="text-fg-subtle text-xs">None reported.</p>
@@ -126,7 +136,7 @@ export function ReportCard({
         </h4>
         <ReportOutcomeBadge outcome={report.outcome} size="sm" />
         <BasisBadge basis="stated" size="sm" />
-        <span className="text-fg-muted text-xs">stated by the agent</span>
+        <span className="text-fg-muted text-xs">stated by {reporter(report)}</span>
         <span className="ml-auto text-2xs text-fg-subtle">
           <When iso={report.reportedAt} now={now} />
           <span aria-hidden> · </span>
@@ -169,7 +179,7 @@ export function ReportCard({
           )}
         </dd>
       </dl>
-      <ReportedTests tests={report.tests} />
+      <ReportedTests tests={report.tests} by={reporter(report)} />
       <VerificationBlock verification={report.verification} />
     </article>
   )
@@ -188,7 +198,7 @@ export function ReportList({
     return (
       <p className="text-fg-muted text-sm">
         No execution reports yet. An agent reports over MCP with submit_execution_report after it
-        commits its work.
+        commits its work; a person can file one for work done outside an agent session.
       </p>
     )
   }
@@ -203,7 +213,64 @@ export function ReportList({
   )
 }
 
+// ---------- what git showed, and what to give an agent ----------
+
+/**
+ * Commits git showed with the task's trailer while its outcome is unknown (ADR 0013, amendment of
+ * 2026-10-20): the last holder may have finished, so a person reviews them.
+ */
+export function FindingNote({ finding }: { finding: NonNullable<TaskView['finding']> }) {
+  const [newest, ...older] = finding.commits
+  if (!newest) return null
+  return (
+    <div className="tone-caution mt-2 space-y-1 rounded-md border border-tone-bd bg-tone-bg px-3 py-2 text-xs">
+      <p className="flex flex-wrap items-center gap-1.5 text-tone-fg">
+        <GitCommitHorizontal aria-hidden className="size-3.5 shrink-0" />
+        <span className="font-medium">Git found commit</span>
+        <code className="font-mono" title={newest}>
+          {shortSha(newest)}
+        </code>
+        <CopyButton text={newest} label="Copy the commit sha" />
+        <span>
+          with this task’s trailer
+          {older.length > 0 && `, and ${plural(older.length, 'earlier commit')}`}.
+        </span>
+      </p>
+      <p className="text-fg">
+        The last holder may have finished. Review the commit as a report to settle it; marking the
+        task ready discards this finding.
+      </p>
+    </div>
+  )
+}
+
+/** The text a person pastes into Claude Code or Codex to start the task (ADR 0024). */
+export function AgentPrompt({ prompt }: { prompt: string }) {
+  return (
+    <div className="space-y-1.5">
+      <ScrollRegion
+        as="pre"
+        label="Prompt for an agent"
+        className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-surface-2 px-2.5 py-2 font-mono text-[11.5px] scrollbar-thin"
+      >
+        {prompt}
+      </ScrollRegion>
+      <div className="flex flex-wrap items-center gap-2">
+        <CopyButton text={prompt} label="Copy the prompt">
+          Copy the prompt
+        </CopyButton>
+        <span className="text-fg-muted text-xs">
+          Paste it into the agent. It holds no token: the agent connects to Kalyth with its own.
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // ---------- the task ----------
+
+/** Statuses after which the task takes no more work. */
+const FINAL = new Set(['completed', 'cancelled'])
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -369,6 +436,7 @@ export function TaskDetailView({
                 <LeaseLine task={task} links={links} now={now} />
               </div>
             )}
+            {task.finding && <FindingNote finding={task.finding} />}
           </Section>
           <Section title={`Execution reports (${task.reports.length})`}>
             <ReportList task={task} now={now} />
@@ -420,6 +488,11 @@ export function TaskDetailView({
               The agent puts this line in its commit message, so the git verifier can find the work.
             </p>
           </Section>
+          {task.agentPrompt && !FINAL.has(task.status) && (
+            <Section title="Prompt for an agent">
+              <AgentPrompt prompt={task.agentPrompt} />
+            </Section>
+          )}
         </div>
       </div>
     </section>
