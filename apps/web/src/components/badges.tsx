@@ -41,7 +41,7 @@ import {
   type Tone,
 } from '../model/semantics.ts'
 import { reportOutcomeMeta, taskStatusMeta, verificationMeta } from '../model/tasks.ts'
-import { BASIS_ICONS, FRESHNESS_ICONS, ORIGIN_ICONS, PROPOSAL_ICONS, typeIcon } from './icons.tsx'
+import { FRESHNESS_ICONS, ORIGIN_ICONS, PROPOSAL_ICONS, typeIcon } from './icons.tsx'
 
 /**
  * One badge component for every status dimension: icon + visible text label + tone. The
@@ -84,17 +84,41 @@ export function StatusBadge({
 
 type Size = { size?: 'sm' | 'md' | undefined; className?: string | undefined }
 
-export function BasisBadge({ basis, ...rest }: { basis: string } & Size) {
+/**
+ * Claim basis as line language (ADR 0020): solid ink for observed, a dashed graphite line for
+ * inferred, a bar for stated, dots for imported. The label always says it in words too. No box:
+ * basis sits next to other statuses on most rows, and the line carries the difference.
+ */
+export function BasisBadge({ basis, size = 'md', className }: { basis: string } & Size) {
   const meta = basisMeta(basis)
+  const line =
+    basis === 'stated'
+      ? null
+      : basis === 'inferred'
+        ? '4 3'
+        : basis === 'imported'
+          ? '1 3'
+          : undefined
   return (
-    <StatusBadge
-      tone={meta.tone}
-      icon={BASIS_ICONS[basis]}
-      label={meta.label}
-      description={meta.description}
-      prefix="Basis:"
-      {...rest}
-    />
+    <span
+      title={meta.description}
+      className={cn(
+        `tone-${meta.tone}`,
+        'inline-flex max-w-full shrink-0 items-center gap-1.5 whitespace-nowrap font-medium text-tone-fg',
+        size === 'sm' ? 'h-[18px] text-2xs' : 'h-5 text-xs',
+        className,
+      )}
+    >
+      <svg aria-hidden viewBox="0 0 18 8" className={size === 'sm' ? 'h-2 w-4' : 'h-2 w-[18px]'}>
+        {line === null ? (
+          <path d="M3 0.5 V7.5" stroke="currentColor" strokeWidth="2.5" />
+        ) : (
+          <path d="M1 4 H17" stroke="currentColor" strokeWidth="1.6" strokeDasharray={line} />
+        )}
+      </svg>
+      <span className="sr-only">Basis: </span>
+      <span className="truncate">{meta.label}</span>
+    </span>
   )
 }
 

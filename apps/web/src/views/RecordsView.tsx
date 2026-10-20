@@ -398,7 +398,9 @@ function Row({
       </td>
       {showFreshness && (
         <td className={cell}>
-          {row.freshness ? (
+          {row.freshness === 'current' ? (
+            <span className="text-fg-muted text-xs">Current</span>
+          ) : row.freshness ? (
             <FreshnessBadge status={row.freshness} size="sm" />
           ) : (
             <span className="text-fg-subtle text-xs">—</span>
@@ -406,10 +408,18 @@ function Row({
         </td>
       )}
       <td className={cell}>
-        <StanceBadge stance={row.stance} size="sm" />
+        {row.stance === 'asIs' ? (
+          <span className="text-fg-muted text-xs">As-is</span>
+        ) : (
+          <StanceBadge stance={row.stance} size="sm" />
+        )}
       </td>
       <td className={cell}>
-        <LifecycleBadge lifecycle={row.lifecycle} size="sm" />
+        {row.lifecycle === 'active' ? (
+          <span className="text-fg-muted text-xs">Active</span>
+        ) : (
+          <LifecycleBadge lifecycle={row.lifecycle} size="sm" />
+        )}
       </td>
       <td className={cn(cell, 'text-right font-mono text-xs tabular-nums')}>{row.evidenceCount}</td>
       <td className={cn(cell, 'pr-4 text-right font-mono text-fg-muted text-xs tabular-nums')}>

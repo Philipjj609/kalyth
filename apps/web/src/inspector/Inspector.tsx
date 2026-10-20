@@ -1,4 +1,11 @@
-import type { Claim, EvidenceView, ObjectVersion, RelationVersion } from '@kalyth/contracts'
+import type {
+  Claim,
+  EvidenceView,
+  Lifecycle,
+  ObjectVersion,
+  RelationVersion,
+  Stance,
+} from '@kalyth/contracts'
 import { ArrowRight, EyeOff, MousePointerClick, X } from 'lucide-react'
 import { type ReactNode, useMemo } from 'react'
 import type { ClaimFreshness } from '../api/freshness.ts'
@@ -6,13 +13,10 @@ import { useEvidence, useTypes } from '../api/queries.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import {
   BasisBadge,
-  ConfidenceBadge,
   DecisionStatusBadge,
   EdgeSample,
   FreshnessBadge,
-  LifecycleBadge,
   MockBadge,
-  StanceBadge,
   TypeLabel,
 } from '../components/badges.tsx'
 import {
@@ -29,7 +33,7 @@ import { absoluteTime, humanize, plural, shortId, shortSha } from '../model/form
 import { objectLabel } from '../model/labels.ts'
 import { isMockClaim } from '../model/navigator.ts'
 import { evidenceLocation } from '../model/ops.ts'
-import { basisMeta, relationMeta } from '../model/semantics.ts'
+import { basisMeta, LIFECYCLE_META, relationMeta, STANCE_META } from '../model/semantics.ts'
 import { SummariseAction } from '../navigator/NavigatorActions.tsx'
 import { ErrorNotice, RecordLink } from '../views/shared.tsx'
 
@@ -151,8 +155,8 @@ function ObjectDetails({ object }: { object: ObjectVersion }) {
       />
       <Facets
         claim={object.claim}
-        stance={<StanceBadge stance={object.stance} />}
-        lifecycle={<LifecycleBadge lifecycle={object.lifecycle} />}
+        stance={object.stance}
+        lifecycle={object.lifecycle}
         freshness={freshness}
         extra={decisionStatus ? <DecisionStatusBadge status={decisionStatus} /> : null}
       />
@@ -204,8 +208,8 @@ function RelationDetails({ relation }: { relation: RelationVersion }) {
       />
       <Facets
         claim={relation.claim}
-        stance={<StanceBadge stance={relation.stance} />}
-        lifecycle={<LifecycleBadge lifecycle={relation.lifecycle} />}
+        stance={relation.stance}
+        lifecycle={relation.lifecycle}
         freshness={freshness}
       />
       <p className="border-border border-b px-4 py-2 text-fg-muted text-xs">{description}</p>
@@ -243,6 +247,11 @@ function EndpointLink({ id }: { id: string }) {
   )
 }
 
+/**
+ * Provenance as a title block (ADR 0020): basis, freshness, stance and lifecycle in fixed cells,
+ * so the eye finds the same fact in the same place on every record. Only the states that matter
+ * (stale, proposed, retired, mock) take colour; the ordinary ones stay plain text.
+ */
 function Facets({
   claim,
   stance,
@@ -251,20 +260,66 @@ function Facets({
   extra,
 }: {
   claim: Claim
-  stance: ReactNode
-  lifecycle: ReactNode
+  stance: Stance
+  lifecycle: Lifecycle
   freshness: ClaimFreshness | undefined
   extra?: ReactNode
 }) {
+  const stanceMeta = STANCE_META[stance]
+  const lifecycleMeta = LIFECYCLE_META[lifecycle]
   return (
-    <div className="flex flex-wrap items-center gap-1.5 border-border border-b px-4 py-2.5">
-      {isMockClaim(claim) && <MockBadge />}
-      <BasisBadge basis={claim.basis} />
-      {claim.confidence && <ConfidenceBadge level={claim.confidence.level} />}
-      {freshness && <FreshnessBadge status={freshness.status} />}
-      {stance}
-      {lifecycle}
-      {extra}
+    <div className="border-border border-b">
+      {isMockClaim(claim) && (
+        <div className="border-border border-b px-4 py-2">
+          <MockBadge />
+        </div>
+      )}
+      <dl className="grid grid-cols-2 text-sm [&>div:nth-child(odd)]:border-r [&>div]:border-border [&>div]:px-4 [&>div]:py-2 [&>div:nth-child(-n+2)]:border-b">
+        <div>
+          <dt className="k-eyebrow">Basis</dt>
+          <dd className="mt-0.5 flex flex-wrap items-center gap-x-1.5">
+            <BasisBadge basis={claim.basis} />
+            {claim.confidence && (
+              <span className="text-fg-muted text-xs">
+                {humanize(claim.confidence.level)} confidence
+              </span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="k-eyebrow">Freshness</dt>
+          <dd className="mt-0.5">
+            {freshness ? (
+              <FreshnessBadge status={freshness.status} />
+            ) : (
+              <span className="text-fg-muted text-xs">Not tracked</span>
+            )}
+          </dd>
+        </div>
+        <div title={stanceMeta.description}>
+          <dt className="k-eyebrow">Stance</dt>
+          <dd
+            className={cn(
+              'mt-0.5 text-xs',
+              stance === 'toBe' ? 'font-medium text-revision' : 'text-fg-muted',
+            )}
+          >
+            {stance === 'toBe' ? 'To-be: proposed, not in the code' : stanceMeta.label}
+          </dd>
+        </div>
+        <div title={lifecycleMeta.description}>
+          <dt className="k-eyebrow">Lifecycle</dt>
+          <dd
+            className={cn(
+              'mt-0.5 text-xs',
+              lifecycle === 'retired' ? 'font-medium text-fg line-through' : 'text-fg-muted',
+            )}
+          >
+            {lifecycleMeta.label}
+          </dd>
+        </div>
+      </dl>
+      {extra && <div className="border-border border-t px-4 py-2">{extra}</div>}
     </div>
   )
 }
@@ -337,12 +392,9 @@ function ClaimSection({
               </span>
             </Fact>
           )}
-          {freshness && (
+          {freshness?.reason && (
             <Fact label="Freshness">
-              <FreshnessBadge status={freshness.status} size="sm" />
-              {freshness.reason && (
-                <span className="mt-1 block text-fg-muted text-xs">{freshness.reason}</span>
-              )}
+              <span className="text-xs">{freshness.reason}</span>
             </Fact>
           )}
         </dl>

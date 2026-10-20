@@ -16,6 +16,7 @@ import { cn } from '../lib/cn.ts'
 import { absoluteTime, relativeTime, shortId } from '../model/format.ts'
 import { BASIS_META, BASIS_ORDER, compareTypes, relationMeta } from '../model/semantics.ts'
 import { useProposalIndex } from './HistoryView.tsx'
+import { SituationHeader } from './SituationHeader.tsx'
 import { ErrorNotice } from './shared.tsx'
 
 export function OverviewView() {
@@ -60,6 +61,10 @@ export function OverviewView() {
         </div>
       </div>
       {exportError !== null && <ErrorNotice error={exportError} title="Export refused" />}
+
+      <SituationHeader />
+
+      <h2 className="k-eyebrow pt-2">Details</h2>
 
       <dl className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat
