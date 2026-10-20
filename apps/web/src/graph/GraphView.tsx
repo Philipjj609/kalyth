@@ -692,6 +692,10 @@ function captionFor(c: {
   }
 }
 
+/** "imported by 27", for a hub most of its neighbours import, whose import links are not drawn. */
+const importedBy = (n: { importedBy?: number }) =>
+  n.importedBy ? `imported by ${n.importedBy}` : ''
+
 /** The path prefix every endpoint shares, such as /api/v1, left out of endpoint rows. */
 function endpointPrefix(objects: readonly ObjectVersion[]): string {
   const paths = objects
@@ -820,7 +824,7 @@ function toFlowNodes(
             ? rows > 0 && ctx.pathPrefix
               ? `under ${ctx.pathPrefix}`
               : ''
-            : [n.expanded && detail ? detail : '', memberSummary(n.memberCounts)]
+            : [n.expanded && detail ? detail : '', memberSummary(n.memberCounts), importedBy(n)]
                 .filter(Boolean)
                 .join(' · '),
         boundary: n.object.type === 'software.System',
@@ -830,7 +834,7 @@ function toFlowNodes(
         holder: 'package',
         tag: 'Package',
         title: n.title,
-        summary: memberSummary(n.memberCounts),
+        summary: [memberSummary(n.memberCounts), importedBy(n)].filter(Boolean).join(' · '),
         boundary: false,
       }
     } else {

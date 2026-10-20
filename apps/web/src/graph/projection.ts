@@ -62,6 +62,16 @@ export const DEFAULT_PACKAGE_TARGET = 10
 export const DEFAULT_PACKAGE_MIN = 3
 /** Up to this many elements, containers start open: the whole model fits at a readable zoom. */
 export const SMALL_MODEL = 30
+/**
+ * Beyond that, containers and packages still start open, the largest first, while the first view
+ * stays within this many drawn items: a repository that is one large container opens onto its
+ * top-level packages instead of a single box.
+ */
+export const FIRST_VIEW_BUDGET = 48
+/** The share of its level's members that makes a holder "most of" the level. */
+const DOMINANT_SHARE = 0.8
+/** Holders the first view may open to stay informative: containers and components. */
+const AUTO_OPEN_TYPES: ReadonlySet<string> = new Set(['software.Container', 'software.Component'])
 export const CLUSTER_PREFIX = 'cluster:'
 export const PACKAGE_PREFIX = 'pkg:'
 
@@ -117,6 +127,11 @@ interface HolderBase extends NodeBase {
   memberIds: string[]
   memberCounts: Record<string, number>
   memberFreshness: Record<string, number>
+  /**
+   * How many of its sibling frames import it, when most of them do: such a hub's import links
+   * are left out of the drawing and said here instead.
+   */
+  importedBy?: number
 }
 
 export interface GroupNode extends HolderBase {
@@ -169,7 +184,10 @@ export interface ProjectionStats {
   hiddenRelations: number
   /** Relations folded inside one collapsed holder, or shown by nesting. */
   internalRelations: number
-  /** Imports between members of one container, not drawn unless asked for or selected. */
+  /**
+   * Imports between members of one container, not drawn unless asked for or selected: between
+   * two modules, or beyond the strongest import of each frame.
+   */
   detailRelations: number
   /** Decisions, alternatives, questions and other records that live outside the canvas. */
   offCanvas: number
@@ -442,6 +460,48 @@ export function projectGraph(
     const type = tree.object.type
     if (type === 'software.System' || type === 'software.Module' || small) defaultOpen.add(tree.id)
   }
+  // Then a container or package that is most of its level (one big box tells a reader nothing)
+  // opens, the largest first, while its members fit the first view. A level that already shows
+  // its parts stays as it is. Hidden folders (.github, .semgrep) are tooling and stay shut.
+  if (!small) {
+    const size = new Map<Tree, number>()
+    const sizeOf = (t: Tree): number => {
+      const known = size.get(t)
+      if (known !== undefined) return known
+      const n = t.children.length === 0 ? 1 : t.children.reduce((sum, c) => sum + sizeOf(c), 0)
+      size.set(t, n)
+      return n
+    }
+    const openable = (t: Tree) =>
+      t.children.length > 0 &&
+      ((t.kind === 'package' &&
+        !(t.title ?? t.path).replace(/\/$/, '').split('/').pop()?.startsWith('.')) ||
+        (t.kind === 'object' && AUTO_OPEN_TYPES.has(t.object.type)))
+    let drawn = top.length
+    const reachable: Tree[] = []
+    const reach = (trees: readonly Tree[]) => {
+      const level = trees.reduce((sum, t) => sum + sizeOf(t), 0)
+      for (const t of trees) {
+        if (t.kind === 'cluster' || t.children.length === 0) continue
+        if (defaultOpen.has(t.id)) {
+          drawn += t.children.length
+          reach(t.children)
+        } else if (openable(t) && sizeOf(t) >= DOMINANT_SHARE * level) reachable.push(t)
+      }
+    }
+    reach(top)
+    for (;;) {
+      const fits = reachable
+        .filter((t) => drawn + t.children.length <= FIRST_VIEW_BUDGET)
+        .sort((a, b) => sizeOf(b) - sizeOf(a))
+      const next = fits[0]
+      if (!next) break
+      reachable.splice(reachable.indexOf(next), 1)
+      defaultOpen.add(next.id)
+      drawn += next.children.length
+      reach(next.children)
+    }
+  }
 
   // Walk the tree: nodes in render order, representatives and ancestors.
   const nodes: ProjectedNode[] = []
@@ -516,6 +576,8 @@ export function projectGraph(
   let hiddenRelations = 0
   let internalRelations = 0
   let detailRelations = 0
+  /** Merged import edges between frames inside one holder: thinned to a backbone below. */
+  const bundled = new Set<string>()
   const showDetail = options.detail === 'all'
   const drawnById = new Map(nodes.map((n) => [n.id, n]))
   const merged = new Map<string, Omit<ProjectedEdge, 'parallelIndex' | 'parallelCount'>>()
@@ -548,14 +610,21 @@ export function projectGraph(
     const [source, target] = exact
       ? [drawnSource, drawnTarget]
       : siblingsBetween(drawnSource, drawnTarget, ancestors)
-    // Imports between members of one container are detail: drawn for the selection, or on request.
+    // Imports between two modules of one container are detail: drawn for the selection, or on
+    // request. Imports between packages or other frames bundle many of them and show how the
+    // container is put together, so they are drawn.
     if (!exact && !showDetail && DETAIL_RELATIONS.has(r.type)) {
       const level = (ancestors.get(source) ?? []).at(-1)
       const holder = level === undefined ? undefined : drawnById.get(level)
-      if (holder && !(holder.kind === 'group' && holder.object.type === 'software.System')) {
+      const between =
+        drawnById.get(source)?.kind === 'object' || drawnById.get(target)?.kind === 'object'
+      const inside =
+        holder && !(holder.kind === 'group' && holder.object.type === 'software.System')
+      if (inside && between) {
         detailRelations++
         continue
       }
+      if (inside) bundled.add(`${source}>${target}:${r.type}:${r.claim.basis}`)
     }
     const basis = r.claim.basis
     const key = `${source}>${target}:${r.type}:${basis}`
@@ -576,6 +645,44 @@ export function projectGraph(
         aggregated: source !== r.from || target !== r.to,
       })
     }
+  }
+
+  // Packages of one codebase import each other densely (a Django app has hundreds of such links,
+  // many in cycles). A frame most of its siblings import is a hub: its links would make a star,
+  // so the hub says how many import it instead. Every other frame keeps only its strongest
+  // import, so the structure reads; selecting a frame draws all of its links exactly.
+  const importers = new Map<string, Set<string>>()
+  for (const key of bundled) {
+    const e = merged.get(key)
+    if (e) importers.set(e.target, (importers.get(e.target) ?? new Set()).add(e.source))
+  }
+  const siblings = new Map<string | undefined, number>()
+  // Frames only: a loose module's imports are detail, so it neither counts nor votes.
+  for (const n of nodes)
+    if (n.kind !== 'object') siblings.set(n.parentId, (siblings.get(n.parentId) ?? 0) + 1)
+  const hubs = new Map<string, number>()
+  for (const [target, from] of importers) {
+    const others = (siblings.get(drawnById.get(target)?.parentId) ?? 1) - 1
+    if (from.size >= 5 && from.size >= others / 2) hubs.set(target, from.size)
+  }
+  for (const n of nodes) {
+    const count = hubs.get(n.id)
+    if (count !== undefined && n.kind !== 'object') n.importedBy = count
+  }
+  const strongest = new Map<string, string>()
+  for (const key of bundled) {
+    const e = merged.get(key)
+    if (!e || hubs.has(e.target)) continue
+    const best = strongest.get(e.source)
+    const other = best ? merged.get(best) : undefined
+    if (!other || e.relationIds.length > other.relationIds.length) strongest.set(e.source, key)
+  }
+  const kept = new Set(strongest.values())
+  for (const key of bundled) {
+    const e = merged.get(key)
+    if (!e || kept.has(key)) continue
+    detailRelations += e.relationIds.length
+    merged.delete(key)
   }
 
   const edges = [...merged.values()].sort((a, b) => a.id.localeCompare(b.id))

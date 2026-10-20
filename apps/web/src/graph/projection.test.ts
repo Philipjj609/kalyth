@@ -438,6 +438,107 @@ describe('layoutProjection', () => {
   })
 })
 
+describe('larger repositories', () => {
+  const DOMAINS = [
+    'account',
+    'cart',
+    'core',
+    'order',
+    'payment',
+    'product',
+    'search',
+    'shipping',
+    'tax',
+    'user',
+  ]
+  /**
+   * One container holding ten domain packages and a small hidden tooling folder, like a Django
+   * project: every package imports core, order imports payment more than product.
+   */
+  function oneContainer() {
+    const system = obj('software.System', { name: 'shop' })
+    const container = obj('software.Container', { name: 'shop' })
+    const objects = [system, container]
+    const relations = [rel('contains', system, container)]
+    const modules = new Map<string, ReturnType<typeof obj>[]>()
+    const add = (dir: string, count: number) => {
+      const list: ReturnType<typeof obj>[] = []
+      for (let i = 0; i < count; i++) {
+        const m = obj('software.Module', { path: `${dir}/m${i}.py`, language: 'python' })
+        list.push(m)
+        objects.push(m)
+        relations.push(rel('contains', container, m))
+      }
+      modules.set(dir, list)
+    }
+    for (const d of DOMAINS) add(`shop/${d}`, 8)
+    add('.semgrep', 4)
+    const pick = (dir: string, i: number) => modules.get(dir)?.[i] as ReturnType<typeof obj>
+    for (const d of DOMAINS.filter((x) => x !== 'core'))
+      relations.push(rel('dependsOn', pick(`shop/${d}`, 0), pick('shop/core', 0)))
+    for (let i = 0; i < 3; i++)
+      relations.push(rel('dependsOn', pick('shop/order', i), pick('shop/payment', i)))
+    relations.push(rel('dependsOn', pick('shop/order', 4), pick('shop/product', 4)))
+    return { objects, relations, container }
+  }
+  const pkg = (p: ReturnType<typeof projectGraph>, path: string) =>
+    p.nodes.find((n): n is PackageNode => n.kind === 'package' && n.path === path)
+
+  it('opens a container that is the whole of its level, not parts of a level that shows its parts', () => {
+    const m = oneContainer()
+    const p = projectGraph(m.objects, m.relations)
+    // The one container is all of the system: it opens onto its packages.
+    expect(p.defaultOpen.has(m.container.id)).toBe(true)
+    // Ten comparable packages already show the structure; none, and not the hidden folder, opens.
+    expect(DOMAINS.filter((d) => pkg(p, `shop/${d}/`)?.expanded)).toEqual([])
+    expect(pkg(p, '.semgrep/')?.expanded).toBe(false)
+
+    // Two containers of similar size: the system shows both, closed.
+    const system = obj('software.System', { name: 'two' })
+    const a = obj('software.Container', { name: 'api' })
+    const b = obj('software.Container', { name: 'web' })
+    const objects = [system, a, b]
+    const relations = [rel('contains', system, a), rel('contains', system, b)]
+    for (const [c, dir] of [
+      [a, 'api'],
+      [b, 'web'],
+    ] as const)
+      for (let i = 0; i < 20; i++) {
+        const mod = obj('software.Module', { path: `${dir}/m${i}.py` })
+        objects.push(mod)
+        relations.push(rel('contains', c, mod))
+      }
+    const two = projectGraph(objects, relations)
+    expect(two.defaultOpen.has(a.id) || two.defaultOpen.has(b.id)).toBe(false)
+  })
+
+  it('draws the strongest import of each package, and names a hub instead of drawing its star', () => {
+    const m = oneContainer()
+    // Everything closed, so the imports are between packages.
+    const p = projectGraph(m.objects, m.relations, {
+      collapsed: new Set(
+        DOMAINS.map((d) => `shop/${d}/`).flatMap((path) => {
+          const id = pkg(projectGraph(m.objects, m.relations), path)?.id
+          return id ? [id] : []
+        }),
+      ),
+    })
+    const name = (id: string) => p.nodes.find((x) => x.id === id && x.kind === 'package')
+    const imports = p.edges
+      .filter((e) => e.type === 'dependsOn')
+      .map((e) => {
+        const s = name(e.source)
+        const t = name(e.target)
+        return `${s?.kind === 'package' ? s.path : e.source} > ${t?.kind === 'package' ? t.path : e.target}`
+      })
+    expect(imports.some((i) => i.endsWith('> shop/core/'))).toBe(false)
+    expect(pkg(p, 'shop/core/')?.importedBy).toBe(DOMAINS.length - 1)
+    expect(imports).toContain('shop/order/ > shop/payment/')
+    expect(imports).not.toContain('shop/order/ > shop/product/')
+    expect(p.stats.detailRelations).toBeGreaterThan(0)
+  })
+})
+
 function expectInside(box: Box, parent: Box) {
   expect(box.x).toBeGreaterThanOrEqual(0)
   expect(box.y).toBeGreaterThanOrEqual(0)
