@@ -1,6 +1,17 @@
-import type { DecisionSummary } from '@kalyth/contracts'
+import type { DecisionSummary, ObjectVersion } from '@kalyth/contracts'
 import * as Popover from '@radix-ui/react-popover'
-import { FoldVertical, Funnel, Info, LocateFixed, Search, UnfoldVertical } from 'lucide-react'
+import {
+  Cable,
+  FoldVertical,
+  Funnel,
+  Info,
+  LocateFixed,
+  PenLine,
+  Plus,
+  Search,
+  Trash2,
+  UnfoldVertical,
+} from 'lucide-react'
 import { type ReactNode, useId, useMemo, useState } from 'react'
 import { LENSES, type Lens } from '../app/location.ts'
 import { useWorkbench } from '../app/workbench.ts'
@@ -10,13 +21,14 @@ import { cn } from '../lib/cn.ts'
 import { objectLabel } from '../model/labels.ts'
 import { searchObjects } from '../model/search.ts'
 import { relationColor } from './edges.tsx'
+import type { EditKind } from './edit.tsx'
 import type { GraphPrefs } from './GraphView.tsx'
 import { alternativeKey, type chooseAlternative, type Hops, LENS_LABEL } from './lens.ts'
 import { OFF_CANVAS_TYPES, type Projection, type typeCounts } from './projection.ts'
 
 /**
  * The canvas toolbar: lens, the alternative shown, focus around the selection, find, filters and
- * layout controls. Exclusive choices are toggle buttons with
+ * layout controls, and the edits that create proposals. Exclusive choices are toggle buttons with
  * aria-pressed inside a labelled group; it wraps at any width.
  */
 
@@ -75,6 +87,10 @@ export function GraphToolbar({
   counts,
   onReveal,
   onFit,
+  canEdit,
+  selected,
+  canRename,
+  onEdit,
   hasSelection,
 }: {
   lens: Lens
@@ -88,6 +104,10 @@ export function GraphToolbar({
   counts: ReturnType<typeof typeCounts>
   onReveal: (id: string) => void
   onFit: () => void
+  canEdit: boolean
+  selected: ObjectVersion | undefined
+  canRename: boolean
+  onEdit: (kind: EditKind) => void
   hasSelection: boolean
 }) {
   const hidden = prefs.hiddenObjectTypes.size + prefs.hiddenRelationTypes.size
@@ -164,6 +184,15 @@ export function GraphToolbar({
           {prefs.hops > 0 && !hasSelection && (
             <span className="text-fg-subtle text-xs">Select an element to focus</span>
           )}
+          {canEdit && (
+            <Button
+              size="sm"
+              onClick={() => onEdit('add')}
+              aria-label="Add an element (creates a proposal)"
+            >
+              <Plus aria-hidden /> Element
+            </Button>
+          )}
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -202,6 +231,35 @@ export function GraphToolbar({
         >
           <Info aria-hidden /> Legend
         </Button>
+        {selected && (
+          <>
+            <Divider />
+            {/* biome-ignore lint/a11y/useSemanticElements: a toolbar group, not a form fieldset */}
+            <div
+              role="group"
+              aria-label={`Edit ${objectLabel(selected)}`}
+              className="flex flex-wrap items-center gap-1"
+            >
+              <span
+                className="max-w-[180px] truncate text-fg-muted text-xs"
+                title={objectLabel(selected)}
+              >
+                {objectLabel(selected)}:
+              </span>
+              {canRename && (
+                <Button size="sm" variant="ghost" onClick={() => onEdit('rename')}>
+                  <PenLine aria-hidden /> Rename
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => onEdit('connect')}>
+                <Cable aria-hidden /> Connect to
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => onEdit('retire')}>
+                <Trash2 aria-hidden /> Retire
+              </Button>
+            </div>
+          </>
+        )}
         <p className="ml-auto text-fg-muted text-xs tabular-nums">
           {projection.nodes.length} nodes · {projection.edges.length} edges
           <span className="text-fg-subtle">

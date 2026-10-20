@@ -15,12 +15,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MAX_IMPACT_SEEDS, type RevisionModel, useDecisions, useImpact } from '../api/queries.ts'
 import { type Lens, useAppLocation } from '../app/location.ts'
 import { useWorkbench } from '../app/workbench.ts'
-import { EmptyState, Spinner } from '../components/ui.tsx'
+import { Button, EmptyState, Spinner } from '../components/ui.tsx'
 import { plural, typePlural } from '../model/format.ts'
 import { objectDetail, objectLabel, objectShortLabel } from '../model/labels.ts'
 import { basisMeta, compareTypes, objectTypeMeta } from '../model/semantics.ts'
 import { ErrorNotice } from '../views/shared.tsx'
 import { EdgeMarkers, edgeTypes, type RelationFlowEdge } from './edges.tsx'
+import { EditFlow, type EditKind } from './edit.tsx'
+import { renameField } from './edits.ts'
 import { readableViewport } from './geometry.ts'
 import { type Box, type LayoutResult, layoutProjection, routeBetween } from './layout.ts'
 import {
@@ -49,6 +51,7 @@ import { Caption, Legend, sourceLine, TitleBlock, type TitleBlockData } from './
 import {
   isOpen,
   isSyntheticId,
+  OFF_CANVAS_TYPES,
   type ProjectedNode,
   type Projection,
   projectGraph,
@@ -154,6 +157,7 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
   const [focusTarget, setFocusTarget] = useState<string[] | null>(
     initial.focus ? [initial.focus] : null,
   )
+  const [edit, setEdit] = useState<EditKind | null>(null)
 
   const freshnessOf = useCallback(
     (id: string) => wb.freshness.index.get(id)?.status,
@@ -447,6 +451,17 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
   )
 
   const counts = useMemo(() => typeCounts(model.objects, model.relations), [model])
+  const selectedObject: ObjectVersion | undefined = selected
+    ? model.objectById.get(selected)
+    : undefined
+  const editable =
+    selectedObject && !OFF_CANVAS_TYPES.has(selectedObject.type) && !wb.isHistorical
+      ? selectedObject
+      : undefined
+  const addWithin =
+    editable && !editable.type.endsWith('Endpoint') && !editable.type.endsWith('DataEntity')
+      ? editable.id
+      : undefined
 
   // ---------- caption, legend and title block ----------
   const shown = shownDecisions(decisions)
@@ -498,6 +513,10 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
         counts={counts}
         onReveal={reveal}
         onFit={() => showAll(reducedMotion() ? 0 : 260, true)}
+        canEdit={!wb.isHistorical}
+        selected={editable}
+        canRename={editable ? renameField(editable) !== null : false}
+        onEdit={setEdit}
         hasSelection={selectedNode !== undefined}
       />
       <div className="relative min-h-0 flex-1">
@@ -564,12 +583,25 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
               {projection.stats.offCanvas > 0
                 ? 'Decisions and questions live in change threads. '
                 : ''}
-              Ask the Navigator for alternatives; what it proposes becomes a proposal you review
-              before it is part of the model.
+              Add an element, or ask the Navigator for alternatives; each becomes a proposal you
+              review before it is part of the model.
+              {!wb.isHistorical && (
+                <span className="mt-3 block">
+                  <Button variant="primary" size="sm" onClick={() => setEdit('add')}>
+                    + Element
+                  </Button>
+                </span>
+              )}
             </EmptyState>
           </div>
         )}
       </div>
+      <EditFlow
+        kind={edit}
+        object={edit === 'add' ? undefined : editable}
+        within={edit === 'add' ? addWithin : undefined}
+        onClose={() => setEdit(null)}
+      />
     </div>
   )
 }
