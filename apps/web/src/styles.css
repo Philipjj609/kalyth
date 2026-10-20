@@ -735,3 +735,18 @@
 .kalyth-flow .react-flow__attribution a {
   color: var(--k-fg-subtle);
 }
+
+/* Drafting Table canvas (ADR 0020): square controls, and nodes whose outline is drawn inside. */
+.kalyth-flow .react-flow__node {
+  border-radius: 0;
+}
+
+.kalyth-flow .react-flow__controls,
+.kalyth-flow .react-flow__controls-button {
+  border-radius: 0;
+}
+
+/* A selected node's outline is drawn by the node; keyboard focus adds the focus ring around it. */
+.kalyth-flow .react-flow__node:focus-visible {
+  outline-offset: 6px;
+}
