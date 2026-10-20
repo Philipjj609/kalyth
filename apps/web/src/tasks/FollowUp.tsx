@@ -354,33 +354,27 @@ export function ReconcileSummary({
   )
 }
 
-// ---------- the panel ----------
+// ---------- the actions ----------
+
+type FileReport = ReturnType<typeof useFileReport>
+type Reconcile = ReturnType<typeof useReconcileTask>
 
 /**
- * A person's follow-up on a task (ADR 0024): file a report for work done outside an agent
- * session, review the commit git found as one, and reconcile the model once a report is verified.
- * Decision acceptance, implementation, verification and freshness stay separate; nothing here
- * completes the task.
+ * Filing a report for work done outside an agent session, or reviewing the commit git found as
+ * one. Renders nothing when the task takes no report from a person and none was just filed.
  */
-export function TaskFollowUp({ task }: { task: TaskView }) {
-  const wb = useWorkbench()
+export function ReportAction({ task, file }: { task: TaskView; file: FileReport }) {
   const notify = useToast()
-  const demo = useSessionMode() === 'demo'
-  const file = useFileReport(wb.projectId)
-  const reconcile = useReconcileTask(wb.projectId)
   const [reporting, setReporting] = useState<{ commit: string; key: number } | null>(null)
   const found = task.finding?.commits[0]
   const fileable = canFileReport(task)
-  const verified = verifiedReport(task)
-  const reconcilable = canReconcile(task)
-  if (!fileable && !reconcilable && !file.data && !reconcile.data) return null
+  if (!fileable && !file.data && !reporting) return null
   const open = (commit: string) => {
     file.reset()
     setReporting((r) => ({ commit, key: (r?.key ?? 0) + 1 }))
   }
   return (
-    <section aria-label="Follow-up" className="space-y-3 rounded-md border border-border p-3">
-      <SectionTitle>Follow-up</SectionTitle>
+    <>
       {fileable && !reporting && (
         <div className="space-y-2">
           {found && (
@@ -433,8 +427,21 @@ export function TaskFollowUp({ task }: { task: TaskView }) {
         />
       )}
       {file.data && !reporting && <FiledVerdict result={file.data} />}
+    </>
+  )
+}
 
-      {reconcilable && verified?.commit && (
+/**
+ * Reconciling the model with a task's verified commit, and what that found. Renders nothing until
+ * a report has passed git verification and the task is in review or completed.
+ */
+export function ReconcileAction({ task, reconcile }: { task: TaskView; reconcile: Reconcile }) {
+  const demo = useSessionMode() === 'demo'
+  const verified = verifiedReport(task)
+  if (!(canReconcile(task) && verified?.commit) && !reconcile.data && !reconcile.error) return null
+  return (
+    <>
+      {canReconcile(task) && verified?.commit && (
         <div className="space-y-2">
           <p className="text-xs">
             <span className="font-medium">Reconcile the model</span>{' '}
@@ -477,6 +484,28 @@ export function TaskFollowUp({ task }: { task: TaskView }) {
           )}
         />
       )}
+    </>
+  )
+}
+
+// ---------- the panel ----------
+
+/**
+ * A person's follow-up on a task (ADR 0024): file a report for work done outside an agent
+ * session, review the commit git found as one, and reconcile the model once a report is verified.
+ * Decision acceptance, implementation, verification and freshness stay separate; nothing here
+ * completes the task.
+ */
+export function TaskFollowUp({ task }: { task: TaskView }) {
+  const wb = useWorkbench()
+  const file = useFileReport(wb.projectId)
+  const reconcile = useReconcileTask(wb.projectId)
+  if (!canFileReport(task) && !canReconcile(task) && !file.data && !reconcile.data) return null
+  return (
+    <section aria-label="Follow-up" className="space-y-3 rounded-md border border-border p-3">
+      <SectionTitle>Follow-up</SectionTitle>
+      <ReportAction task={task} file={file} />
+      <ReconcileAction task={task} reconcile={reconcile} />
     </section>
   )
 }

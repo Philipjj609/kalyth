@@ -24,7 +24,10 @@ import { type ComparedAlternative, compareAlternatives } from '../model/compare.
 import { citationSummary } from '../model/navigator.ts'
 import { EMPTY_TASK_DRAFT } from '../model/tasks.ts'
 import { AcceptDialog, RunOutput } from '../navigator/ProposedOutput.tsx'
+import { useFileReport, useReconcileTask } from '../tasks/api.ts'
 import { CreateTaskForm } from '../tasks/CreateTaskForm.tsx'
+import { canReconcile, ReconcileAction, ReportAction, verifiedReport } from '../tasks/FollowUp.tsx'
+import { AgentPrompt } from '../tasks/TaskDetail.tsx'
 import { AppLink, ButtonLink, ErrorNotice, RecordLink, withoutHandles } from '../views/shared.tsx'
 import {
   acceptedAlternative,
@@ -349,7 +352,7 @@ function DecisionThread({ decisionId }: { decisionId: string }) {
         </Section>
 
         <Section stage="reconcile" title="Reconcile">
-          <ReconcileStage decision={decision} />
+          <ReconcileStage decision={decision} tasks={implementing} />
         </Section>
       </div>
       <aside
@@ -872,6 +875,9 @@ function HandoffStage({
   )
 }
 
+/** Statuses before an agent has claimed the task, when the prompt is what a person needs. */
+const UNCLAIMED = new Set(['proposed', 'ready'])
+
 function WorkStage({ decision, tasks }: { decision: DecisionSummary; tasks: TaskView[] }) {
   if (tasks.length === 0) {
     return (
@@ -887,7 +893,7 @@ function WorkStage({ decision, tasks }: { decision: DecisionSummary; tasks: Task
       {tasks.map((t) => {
         const report = t.reports.at(-1)
         return (
-          <li key={t.id} className="border border-border bg-surface px-4 py-3 text-sm">
+          <li key={t.id} className="space-y-3 border border-border bg-surface px-4 py-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <TaskStatusBadge status={t.status} size="sm" />
               <span className="font-medium">{t.title}</span>
@@ -896,14 +902,26 @@ function WorkStage({ decision, tasks }: { decision: DecisionSummary; tasks: Task
               </AppLink>
             </div>
             {report && (
-              <p className="mt-1 text-fg-muted">
-                Latest report: {report.outcome} (stated by the agent)
+              <p className="text-fg-muted">
+                Latest report: {report.outcome} (
+                {report.filedBy ? 'stated by a person' : 'stated by the agent'})
                 {report.verification
-                  ? `; verification ${report.verification.outcome} (observed in git)`
+                  ? `; git verification ${report.verification.outcome} (observed in the repository)`
                   : '; not verified'}
                 .
               </p>
             )}
+            {t.agentPrompt && UNCLAIMED.has(t.status) && (
+              <details className="group">
+                <summary className="cursor-pointer font-medium text-accent text-sm">
+                  Prompt for a coding agent
+                </summary>
+                <div className="mt-2">
+                  <AgentPrompt prompt={t.agentPrompt} />
+                </div>
+              </details>
+            )}
+            <ThreadReport task={t} />
           </li>
         )
       })}
@@ -911,14 +929,51 @@ function WorkStage({ decision, tasks }: { decision: DecisionSummary; tasks: Task
   )
 }
 
-function ReconcileStage({ decision }: { decision: DecisionSummary }) {
-  const { freshness } = decision.facets
+function ThreadReport({ task }: { task: TaskView }) {
+  const wb = useWorkbench()
+  const file = useFileReport(wb.projectId)
+  return <ReportAction task={task} file={file} />
+}
+
+function ThreadReconcile({ task }: { task: TaskView }) {
+  const wb = useWorkbench()
+  const reconcile = useReconcileTask(wb.projectId)
+  return <ReconcileAction task={task} reconcile={reconcile} />
+}
+
+function ReconcileStage({ decision, tasks }: { decision: DecisionSummary; tasks: TaskView[] }) {
+  const { freshness, implementation } = decision.facets
+  const ready = tasks.filter((t) => canReconcile(t) && verifiedReport(t)?.commit)
   return (
-    <div className="space-y-2 text-sm">
+    <div className="space-y-3 text-sm">
       <p className="text-fg-muted">
         After the work is verified, re-analyse the repository at the task commit, so the model shows
-        the change as observed and the decision’s evidence is current again.
+        the change as observed and the decision’s evidence is current again. Links to proposed
+        elements come back as proposals for you to commit.
       </p>
+      {implementation.touched !== undefined && implementation.changes !== undefined && (
+        <p>
+          <span className="font-medium">
+            Verified work touched {implementation.touched} of {implementation.changes} direct
+            changes.
+          </span>{' '}
+          <span className="text-fg-muted">
+            Observed in git: a file the change’s evidence cites is among the files the commit
+            changed.
+          </span>
+        </p>
+      )}
+      {ready.length === 0 && tasks.length > 0 && (
+        <p className="text-fg-muted">
+          Nothing to reconcile until a report passes git verification.
+        </p>
+      )}
+      {ready.map((t) => (
+        <div key={t.id} className="space-y-2 border border-border bg-surface px-4 py-3">
+          <p className="font-medium">{t.title}</p>
+          <ThreadReconcile task={t} />
+        </div>
+      ))}
       {freshness.stale.length > 0 && (
         <ul className="space-y-1">
           {freshness.stale.map((s) => (
@@ -960,7 +1015,11 @@ function Facets({ decision }: { decision: DecisionSummary }) {
       'Implementation',
       IMPLEMENTATION[implementation.state] ?? implementation.state,
       implementation.tasks.length > 0
-        ? `${implementation.tasks.filter((t) => t.status === 'completed').length} of ${implementation.tasks.length} tasks completed`
+        ? `${implementation.tasks.filter((t) => t.status === 'completed').length} of ${implementation.tasks.length} tasks completed${
+            implementation.touched !== undefined && implementation.changes
+              ? `; verified work touched ${implementation.touched} of ${implementation.changes} changes`
+              : ''
+          }`
         : 'No task yet',
     ],
     ['Verification', VERIFICATION[verification.state] ?? verification.state, verification.coverage],
