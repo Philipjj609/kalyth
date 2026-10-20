@@ -289,7 +289,9 @@ function Facets({
         <div>
           <dt className="k-eyebrow">Freshness</dt>
           <dd className="mt-0.5">
-            {freshness ? (
+            {freshness?.status === 'current' ? (
+              <span className="text-fg-muted text-xs">Current</span>
+            ) : freshness ? (
               <FreshnessBadge status={freshness.status} />
             ) : (
               <span className="text-fg-muted text-xs">Not tracked</span>
