@@ -20,6 +20,7 @@ import { Button } from '../components/ui.tsx'
 import { cn } from '../lib/cn.ts'
 import { objectLabel } from '../model/labels.ts'
 import { searchObjects } from '../model/search.ts'
+import { withoutHandles } from '../views/shared.tsx'
 import { relationColor } from './edges.tsx'
 import type { EditKind } from './edit.tsx'
 import type { GraphPrefs } from './GraphView.tsx'
@@ -152,7 +153,7 @@ export function GraphToolbar({
             >
               {decisions.map((d, i) => (
                 <option key={d.id} value={d.id}>
-                  D{i + 1} · {d.title} ({d.status})
+                  D{i + 1} · {withoutHandles(d.title)} ({d.status})
                 </option>
               ))}
             </select>
@@ -165,7 +166,7 @@ export function GraphToolbar({
             options={chosen.decision.alternatives.map((a, i) => ({
               value: a.id,
               label: <span className="font-mono">{alternativeKey(i)}</span>,
-              title: `${a.title} (${a.status})`,
+              title: `${withoutHandles(a.title)} (${a.status})`,
             }))}
             onChange={onAlternative}
           />

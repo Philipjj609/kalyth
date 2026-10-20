@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { Lens } from '../app/location.ts'
 import { cn } from '../lib/cn.ts'
 import { shortSha } from '../model/format.ts'
+import { withoutHandles } from '../views/shared.tsx'
 import { relationColor } from './edges.tsx'
 import type { DecisionMarks } from './lens.ts'
 
@@ -160,7 +161,7 @@ export function Legend({
                   </span>
                 }
               >
-                <span className="line-clamp-2">{d.title}</span>
+                <span className="line-clamp-2">{withoutHandles(d.title)}</span>
                 <span className="text-fg-subtle"> · {d.status}</span>
               </Entry>
             ))

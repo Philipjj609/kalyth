@@ -19,7 +19,7 @@ import { Button, EmptyState, Spinner } from '../components/ui.tsx'
 import { plural, typePlural } from '../model/format.ts'
 import { objectDetail, objectLabel, objectShortLabel } from '../model/labels.ts'
 import { basisMeta, compareTypes, objectTypeMeta } from '../model/semantics.ts'
-import { ErrorNotice } from '../views/shared.tsx'
+import { ErrorNotice, withoutHandles } from '../views/shared.tsx'
 import { EdgeMarkers, edgeTypes, type RelationFlowEdge } from './edges.tsx'
 import { EditFlow, type EditKind } from './edit.tsx'
 import { renameField } from './edits.ts'
@@ -632,7 +632,7 @@ function captionFor(c: {
       if (!c.chosen || !c.altKey || !c.impactState)
         return 'No open or accepted decision has alternatives yet. Ask the Navigator for alternatives to see their impact here.'
       const summary = impactCaption(c.altKey, c.impactState.summary, c.impactLoaded)
-      return `${summary} · ${c.chosen.alternative.title}${c.historical ? ' (decisions as at the head)' : ''}`
+      return `${summary} · ${withoutHandles(c.chosen.alternative.title)}${c.historical ? ' (decisions as at the head)' : ''}`
     }
     case 'decisions':
       if (!c.decisionsAvailable) return 'Decisions are not available from this server.'
