@@ -126,6 +126,7 @@ function ChangeIndex() {
 
 function RunThread({ runId }: { runId: string }) {
   const wb = useWorkbench()
+  const demo = useSessionMode() === 'demo'
   const [, navigate] = useAppLocation()
   const runs = useNavigatorRuns(wb.projectId)
   const run = runs.data?.runs.find((r) => r.id === runId)
@@ -144,6 +145,8 @@ function RunThread({ runId }: { runId: string }) {
   }
   const request = run.input.kind === 'alternatives' ? run.input.request : 'Summary'
   const pending = proposal.data?.status === 'pending'
+  // In the hosted demo a request with no recording fails at once when live runs are used up.
+  const paused = demo && run.status === 'failed' && run.error?.code === 'budget_exceeded'
   const decisionId = proposal.data?.ops.find(
     (op) => op.op === 'createObject' && op.type === 'core.Decision',
   )?.id
@@ -165,29 +168,41 @@ function RunThread({ runId }: { runId: string }) {
                 stage: 'alternatives',
                 tone: 'action',
               }
-            : run.status === 'failed'
+            : paused
               ? {
-                  text: 'The Navigator could not propose alternatives',
-                  detail: run.error?.message ?? 'The run failed; nothing was added.',
+                  text: 'Live runs are paused',
+                  detail:
+                    'This request has no recording, and no live run is available for it now: your live runs for today, or today’s allowance, are used up. The recorded presets still run, and everything else in your copy works.',
                   stage: 'alternatives',
                   tone: 'attention',
                 }
-              : pending
+              : run.status === 'failed'
                 ? {
-                    text: 'Review the proposed alternatives, then commit them to start comparing',
-                    detail:
-                      'Nothing is in the model until you commit. Rejecting keeps the run record and adds nothing.',
+                    text: 'The Navigator could not propose alternatives',
+                    detail: run.error?.message ?? 'The run failed; nothing was added.',
                     stage: 'alternatives',
-                    tone: 'action',
+                    tone: 'attention',
                   }
-                : {
-                    text: proposal.data?.status === 'committed' ? 'Committed' : 'Not committed',
-                    stage: 'alternatives',
-                    tone: 'done',
-                  }
+                : pending
+                  ? {
+                      text: 'Review the proposed alternatives, then commit them to start comparing',
+                      detail:
+                        'Nothing is in the model until you commit. Rejecting keeps the run record and adds nothing.',
+                      stage: 'alternatives',
+                      tone: 'action',
+                    }
+                  : {
+                      text: proposal.data?.status === 'committed' ? 'Committed' : 'Not committed',
+                      stage: 'alternatives',
+                      tone: 'done',
+                    }
         }
         action={
-          pending && run.proposalId ? (
+          run.status === 'failed' ? (
+            <ButtonLink to={{ view: 'navigator', run: run.id }}>
+              {paused ? 'Try a recorded preset' : 'Back to New change'}
+            </ButtonLink>
+          ) : pending && run.proposalId ? (
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="primary"

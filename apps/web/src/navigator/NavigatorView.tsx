@@ -427,9 +427,10 @@ function ChangeRequestForm({
               onSuccess: (run) => {
                 setRequest('')
                 setFocus([])
-                // The change thread follows the run and offers its review when it is done.
+                // The change thread follows the run and offers its review when it is done. A run
+                // that failed at once (paused, over budget) stays here, beside the reason.
                 navigate(
-                  run.input.kind === 'alternatives'
+                  run.input.kind === 'alternatives' && run.status !== 'failed'
                     ? { view: 'change', run: run.id, decision: undefined }
                     : { run: run.id },
                 )

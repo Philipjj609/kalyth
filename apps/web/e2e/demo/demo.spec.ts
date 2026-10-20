@@ -93,6 +93,7 @@ test('says why live runs are paused, and recorded runs keep working', async ({ p
   await expect(page.getByRole('main')).toContainText('Live runs are paused', { timeout: 15_000 })
   await expect(page.getByRole('main')).toContainText('recorded presets still run')
   expect(await axeViolations(page)).toEqual([])
+  await page.getByRole('main').getByRole('link', { name: 'Try a recorded preset' }).click()
   await panel(page, 'Try a change request')
     .getByRole('button', { name: 'Summarise the backend' })
     .click()
