@@ -157,3 +157,29 @@ from the lease's expiry and the current time, and returns it over HTTP and MCP; 
 written. The task stays `running` until the next claim moves it to `unknown_outcome` and checks
 git. The web app's task view now says plainly that the lease has expired and that the next claim
 checks git for a commit first.
+
+## Amendment, 2026-10-20
+
+Two rules change for reconciliation (ADR 0024, proposed). The transition table does not.
+
+**Recorded findings.** When a claim finds commits that carry the task trailer, it is still
+refused, and the coordinator now records them on the task as its `finding` (at most 5, newest
+first).
+
+- `setTaskStatus` may carry a finding, only with `unknown_outcome`. On an expired lease the claim
+  records it with the move to `unknown_outcome`. On a task already in `unknown_outcome` the kernel
+  accepts `unknown_outcome` again only to record a newer finding; that is not a transition, and the
+  lease is kept. The same finding is not recorded twice.
+- The kernel keeps the finding while the task stays in `unknown_outcome` and clears it when the
+  task leaves that state. `finding` is a reserved attribute of `core.Task`: it starts absent and
+  `updateObject` cannot change it.
+- Only the task coordinator, a tool principal with `task.coordinate`, may commit a finding, because
+  it says what git showed. A person's proposal that carries one is refused.
+
+**Reports a person files.** Besides the lease holder, a person acting directly with
+`proposal.create` and `proposal.commit` may report on a task that is `ready`, `running` with an
+expired lease, or `unknown_outcome` (HTTP `POST /tasks/:id/reports`). The report names a commit and
+the files changed, records `filedBy` instead of a lease, is verified by the same verifier and
+committed by the coordinator. A pass moves the task to `review`; from `ready` the person first
+takes the task with a short lease of their own, as a claim would. A failing verdict changes no
+status. Agents still report only under their lease, over MCP.

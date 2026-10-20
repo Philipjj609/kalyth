@@ -29,3 +29,4 @@ cite those entries where a decision came from review.
 | [0021](0021-data-access-relations-and-finer-impact.md) | Data access relations, entity references, endpoint parameters and finer impact | Accepted (technical lead; the `writes` rule awaits review) |
 | [0022](0022-proposed-elements-and-statement-evidence.md) | Proposed elements and statement evidence | Accepted (D2, KAL-20261019-034) |
 | [0023](0023-decision-facets-and-package-revalidation.md) | Decision facets and package revalidation | Accepted (D4, KAL-20261019-034) |
+| [0024](0024-reconciliation.md) | Reconciliation after an agent's work: task prompt, person-filed reports, recorded findings and `realizes` links | Proposed (technical lead review) |

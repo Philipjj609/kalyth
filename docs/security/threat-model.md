@@ -120,6 +120,19 @@ money, or claiming work it did not do.
     stored summary or make it too long to record.
   - Test results are the agent's own claim; Kalyth does not run them, and the verifier's recorded
     coverage says so (R4).
+- **Follow-up by a person (ADR 0024).**
+  - Filing a report and reconciling are HTTP only, for a person acting directly with
+    `proposal.create` and `proposal.commit`. Agent tokens are not accepted on `/api/`.
+  - Both read only the task repository a person registered; neither takes a path or a ref from
+    the request. Reconciliation hands the analyzer a commit sha that git already verified,
+    validated as 40 hex, and the analyzer reads it under the plumbing rules of section 2.
+  - What a claim finds in git is recorded on the task only by the task coordinator; the kernel
+    refuses a finding from anyone else.
+  - Links reconciliation infers are pending proposals by a principal that can only read and
+    propose; a person commits them.
+  - The task prompt holds no token. Person-written text in it is kept on one line, with control
+    and bidirectional characters escaped, and text that matches a secret pattern is withheld,
+    because the prompt is pasted into another tool.
 - **Isolation tests.** These pin that an agent token cannot read or claim work in another project.
 
 Remaining risk: the stdio MCP server (`pnpm mcp:stdio`) runs as a local agent with the agent scopes on
@@ -176,8 +189,8 @@ internet. It is built and tested, and not deployed. It adds these controls:
   nothing they write reaches another visitor. Sessions and their files expire after a day idle, and
   at most 200 exist.
 - **Less surface.** No MCP endpoint and no agent tokens, until they are tested in hosted mode. No
-  consent changes, no repository registration and no repository import, so the server reads no
-  path and fetches no URL a visitor chooses. The only outbound calls go to Nebius.
+  consent changes, no repository registration, no reconciliation with a repository and no
+  repository import, so the server reads no path and fetches no URL a visitor chooses. The only outbound calls go to Nebius.
 - **Requests.** Host and Origin must be the public host. Every change needs the UI's
   `x-kalyth-ui` header, which a cross-site form cannot send. Requests, new sessions, runs and judge
   code attempts are limited per address (`Fly-Client-IP` behind Fly.io's proxy).
