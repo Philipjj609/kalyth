@@ -6,19 +6,40 @@ import { compareTypes } from '../model/semantics.ts'
  * Graph projection: turns the records of one revision into the nodes and edges the canvas shows.
  * Pure and deterministic, so it is unit-tested without a DOM.
  *
- * The default projection is hierarchical and collapsed, to stay readable at a few hundred objects:
- * - Containers (and Components outside a container) are groups. Everything they contain,
- *   transitively, is a member. Collapsed groups show member counts; expanded groups show their
- *   members nested and flat, with the relations between members.
- * - Top-level objects of one type (for example many Libraries) form a cluster once there are
- *   `clusterMin` of them; clusters collapse and expand like groups.
- * - `contains` is shown by nesting where nesting applies, and as an edge elsewhere (System to
- *   Container). Other relations are edges. When an endpoint is hidden inside a collapsed group or
- *   cluster, the edge attaches to the group and is aggregated per (source, target, type, basis),
- *   so every drawn edge has exactly one relation type and one claim basis.
+ * The canvas draws the system's elements. Decisions, alternatives, questions, tasks, reports,
+ * verifications, assertions and source snapshots live in change threads and their own views, so
+ * they are left out (ADR 0020).
+ *
+ * The projection is a tree of holders, read with semantic zoom:
+ * - Any element that contains others is a holder: a System, Container or Component, and a Module
+ *   that defines data entities or exposes endpoints. Structure comes from `contains`, and an
+ *   endpoint without a container of its own belongs to the one module that exposes it.
+ * - A holder with many modules groups them by directory into packages, splitting the largest
+ *   directory until the holder shows about `packageTarget` items.
+ * - Top-level elements of one type (for example many Libraries) form a cluster once there are
+ *   `clusterMin` of them.
+ * - Holders are collapsed unless opened. Systems and modules are open by default, and so are
+ *   containers when the whole model is small. A collapsed holder stands for all its members.
+ * - `contains` and `exposes` are shown by nesting where nesting applies, and as edges elsewhere.
+ *   Other relations are edges. When an endpoint of a relation is hidden inside a collapsed holder,
+ *   the edge attaches to the holder and is aggregated per (source, target, type, basis), so every
+ *   drawn edge has exactly one relation type and one claim basis.
  */
 
+/** Records that are not drawn on the canvas: they live in change threads and their own views. */
+export const OFF_CANVAS_TYPES: ReadonlySet<string> = new Set([
+  'core.Decision',
+  'core.Alternative',
+  'core.Question',
+  'core.Task',
+  'core.ExecutionReport',
+  'core.Verification',
+  'core.Assertion',
+  'core.SourceSnapshot',
+])
+
 export const GROUP_TYPES: ReadonlySet<string> = new Set([
+  'software.System',
   'software.Container',
   'software.Component',
 ])
@@ -27,54 +48,99 @@ export const UNCLUSTERED_TYPES: ReadonlySet<string> = new Set([
   'software.System',
   'software.Container',
   'software.Component',
+  'software.Module',
 ])
+/** Types drawn as compact rows inside the module that holds them. */
+export const ROW_TYPES: ReadonlySet<string> = new Set(['software.Endpoint'])
+/** Relation types that are detail between members of one container (module imports). */
+export const DETAIL_RELATIONS: ReadonlySet<string> = new Set(['dependsOn'])
+/** Relation types that nesting shows when the target is drawn inside its source. */
+const STRUCTURAL_RELATIONS: ReadonlySet<string> = new Set(['contains', 'exposes'])
+
 export const DEFAULT_CLUSTER_MIN = 6
+export const DEFAULT_PACKAGE_TARGET = 10
+export const DEFAULT_PACKAGE_MIN = 3
+/** Up to this many elements, containers start open: the whole model fits at a readable zoom. */
+export const SMALL_MODEL = 30
 export const CLUSTER_PREFIX = 'cluster:'
+export const PACKAGE_PREFIX = 'pkg:'
 
 const EMPTY: ReadonlySet<string> = new Set()
 
 export interface ProjectionOptions {
-  /** Expanded group and cluster node ids. Groups and clusters not listed are collapsed. */
+  /** Holders opened by a person. */
   expanded?: ReadonlySet<string>
+  /** Holders a person closed that are open by default (systems, modules, small models). */
+  collapsed?: ReadonlySet<string>
   hiddenObjectTypes?: ReadonlySet<string>
   hiddenRelationTypes?: ReadonlySet<string>
   /** Top-level objects of one type are clustered when there are at least this many. */
   clusterMin?: number
-  /** Optional claim freshness, rolled up onto groups and clusters as counts. */
+  /** A holder with more modules than this groups them by directory. */
+  packageTarget?: number
+  /** A directory becomes a package only with at least this many modules. */
+  packageMin?: number
+  /** Optional claim freshness, rolled up onto holders as counts. */
   freshnessOf?: (claimId: string) => string | undefined
+  /**
+   * A drawn node whose edges are drawn to their exact ends. Other edges between different frames
+   * join the frames that separate their ends, so no edge crosses a frame to reach inside it.
+   */
+  exactFor?: string | undefined
+  /**
+   * Imports (`dependsOn`) between members of one open container, component, package or module
+   * are detail: drawn only for the selection (`exactFor`) unless this is "all".
+   */
+  detail?: 'selection' | 'all'
+  /** False draws every edge to its exact ends (for counting hops); true by default. */
+  lift?: boolean
 }
 
 interface NodeBase {
   id: string
-  /** The group or cluster node this node is drawn inside, when expanded. */
+  /** The holder node this node is drawn inside, when that holder is open. */
   parentId?: string
+  /** Nesting depth: 0 at the top level. */
+  depth: number
 }
 
 export interface ObjectNode extends NodeBase {
   kind: 'object'
   object: ObjectVersion
+  /** Drawn as a compact row inside its module (endpoints). */
+  row: boolean
 }
 
-export interface GroupNode extends NodeBase {
-  kind: 'group'
-  /** The container object itself; the group node id is its object id. */
-  object: ObjectVersion
+interface HolderBase extends NodeBase {
   expanded: boolean
+  /** Every object it holds, at any depth. */
   memberIds: string[]
   memberCounts: Record<string, number>
   memberFreshness: Record<string, number>
 }
 
-export interface ClusterNode extends NodeBase {
+export interface GroupNode extends HolderBase {
+  kind: 'group'
+  /** The holding object itself; the node id is its object id. */
+  object: ObjectVersion
+}
+
+export interface PackageNode extends HolderBase {
+  kind: 'package'
+  /** Directory path, ending with a slash. */
+  path: string
+  /** The path relative to the level it is shown at. */
+  title: string
+}
+
+export interface ClusterNode extends HolderBase {
   kind: 'cluster'
   /** Object type shared by every member. */
   type: string
-  expanded: boolean
-  memberIds: string[]
-  memberFreshness: Record<string, number>
 }
 
-export type ProjectedNode = ObjectNode | GroupNode | ClusterNode
+export type HolderNode = GroupNode | PackageNode | ClusterNode
+export type ProjectedNode = ObjectNode | HolderNode
 
 export interface ProjectedEdge {
   id: string
@@ -84,6 +150,8 @@ export interface ProjectedEdge {
   type: string
   /** Claim basis shared by every relation in the edge. */
   basis: string
+  /** True when every relation in the edge is to-be (intended). */
+  toBe: boolean
   relationIds: string[]
   /** True when the edge stands for relations of hidden members, or for more than one relation. */
   aggregated: boolean
@@ -99,25 +167,49 @@ export interface ProjectionStats {
   hiddenObjects: number
   /** Active relations removed by a filter (their type, or a hidden endpoint). */
   hiddenRelations: number
-  /** Relations folded inside one collapsed group or cluster. */
+  /** Relations folded inside one collapsed holder, or shown by nesting. */
   internalRelations: number
+  /** Imports between members of one container, not drawn unless asked for or selected. */
+  detailRelations: number
+  /** Decisions, alternatives, questions and other records that live outside the canvas. */
+  offCanvas: number
 }
 
 export interface Projection {
-  /** Nodes in render order: every group or cluster precedes its children. */
+  /** Nodes in render order: every holder precedes its children. */
   nodes: ProjectedNode[]
   edges: ProjectedEdge[]
-  /** Object id -> id of the node drawn for it now (itself, or its collapsed group or cluster). */
+  /** Object id -> id of the node drawn for it now (itself, or its outermost collapsed holder). */
   representative: Map<string, string>
-  /** Object id -> group or cluster node id it belongs to, expanded or not. */
+  /** Object id -> the nearest holder it belongs to, open or not. */
   containerOf: Map<string, string>
-  /** Ids of every group and cluster node, for expand-all and collapse-all. */
+  /** Object or holder id -> its holders, outermost first. */
+  ancestors: Map<string, string[]>
+  /** Ids of every holder at any depth, for expand-all. */
   expandable: string[]
+  /** Holders that are open unless a person closes them. */
+  defaultOpen: Set<string>
   stats: ProjectionStats
 }
 
 export const clusterId = (type: string) => `${CLUSTER_PREFIX}${type}`
 export const isClusterId = (id: string) => id.startsWith(CLUSTER_PREFIX)
+export const packageId = (holder: string, path: string) => `${PACKAGE_PREFIX}${holder}:${path}`
+export const isPackageId = (id: string) => id.startsWith(PACKAGE_PREFIX)
+/** Synthetic holders (packages and clusters) are not records and cannot be selected. */
+export const isSyntheticId = (id: string) => isClusterId(id) || isPackageId(id)
+
+export const isHolder = (n: ProjectedNode): n is HolderNode => n.kind !== 'object'
+
+/** Whether a holder is drawn open, given a person's choices and the default. */
+export function isOpen(
+  id: string,
+  defaultOpen: ReadonlySet<string>,
+  expanded: ReadonlySet<string> = EMPTY,
+  collapsed: ReadonlySet<string> = EMPTY,
+): boolean {
+  return expanded.has(id) || (defaultOpen.has(id) && !collapsed.has(id))
+}
 
 function byTypeThenLabel(a: ObjectVersion, b: ObjectVersion): number {
   return (
@@ -131,159 +223,347 @@ function tally(counts: Record<string, number>, key: string | undefined) {
   if (key !== undefined) counts[key] = (counts[key] ?? 0) + 1
 }
 
+// ---------- the tree ----------
+
+type Tree =
+  | { kind: 'object'; id: string; object: ObjectVersion; children: Tree[] }
+  | { kind: 'package'; id: string; path: string; title: string; children: Tree[] }
+  | { kind: 'cluster'; id: string; type: string; children: Tree[] }
+
+const modulePath = (t: Tree): string | undefined => {
+  if (t.kind !== 'object' || t.object.type !== 'software.Module') return undefined
+  const path = (t.object.attributes as Record<string, unknown>).path
+  return typeof path === 'string' && path.includes('/') ? path : undefined
+}
+
+/** The longest directory prefix (ending with a slash) shared by every path, or ''. */
+export function commonDirectory(paths: readonly string[]): string {
+  if (paths.length === 0) return ''
+  const dirs = paths.map((p) => p.slice(0, p.lastIndexOf('/') + 1))
+  let prefix = dirs[0] as string
+  for (const d of dirs) {
+    while (!d.startsWith(prefix)) {
+      const cut = prefix.slice(0, -1).lastIndexOf('/')
+      prefix = cut < 0 ? '' : prefix.slice(0, cut + 1)
+    }
+  }
+  return prefix
+}
+
+interface DirItem {
+  dir: string
+  members: Tree[]
+}
+
+/** Splits modules below `prefix` into directories (with at least `min` modules) and loose items. */
+function splitLevel(prefix: string, items: readonly Tree[], min: number): (Tree | DirItem)[] {
+  const dirs = new Map<string, Tree[]>()
+  const loose: Tree[] = []
+  for (const item of items) {
+    const path = modulePath(item)
+    const rest = path?.startsWith(prefix) ? path.slice(prefix.length) : undefined
+    const slash = rest?.indexOf('/') ?? -1
+    if (rest === undefined || slash < 0) {
+      loose.push(item)
+      continue
+    }
+    const dir = prefix + rest.slice(0, slash + 1)
+    const list = dirs.get(dir) ?? []
+    list.push(item)
+    dirs.set(dir, list)
+  }
+  const out: (Tree | DirItem)[] = [...loose]
+  for (const [dir, members] of dirs) {
+    if (members.length >= min) out.push({ dir, members })
+    else out.push(...members)
+  }
+  return out
+}
+
+const isDir = (x: Tree | DirItem): x is DirItem => 'dir' in x
+
+const itemKey = (x: Tree | DirItem) => (isDir(x) ? x.dir : (modulePath(x) ?? `~${x.id}`))
+
+/**
+ * Groups a holder's modules into directory packages. Starting from the first directories below
+ * the modules' common prefix, the largest directory is split into its own entries while the level
+ * shows fewer than `target` items and the split keeps it under `target * 1.6`.
+ */
+function packageModules(
+  holderId: string,
+  children: readonly Tree[],
+  target: number,
+  min: number,
+): Tree[] {
+  const modules = children.filter((c) => modulePath(c) !== undefined)
+  const others = children.filter((c) => modulePath(c) === undefined)
+  if (modules.length <= target) return [...children]
+  const max = Math.floor(target * 1.6)
+  const levelPrefix = commonDirectory(modules.map((m) => modulePath(m) as string))
+  let items = splitLevel(levelPrefix, modules, min)
+  for (;;) {
+    if (items.length + others.length >= target) break
+    const largest = items
+      .filter(isDir)
+      .sort((a, b) => b.members.length - a.members.length || a.dir.localeCompare(b.dir))[0]
+    if (!largest) break
+    const inner = commonDirectory(largest.members.map((m) => modulePath(m) as string))
+    const sub = splitLevel(inner, largest.members, min)
+    if (items.length - 1 + sub.length + others.length > max) break
+    items = [...items.filter((i) => i !== largest), ...sub]
+  }
+  items.sort((a, b) => itemKey(a).localeCompare(itemKey(b), 'en'))
+  const out: Tree[] = []
+  for (const item of items) {
+    if (!isDir(item)) {
+      out.push(item)
+      continue
+    }
+    const id = packageId(holderId, item.dir)
+    out.push({
+      kind: 'package',
+      id,
+      path: item.dir,
+      title: item.dir.slice(levelPrefix.length) || item.dir,
+      children: packageModules(id, item.members, target, min),
+    })
+  }
+  return [...out, ...others]
+}
+
+function collectMembers(tree: Tree, into: ObjectVersion[]) {
+  for (const child of tree.children) {
+    if (child.kind === 'object') into.push(child.object)
+    collectMembers(child, into)
+  }
+}
+
+// ---------- projection ----------
+
 export function projectGraph(
   objects: readonly ObjectVersion[],
   relations: readonly RelationVersion[],
   options: ProjectionOptions = {},
 ): Projection {
   const expanded = options.expanded ?? EMPTY
+  const collapsed = options.collapsed ?? EMPTY
   const hiddenObjectTypes = options.hiddenObjectTypes ?? EMPTY
   const hiddenRelationTypes = options.hiddenRelationTypes ?? EMPTY
   const clusterMin = options.clusterMin ?? DEFAULT_CLUSTER_MIN
+  const packageTarget = options.packageTarget ?? DEFAULT_PACKAGE_TARGET
+  const packageMin = options.packageMin ?? DEFAULT_PACKAGE_MIN
 
   const active = objects.filter((o) => o.lifecycle === 'active')
-  const activeIds = new Set(active.map((o) => o.id))
-  const visible = active.filter((o) => !hiddenObjectTypes.has(o.type)).sort(byTypeThenLabel)
+  const onCanvas = active.filter((o) => !OFF_CANVAS_TYPES.has(o.type))
+  const canvasIds = new Set(onCanvas.map((o) => o.id))
+  const visible = onCanvas.filter((o) => !hiddenObjectTypes.has(o.type)).sort(byTypeThenLabel)
   const byId = new Map(visible.map((o) => [o.id, o]))
   const activeRelations = relations.filter((r) => r.lifecycle === 'active')
+  const canvasRelations = activeRelations.filter(
+    (r) => canvasIds.has(r.from) && canvasIds.has(r.to),
+  )
 
-  // Structural parents over all active objects, so hidden intermediate types are skipped over.
+  // Structural parents over every canvas object, so hidden intermediate types are skipped over.
   const parentOf = new Map<string, string>()
-  for (const r of activeRelations) {
-    if (r.type === 'contains' && activeIds.has(r.from) && activeIds.has(r.to)) {
-      parentOf.set(r.to, r.from)
-    }
+  const exposers = new Map<string, string[]>()
+  for (const r of canvasRelations) {
+    if (r.type === 'contains') parentOf.set(r.to, r.from)
+    if (r.type === 'exposes') exposers.set(r.to, [...(exposers.get(r.to) ?? []), r.from])
   }
-
-  // Group owner: the outermost visible ancestor of a group type.
-  const groupOf = new Map<string, string>()
-  for (const o of visible) {
-    let owner: string | undefined
-    const seen = new Set<string>([o.id])
-    for (let p = parentOf.get(o.id); p !== undefined && !seen.has(p); p = parentOf.get(p)) {
+  const chainOf = (id: string): string[] => {
+    const chain: string[] = []
+    const seen = new Set([id])
+    for (let p = parentOf.get(id); p !== undefined && !seen.has(p); p = parentOf.get(p)) {
       seen.add(p)
-      const ancestor = byId.get(p)
-      if (ancestor && GROUP_TYPES.has(ancestor.type)) owner = p
+      chain.push(p)
     }
-    if (owner !== undefined) groupOf.set(o.id, owner)
+    return chain
   }
-  const groupMembers = new Map<string, ObjectVersion[]>()
+  // An endpoint belongs to the one module exposing it, when that module sits inside the endpoint's
+  // own container (or the endpoint has none).
+  for (const [endpoint, from] of exposers) {
+    if (from.length !== 1) continue
+    const module = from[0] as string
+    const own = parentOf.get(endpoint)
+    if (module === endpoint || chainOf(module).includes(endpoint)) continue
+    if (own === undefined || chainOf(module).includes(own)) parentOf.set(endpoint, module)
+  }
+  const visibleParent = new Map<string, string>()
   for (const o of visible) {
-    const owner = groupOf.get(o.id)
-    if (owner === undefined) continue
-    const list = groupMembers.get(owner) ?? []
-    list.push(o)
-    groupMembers.set(owner, list)
+    const parent = chainOf(o.id).find((p) => byId.has(p))
+    if (parent !== undefined) visibleParent.set(o.id, parent)
   }
 
-  // Type clusters among top-level objects that are not groups themselves.
-  const topLevel = visible.filter((o) => !groupOf.has(o.id))
-  const byType = new Map<string, ObjectVersion[]>()
-  for (const o of topLevel) {
-    if (UNCLUSTERED_TYPES.has(o.type) || groupMembers.has(o.id)) continue
-    const list = byType.get(o.type) ?? []
-    list.push(o)
-    byType.set(o.type, list)
+  // Object trees, children in type-then-label order.
+  const trees = new Map<string, Tree & { kind: 'object' }>()
+  for (const o of visible) trees.set(o.id, { kind: 'object', id: o.id, object: o, children: [] })
+  const roots: Tree[] = []
+  for (const o of visible) {
+    const tree = trees.get(o.id) as Tree
+    const parent = visibleParent.get(o.id)
+    if (parent === undefined) roots.push(tree)
+    else trees.get(parent)?.children.push(tree)
   }
-  const clusterOf = new Map<string, string>()
-  const clusters = new Map<string, { type: string; members: ObjectVersion[] }>()
+  for (const tree of trees.values()) {
+    if (tree.children.length > 0)
+      tree.children = packageModules(tree.id, tree.children, packageTarget, packageMin)
+  }
+
+  // Top level: modules by directory, other plain elements of one type as clusters.
+  const looseModules = packageModules('root', roots, packageTarget, packageMin)
+  const byType = new Map<string, Tree[]>()
+  for (const t of looseModules) {
+    if (t.kind !== 'object' || UNCLUSTERED_TYPES.has(t.object.type) || t.children.length > 0)
+      continue
+    byType.set(t.object.type, [...(byType.get(t.object.type) ?? []), t])
+  }
+  const clustered = new Map<string, Tree>()
   for (const [type, list] of byType) {
     if (list.length < clusterMin) continue
-    const id = clusterId(type)
-    clusters.set(id, { type, members: list })
-    for (const o of list) clusterOf.set(o.id, id)
+    const cluster: Tree = { kind: 'cluster', id: clusterId(type), type, children: list }
+    for (const t of list) clustered.set(t.id, cluster)
+  }
+  const top: Tree[] = []
+  const placed = new Set<string>()
+  for (const t of looseModules) {
+    const cluster = clustered.get(t.id)
+    if (!cluster) top.push(t)
+    else if (!placed.has(cluster.id)) {
+      placed.add(cluster.id)
+      top.push(cluster)
+    }
   }
 
+  // Which holders are open by default.
+  const defaultOpen = new Set<string>()
+  const small = visible.length <= SMALL_MODEL
+  for (const tree of trees.values()) {
+    if (tree.children.length === 0) continue
+    const type = tree.object.type
+    if (type === 'software.System' || type === 'software.Module' || small) defaultOpen.add(tree.id)
+  }
+
+  // Walk the tree: nodes in render order, representatives and ancestors.
+  const nodes: ProjectedNode[] = []
   const representative = new Map<string, string>()
   const containerOf = new Map<string, string>()
-  for (const o of visible) {
-    const holder = groupOf.get(o.id) ?? clusterOf.get(o.id)
-    if (holder === undefined) {
-      representative.set(o.id, o.id)
-      continue
-    }
-    containerOf.set(o.id, holder)
-    representative.set(o.id, expanded.has(holder) ? o.id : holder)
-  }
-
+  const ancestors = new Map<string, string[]>()
+  const expandable: string[] = []
   const freshnessCounts = (members: readonly ObjectVersion[]) => {
     const counts: Record<string, number> = {}
     if (options.freshnessOf) for (const m of members) tally(counts, options.freshnessOf(m.id))
     return counts
   }
 
-  // Top-level nodes, in type order; each expanded holder is followed later by its children.
-  const nodes: ProjectedNode[] = []
-  const children: ProjectedNode[] = []
-  const emittedClusters = new Set<string>()
-  for (const o of topLevel) {
-    const cluster = clusterOf.get(o.id)
-    if (cluster !== undefined) {
-      if (emittedClusters.has(cluster)) continue
-      emittedClusters.add(cluster)
-      const { type, members } = clusters.get(cluster) as { type: string; members: ObjectVersion[] }
-      const isOpen = expanded.has(cluster)
-      nodes.push({
-        kind: 'cluster',
-        id: cluster,
-        type,
-        expanded: isOpen,
-        memberIds: members.map((m) => m.id),
-        memberFreshness: freshnessCounts(members),
-      })
-      if (isOpen) {
-        for (const m of members)
-          children.push({ kind: 'object', id: m.id, object: m, parentId: cluster })
+  const walk = (
+    tree: Tree,
+    chain: string[],
+    drawnAs: string | undefined,
+    parent: Tree | undefined,
+  ) => {
+    ancestors.set(tree.id, chain)
+    if (tree.kind === 'object') {
+      representative.set(tree.id, drawnAs ?? tree.id)
+      const holder = chain[chain.length - 1]
+      if (holder !== undefined) containerOf.set(tree.id, holder)
+    }
+    const holder = tree.children.length > 0
+    const open = holder && isOpen(tree.id, defaultOpen, expanded, collapsed)
+    if (drawnAs === undefined) {
+      const base = {
+        id: tree.id,
+        depth: chain.length,
+        ...(chain.length > 0 ? { parentId: chain[chain.length - 1] as string } : {}),
       }
-      continue
+      if (!holder && tree.kind === 'object') {
+        const row =
+          ROW_TYPES.has(tree.object.type) &&
+          parent?.kind === 'object' &&
+          parent.object.type === 'software.Module'
+        nodes.push({ kind: 'object', ...base, object: tree.object, row })
+      } else {
+        const members: ObjectVersion[] = []
+        collectMembers(tree, members)
+        const memberCounts: Record<string, number> = {}
+        for (const m of members) tally(memberCounts, m.type)
+        const holderBase = {
+          ...base,
+          expanded: open,
+          memberIds: members.map((m) => m.id),
+          memberCounts,
+          memberFreshness: freshnessCounts(members),
+        }
+        if (tree.kind === 'object')
+          nodes.push({ kind: 'group', ...holderBase, object: tree.object })
+        else if (tree.kind === 'package')
+          nodes.push({ kind: 'package', ...holderBase, path: tree.path, title: tree.title })
+        else nodes.push({ kind: 'cluster', ...holderBase, type: tree.type })
+      }
     }
-    const members = groupMembers.get(o.id)
-    if (members === undefined) {
-      nodes.push({ kind: 'object', id: o.id, object: o })
-      continue
-    }
-    const memberCounts: Record<string, number> = {}
-    for (const m of members) tally(memberCounts, m.type)
-    const isOpen = expanded.has(o.id)
-    nodes.push({
-      kind: 'group',
-      id: o.id,
-      object: o,
-      expanded: isOpen,
-      memberIds: members.map((m) => m.id),
-      memberCounts,
-      memberFreshness: freshnessCounts(members),
-    })
-    if (isOpen) {
-      for (const m of members)
-        children.push({ kind: 'object', id: m.id, object: m, parentId: o.id })
-    }
+    if (holder) expandable.push(tree.id)
+    const childDrawnAs = drawnAs ?? (open ? undefined : tree.id)
+    const childChain = holder ? [...chain, tree.id] : chain
+    for (const child of tree.children) walk(child, childChain, childDrawnAs, tree)
   }
-  nodes.push(...children)
+  // Parents precede children: emit level by level within each top-level tree.
+  for (const t of top) walk(t, [], undefined, undefined)
+  const order = new Map(nodes.map((n, i) => [n.id, i]))
+  nodes.sort(
+    (a, b) => a.depth - b.depth || (order.get(a.id) as number) - (order.get(b.id) as number),
+  )
 
   // Edges.
   let hiddenRelations = 0
   let internalRelations = 0
+  let detailRelations = 0
+  const showDetail = options.detail === 'all'
+  const drawnById = new Map(nodes.map((n) => [n.id, n]))
   const merged = new Map<string, Omit<ProjectedEdge, 'parallelIndex' | 'parallelCount'>>()
-  for (const r of activeRelations) {
+  for (const r of canvasRelations) {
     if (hiddenRelationTypes.has(r.type) || !byId.has(r.from) || !byId.has(r.to)) {
       hiddenRelations++
       continue
     }
-    const source = representative.get(r.from) as string
-    const target = representative.get(r.to) as string
-    if (source === target) {
+    const drawnSource = representative.get(r.from) as string
+    const drawnTarget = representative.get(r.to) as string
+    if (drawnSource === drawnTarget) {
       internalRelations++
       continue
     }
-    // Nesting already shows that a group or cluster holds this member.
-    if (r.type === 'contains' && containerOf.get(r.to) === source) continue
+    // Nesting already shows that an open holder holds this member.
+    if (
+      STRUCTURAL_RELATIONS.has(r.type) &&
+      drawnSource === r.from &&
+      (ancestors.get(r.to) ?? []).includes(r.from)
+    ) {
+      internalRelations++
+      continue
+    }
+    // Between different frames, the edge joins the frames that separate its ends, unless one end
+    // is drawn in full: then a person sees exactly where it goes.
+    const exact =
+      options.lift === false ||
+      (options.exactFor !== undefined &&
+        (drawnSource === options.exactFor || drawnTarget === options.exactFor))
+    const [source, target] = exact
+      ? [drawnSource, drawnTarget]
+      : siblingsBetween(drawnSource, drawnTarget, ancestors)
+    // Imports between members of one container are detail: drawn for the selection, or on request.
+    if (!exact && !showDetail && DETAIL_RELATIONS.has(r.type)) {
+      const level = (ancestors.get(source) ?? []).at(-1)
+      const holder = level === undefined ? undefined : drawnById.get(level)
+      if (holder && !(holder.kind === 'group' && holder.object.type === 'software.System')) {
+        detailRelations++
+        continue
+      }
+    }
     const basis = r.claim.basis
     const key = `${source}>${target}:${r.type}:${basis}`
     const existing = merged.get(key)
     if (existing) {
       existing.relationIds.push(r.id)
       existing.aggregated = true
+      existing.toBe = existing.toBe && r.stance === 'toBe'
     } else {
       merged.set(key, {
         id: `e:${key}`,
@@ -291,6 +571,7 @@ export function projectGraph(
         target,
         type: r.type,
         basis,
+        toBe: r.stance === 'toBe',
         relationIds: [r.id],
         aggregated: source !== r.from || target !== r.to,
       })
@@ -310,37 +591,66 @@ export function projectGraph(
     return { ...e, parallelIndex: index, parallelCount: pairs.get(key) ?? 1 }
   })
 
-  const expandable = [
-    ...nodes.filter((n) => n.kind === 'group' || n.kind === 'cluster').map((n) => n.id),
-  ]
-
   return {
     nodes,
     edges: finalEdges,
     representative,
     containerOf,
+    ancestors,
     expandable,
+    defaultOpen,
     stats: {
       objects: visible.length,
-      relations: activeRelations.length - hiddenRelations,
-      hiddenObjects: active.length - visible.length,
+      relations: canvasRelations.length - hiddenRelations,
+      hiddenObjects: onCanvas.length - visible.length,
       hiddenRelations,
       internalRelations,
+      detailRelations,
+      offCanvas: active.length - onCanvas.length,
     },
   }
 }
 
-/** Type counts for the filter UI, over active records. */
+/** Type counts for the filter UI, over active records drawn on the canvas. */
 export function typeCounts(
   objects: readonly ObjectVersion[],
   relations: readonly RelationVersion[],
 ): { objectTypes: [string, number][]; relationTypes: [string, number][] } {
   const o: Record<string, number> = {}
   const r: Record<string, number> = {}
-  for (const x of objects) if (x.lifecycle === 'active') tally(o, x.type)
-  for (const x of relations) if (x.lifecycle === 'active') tally(r, x.type)
+  const onCanvas = new Set<string>()
+  for (const x of objects) {
+    if (x.lifecycle !== 'active' || OFF_CANVAS_TYPES.has(x.type)) continue
+    onCanvas.add(x.id)
+    tally(o, x.type)
+  }
+  for (const x of relations)
+    if (x.lifecycle === 'active' && onCanvas.has(x.from) && onCanvas.has(x.to)) tally(r, x.type)
   return {
     objectTypes: Object.entries(o).sort(([a], [b]) => compareTypes(a, b)),
     relationTypes: Object.entries(r).sort(([a], [b]) => a.localeCompare(b)),
   }
+}
+
+/**
+ * The two nodes that stand for an edge's ends at the level where they meet: the ancestors (or
+ * the ends themselves) just below their deepest common holder. When one end holds the other, the
+ * ends are kept.
+ */
+export function siblingsBetween(
+  source: string,
+  target: string,
+  ancestors: ReadonlyMap<string, readonly string[]>,
+): [string, string] {
+  const a = [...(ancestors.get(source) ?? []), source]
+  const b = [...(ancestors.get(target) ?? []), target]
+  let k = 0
+  while (k < a.length && k < b.length && a[k] === b[k]) k++
+  if (k >= a.length || k >= b.length) return [source, target]
+  return [a[k] as string, b[k] as string]
+}
+
+/** The holders to open so that an object is drawn itself. */
+export function holdersToOpen(projection: Projection, objectId: string): string[] {
+  return projection.ancestors.get(objectId) ?? []
 }

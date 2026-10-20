@@ -1,58 +1,85 @@
 import '@xyflow/react/dist/base.css'
-import * as Popover from '@radix-ui/react-popover'
+import type { DecisionSummary, ObjectVersion } from '@kalyth/contracts'
 import {
   Background,
   BackgroundVariant,
   Controls,
   type EdgeChange,
-  MiniMap,
   type NodeChange,
-  Panel,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useStore,
 } from '@xyflow/react'
-import { FoldVertical, Funnel, Info, LocateFixed, Search, UnfoldVertical } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ClaimFreshness } from '../api/freshness.ts'
+import { MAX_IMPACT_SEEDS, type RevisionModel, useDecisions, useImpact } from '../api/queries.ts'
+import { type Lens, useAppLocation } from '../app/location.ts'
 import { useWorkbench } from '../app/workbench.ts'
-import { EdgeSample, StatusBadge, TypeLabel } from '../components/badges.tsx'
-import { BASIS_ICONS, FRESHNESS_ICONS } from '../components/icons.tsx'
-import { Button, EmptyState, Spinner } from '../components/ui.tsx'
-import { cn } from '../lib/cn.ts'
-import { plural } from '../model/format.ts'
-import { objectLabel } from '../model/labels.ts'
-import { searchObjects } from '../model/search.ts'
-import {
-  BASIS_META,
-  BASIS_ORDER,
-  FRESHNESS_META,
-  objectTypeMeta,
-  relationMeta,
-} from '../model/semantics.ts'
+import { EmptyState, Spinner } from '../components/ui.tsx'
+import { plural, typePlural } from '../model/format.ts'
+import { objectDetail, objectLabel, objectShortLabel } from '../model/labels.ts'
+import { basisMeta, compareTypes, objectTypeMeta } from '../model/semantics.ts'
 import { ErrorNotice } from '../views/shared.tsx'
 import { EdgeMarkers, edgeTypes, type RelationFlowEdge } from './edges.tsx'
-import { layoutProjection } from './layout.ts'
-import { type GroupFlowNode, nodeTypes, type ObjectFlowNode } from './nodes.tsx'
-import { isClusterId, type Projection, projectGraph, typeCounts } from './projection.ts'
+import { readableViewport } from './geometry.ts'
+import { type Box, type LayoutResult, layoutProjection, routeBetween } from './layout.ts'
+import {
+  alternativeKey,
+  chooseAlternative,
+  DEFAULT_LENS,
+  decisionMarks,
+  focusSet,
+  type Hops,
+  impactCaption,
+  impactMarks,
+  isDimmed,
+  lensDescription,
+  NEEDS_REVIEW,
+  revisionMarks,
+  shownDecisions,
+} from './lens.ts'
+import {
+  type HolderFlowNode,
+  type HolderNodeData,
+  type NodeMarks,
+  nodeTypes,
+  type ObjectFlowNode,
+} from './nodes.tsx'
+import { Caption, Legend, sourceLine, TitleBlock, type TitleBlockData } from './overlays.tsx'
+import {
+  isOpen,
+  isSyntheticId,
+  type ProjectedNode,
+  type Projection,
+  projectGraph,
+  typeCounts,
+} from './projection.ts'
+import { GraphToolbar } from './toolbar.tsx'
 
-type FlowNode = ObjectFlowNode | GroupFlowNode
+type FlowNode = ObjectFlowNode | HolderFlowNode
 
-/** Graph view state survives tab switches within a project (module scope, per project). */
-interface GraphPrefs {
+/** Canvas state that survives view switches within a project (module scope, per project). */
+export interface GraphPrefs {
   expanded: Set<string>
+  collapsed: Set<string>
   hiddenObjectTypes: Set<string>
   hiddenRelationTypes: Set<string>
   legend: boolean
+  hops: Hops
+  /** Draw imports between members of a container always, not only for the selection. */
+  imports: boolean
 }
 const prefsByProject = new Map<string, GraphPrefs>()
 function initialPrefs(projectId: string): GraphPrefs {
   return (
     prefsByProject.get(projectId) ?? {
       expanded: new Set(),
+      collapsed: new Set(),
       hiddenObjectTypes: new Set(),
       hiddenRelationTypes: new Set(),
       legend: true,
+      hops: 0,
+      imports: false,
     }
   )
 }
@@ -62,6 +89,12 @@ const reducedMotion = () =>
 
 export default function GraphView() {
   const wb = useWorkbench()
+  // While a new revision loads (after a commit, say), the canvas keeps the previous one, so it
+  // and any open dialog stay where they are.
+  const last = useRef<{ projectId: string; model: RevisionModel } | null>(null)
+  if (wb.model) last.current = { projectId: wb.projectId, model: wb.model }
+  const model =
+    wb.model ?? (last.current?.projectId === wb.projectId ? last.current.model : undefined)
   if (wb.modelError) {
     return (
       <div className="p-6">
@@ -69,7 +102,7 @@ export default function GraphView() {
       </div>
     )
   }
-  if (!wb.model) {
+  if (!model) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-fg-muted">
         <Spinner /> Loading the model…
@@ -78,30 +111,49 @@ export default function GraphView() {
   }
   return (
     <ReactFlowProvider>
-      <GraphCanvas />
+      <GraphCanvas model={model} />
     </ReactFlowProvider>
   )
 }
 
-function GraphCanvas() {
+/** Opens every holder in `ids`. */
+function openAll(p: GraphPrefs, ids: readonly string[]): GraphPrefs {
+  if (ids.length === 0) return p
+  const expanded = new Set(p.expanded)
+  const collapsed = new Set(p.collapsed)
+  for (const id of ids) {
+    expanded.add(id)
+    collapsed.delete(id)
+  }
+  return { ...p, expanded, collapsed }
+}
+
+function GraphCanvas({ model }: { model: RevisionModel }) {
   const wb = useWorkbench()
-  const model = wb.model as NonNullable<typeof wb.model>
+  const [loc, navigate] = useAppLocation()
+  const lens: Lens = loc.lens ?? DEFAULT_LENS
   const flow = useReactFlow<FlowNode, RelationFlowEdge>()
-  // Arriving with a selection hidden in a collapsed group (a deep link, or a pick in another
-  // view) expands that group once and focuses it, so the selection is visible.
+  const paneWidth = useStore((s) => s.width)
+  const paneHeight = useStore((s) => s.height)
+
+  // Arriving with a selection hidden in a collapsed holder (a deep link, or a pick in another
+  // view) opens its holders once and focuses it, so the selection is visible.
   const [initial] = useState(() => {
     const prefs = initialPrefs(wb.projectId)
-    const holder = wb.selection
-      ? projectGraph(model.objects, model.relations, prefs).containerOf.get(wb.selection)
-      : undefined
-    if (holder === undefined || prefs.expanded.has(holder)) return { prefs, focus: null }
-    return { prefs: { ...prefs, expanded: new Set(prefs.expanded).add(holder) }, focus: holder }
+    if (!wb.selection) return { prefs, focus: null as string | null }
+    const p = projectGraph(model.objects, model.relations, prefs)
+    const holders = p.ancestors.get(wb.selection) ?? []
+    const closed = holders.filter((h) => !isOpen(h, p.defaultOpen, prefs.expanded, prefs.collapsed))
+    if (closed.length === 0) return { prefs, focus: wb.selection }
+    return { prefs: openAll(prefs, closed), focus: wb.selection }
   })
   const [prefs, setPrefs] = useState<GraphPrefs>(initial.prefs)
   useEffect(() => {
     prefsByProject.set(wb.projectId, prefs)
   }, [wb.projectId, prefs])
-  const [focusTarget, setFocusTarget] = useState<string | null>(initial.focus)
+  const [focusTarget, setFocusTarget] = useState<string[] | null>(
+    initial.focus ? [initial.focus] : null,
+  )
 
   const freshnessOf = useCallback(
     (id: string) => wb.freshness.index.get(id)?.status,
@@ -111,106 +163,256 @@ function GraphCanvas() {
     () =>
       projectGraph(model.objects, model.relations, {
         expanded: prefs.expanded,
+        collapsed: prefs.collapsed,
         hiddenObjectTypes: prefs.hiddenObjectTypes,
         hiddenRelationTypes: prefs.hiddenRelationTypes,
+        detail: prefs.imports ? 'all' : 'selection',
         ...(wb.freshness.available ? { freshnessOf } : {}),
       }),
-    [
-      model,
-      prefs.expanded,
-      prefs.hiddenObjectTypes,
-      prefs.hiddenRelationTypes,
-      wb.freshness.available,
-      freshnessOf,
-    ],
+    [model, prefs, wb.freshness.available, freshnessOf],
   )
   const layout = useMemo(() => layoutProjection(projection), [projection])
 
+  // ---------- lens data ----------
+  const decisionsQuery = useDecisions(wb.projectId)
+  const decisions: DecisionSummary[] = decisionsQuery.data?.decisions ?? []
+  const chosen = useMemo(
+    () => (lens === 'impact' ? chooseAlternative(decisions, loc.alternative) : null),
+    [lens, decisions, loc.alternative],
+  )
+  const seeds = useMemo(
+    () =>
+      chosen
+        ? [...new Set(chosen.alternative.directChanges.map((c) => c.target))]
+            .filter((id) => model.objectById.has(id))
+            .slice(0, MAX_IMPACT_SEEDS)
+        : [],
+    [chosen, model],
+  )
+  const impact = useImpact(wb.projectId, seeds, wb.revision, lens === 'impact' && seeds.length > 0)
+  const impactState = useMemo(
+    () =>
+      chosen
+        ? impactMarks(projection, chosen.alternative, impact.data?.elements, model.objectById)
+        : null,
+    [chosen, projection, impact.data, model.objectById],
+  )
+  const revisions = useMemo(
+    () =>
+      lens === 'freshness' && wb.freshness.available
+        ? revisionMarks(projection, model.relations, freshnessOf)
+        : null,
+    [lens, wb.freshness.available, projection, model.relations, freshnessOf],
+  )
+  const decisionState = useMemo(
+    () => (lens === 'decisions' ? decisionMarks(projection, decisions) : null),
+    [lens, projection, decisions],
+  )
+  const staleClaims = useMemo(
+    () => (wb.freshness.report?.claims ?? []).filter((c) => NEEDS_REVIEW.has(c.status)).length,
+    [wb.freshness.report],
+  )
+
+  // Choosing an alternative opens the holders of its direct changes, so they can be read.
+  const revealedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!chosen || revealedFor.current === chosen.alternative.id) return
+    revealedFor.current = chosen.alternative.id
+    const holders = new Set<string>()
+    for (const c of chosen.alternative.directChanges) {
+      for (const h of projection.ancestors.get(c.target) ?? []) holders.add(h)
+    }
+    const closed = [...holders].filter(
+      (h) => !isOpen(h, projection.defaultOpen, prefs.expanded, prefs.collapsed),
+    )
+    if (closed.length > 0 && closed.length <= 12) setPrefs((p) => openAll(p, closed))
+    const targets = chosen.alternative.directChanges.map((c) => c.target)
+    if (targets.length > 0) setFocusTarget(targets)
+  }, [chosen, projection, prefs.expanded, prefs.collapsed])
+
+  // ---------- selection and focus ----------
+  const selected = wb.selection
+  const selectedNode = selected ? (projection.representative.get(selected) ?? selected) : undefined
+  // Edges of the selection are drawn to their exact ends; other edges join frames (see projection).
+  const drawn = useMemo(
+    () =>
+      selectedNode === undefined
+        ? projection
+        : projectGraph(model.objects, model.relations, {
+            expanded: prefs.expanded,
+            collapsed: prefs.collapsed,
+            hiddenObjectTypes: prefs.hiddenObjectTypes,
+            hiddenRelationTypes: prefs.hiddenRelationTypes,
+            detail: prefs.imports ? 'all' : 'selection',
+            exactFor: selectedNode,
+          }),
+    [projection, selectedNode, model, prefs],
+  )
+  // Hops count relations to their exact ends, imports included, whatever the frames show.
+  const focus = useMemo(
+    () =>
+      prefs.hops === 0 || selectedNode === undefined
+        ? null
+        : focusSet(
+            projectGraph(model.objects, model.relations, {
+              expanded: prefs.expanded,
+              collapsed: prefs.collapsed,
+              hiddenObjectTypes: prefs.hiddenObjectTypes,
+              hiddenRelationTypes: prefs.hiddenRelationTypes,
+              lift: false,
+            }),
+            selectedNode,
+            prefs.hops,
+          ),
+    [model, prefs, selectedNode],
+  )
+
+  const projectionRef = useRef<Projection | null>(null)
+  projectionRef.current = projection
   const toggle = useCallback((id: string) => {
     setPrefs((p) => {
       const expanded = new Set(p.expanded)
-      if (expanded.has(id)) expanded.delete(id)
-      else expanded.add(id)
-      return { ...p, expanded }
+      const collapsed = new Set(p.collapsed)
+      const open =
+        expanded.has(id) || (projectionRef.current?.defaultOpen.has(id) && !collapsed.has(id))
+      if (open) {
+        expanded.delete(id)
+        collapsed.add(id)
+      } else {
+        expanded.add(id)
+        collapsed.delete(id)
+      }
+      return { ...p, expanded, collapsed }
     })
-    setFocusTarget(id)
+    setFocusTarget([id])
   }, [])
-
-  // Selection: the selected record's node, or the collapsed group standing in for it.
-  const selected = wb.selection
-  const selectedNode = selected ? (projection.representative.get(selected) ?? selected) : undefined
-  const neighbourhood = useMemo(() => {
-    if (!selectedNode) return null
-    const ids = new Set<string>([selectedNode])
-    for (const e of projection.edges) {
-      if (e.source === selectedNode) ids.add(e.target)
-      if (e.target === selectedNode) ids.add(e.source)
-    }
-    return ids
-  }, [projection, selectedNode])
-
+  const pathPrefix = useMemo(() => endpointPrefix(model.objects), [model.objects])
+  const altKey = chosen ? alternativeKey(chosen.index) : undefined
   const nodes = useMemo(
     () =>
-      toFlowNodes(
-        projection,
-        layout.boxes,
-        wb.freshness.index,
+      toFlowNodes(projection, layout.boxes, {
+        lens,
         selected,
         selectedNode,
-        neighbourhood,
-        toggle,
-      ),
-    [projection, layout, wb.freshness.index, selected, selectedNode, neighbourhood, toggle],
+        focus,
+        revisions: revisions?.byNode,
+        impact: impactState,
+        decisions: decisionState?.tags,
+        altKey,
+        pathPrefix,
+        statusOf: freshnessOf,
+        onToggle: toggle,
+      }),
+    [
+      projection,
+      layout,
+      lens,
+      selected,
+      selectedNode,
+      focus,
+      revisions,
+      impactState,
+      decisionState,
+      altKey,
+      pathPrefix,
+      freshnessOf,
+      toggle,
+    ],
   )
   const edges = useMemo(
-    () => toFlowEdges(projection, selected, selectedNode, model.nameOf),
-    [projection, selected, selectedNode, model.nameOf],
+    () =>
+      toFlowEdges(drawn, layout.routes, lens, selected, focus, impactState?.numbers, model.nameOf),
+    [drawn, layout.routes, lens, selected, focus, impactState, model.nameOf],
   )
 
-  // Fit the whole graph on first render; after expanding or collapsing, bring that group into view.
-  // The padding keeps fitted content clear of the legend panel.
+  // ---------- viewport ----------
+  const wide = paneWidth >= 720
+  const insets = useMemo(
+    () => ({ top: 40, left: 24, bottom: 24, right: wide && prefs.legend ? 244 : 24 }),
+    [wide, prefs.legend],
+  )
+  /** The whole drawing; at first only down to a readable zoom, on request (Fit) entirely. */
+  const showAll = useCallback(
+    (duration: number, whole = false) => {
+      if (paneWidth === 0) return
+      const vp = readableViewport(
+        { x: 0, y: 0, width: layout.width, height: layout.height },
+        paneWidth,
+        paneHeight,
+        insets,
+        whole ? 0.1 : undefined,
+      )
+      void flow.setViewport(vp, { duration })
+    },
+    [flow, layout.width, layout.height, paneWidth, paneHeight, insets],
+  )
+  /** Every node's box on the canvas, from the layout (React Flow's own copy may lag a frame). */
+  const absoluteBoxes = useMemo(() => {
+    const abs = new Map<string, Box>()
+    for (const n of projection.nodes) {
+      const box = layout.boxes.get(n.id)
+      if (!box) continue
+      const parent = n.parentId === undefined ? undefined : abs.get(n.parentId)
+      abs.set(n.id, { ...box, x: box.x + (parent?.x ?? 0), y: box.y + (parent?.y ?? 0) })
+    }
+    return abs
+  }, [projection, layout])
+  const showNodes = useCallback(
+    (ids: readonly string[], duration: number) => {
+      if (paneWidth === 0) return false
+      let minX = Number.POSITIVE_INFINITY
+      let minY = Number.POSITIVE_INFINITY
+      let maxX = Number.NEGATIVE_INFINITY
+      let maxY = Number.NEGATIVE_INFINITY
+      for (const id of ids) {
+        const box = absoluteBoxes.get(id)
+        if (!box) continue
+        minX = Math.min(minX, box.x)
+        minY = Math.min(minY, box.y)
+        maxX = Math.max(maxX, box.x + box.width)
+        maxY = Math.max(maxY, box.y + box.height)
+      }
+      if (!Number.isFinite(minX)) return false
+      const vp = readableViewport(
+        { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+        paneWidth,
+        paneHeight,
+        insets,
+        undefined,
+        1.1,
+      )
+      void flow.setViewport(vp, { duration })
+      return true
+    },
+    [flow, paneWidth, paneHeight, insets, absoluteBoxes],
+  )
   const fitted = useRef(false)
-  const padding = useMemo(
-    () =>
-      ({
-        top: '28px',
-        bottom: '28px',
-        left: '28px',
-        right: prefs.legend ? '280px' : '28px',
-      }) as const,
-    [prefs.legend],
-  )
-  const fitAll = useCallback(
-    (duration: number) => void flow.fitView({ padding, maxZoom: 1.1, duration }),
-    [flow, padding],
-  )
   useEffect(() => {
-    const duration = reducedMotion() ? 0 : 280
+    if (paneWidth === 0 || nodes.length === 0) return
+    const duration = reducedMotion() ? 0 : 260
     const frame = requestAnimationFrame(() => {
-      if (nodes.length === 0) return
-      if (!fitted.current && !focusTarget) {
+      if (focusTarget) {
+        const targets = [
+          ...new Set(focusTarget.map((id) => projection.representative.get(id) ?? id)),
+        ]
+        if (showNodes(targets, fitted.current ? duration : 0)) {
+          fitted.current = true
+          setFocusTarget(null)
+        }
+      } else if (!fitted.current) {
         fitted.current = true
-        fitAll(0)
-      } else if (focusTarget) {
-        const first = !fitted.current
-        fitted.current = true
-        void flow.fitView({
-          nodes: [{ id: focusTarget }],
-          padding,
-          maxZoom: 1.1,
-          duration: first ? 0 : duration,
-        })
-        setFocusTarget(null)
+        showAll(0)
       }
     })
     return () => cancelAnimationFrame(frame)
-  }, [flow, focusTarget, nodes.length, fitAll, padding])
+  }, [focusTarget, nodes, paneWidth, projection, showAll, showNodes])
 
+  // ---------- interaction ----------
   const onNodesChange = useCallback(
     (changes: NodeChange<FlowNode>[]) => {
       for (const change of changes) {
-        if (change.type === 'select' && change.selected) {
-          if (!isClusterId(change.id)) wb.select(change.id)
+        if (change.type === 'select' && change.selected && !isSyntheticId(change.id)) {
+          wb.select(change.id)
         }
       }
     },
@@ -225,45 +427,78 @@ function GraphCanvas() {
         if (edge.relationIds.length === 1) wb.select(edge.relationIds[0])
         else
           wb.selectGroup({
-            title: `${model.nameOf(edge.source) ?? clusterTitle(edge.source)} —${edge.type}→ ${model.nameOf(edge.target) ?? clusterTitle(edge.target)}`,
+            title: `${nodeName(projection, edge.source, model.nameOf)} —${edge.type}→ ${nodeName(projection, edge.target, model.nameOf)}`,
             relationIds: edge.relationIds,
           })
       }
     },
     [projection, wb, model],
   )
-
   const reveal = useCallback(
     (objectId: string) => {
-      const holder = projection.containerOf.get(objectId)
-      if (holder && !prefs.expanded.has(holder)) {
-        setPrefs((p) => ({ ...p, expanded: new Set(p.expanded).add(holder) }))
-      }
+      const closed = (projection.ancestors.get(objectId) ?? []).filter(
+        (h) => !isOpen(h, projection.defaultOpen, prefs.expanded, prefs.collapsed),
+      )
+      if (closed.length > 0) setPrefs((p) => openAll(p, closed))
       wb.select(objectId)
-      setFocusTarget(objectId)
+      setFocusTarget([objectId])
     },
-    [projection, prefs.expanded, wb],
+    [projection, prefs.expanded, prefs.collapsed, wb],
   )
 
   const counts = useMemo(() => typeCounts(model.objects, model.relations), [model])
 
-  if (model.objects.length === 0) {
-    return (
-      <EmptyState title="No objects at this revision" className="h-full">
-        Objects appear here once a proposal that creates them is committed.
-      </EmptyState>
-    )
+  // ---------- caption, legend and title block ----------
+  const shown = shownDecisions(decisions)
+  const caption = captionFor({
+    lens,
+    chosen,
+    altKey,
+    impactState,
+    impactLoaded: Boolean(impact.data),
+    freshnessAvailable: wb.freshness.available,
+    staleClaims,
+    source: sourceLine(model.objects),
+    decisionsAvailable: decisionsQuery.data !== null,
+    shownDecisions: shown.length,
+    historical: wb.isHistorical,
+  })
+  const titleBlock: TitleBlockData = {
+    project: wb.overview.project.name,
+    source: sourceLine(model.objects),
+    revision: wb.isHistorical
+      ? `r${wb.revision} (head is r${wb.headRevision})`
+      : `r${wb.revision} (head)`,
+    lens:
+      lens === 'impact'
+        ? `impact${altKey ? ` · ${altKey}` : ''}`
+        : lens === 'basis'
+          ? 'claim basis'
+          : lens,
+    stale: wb.freshness.available ? plural(staleClaims, 'claim') : 'not assessed',
+    shown: `${plural(projection.nodes.length, 'node')} for ${plural(projection.stats.objects, 'element')}${model.truncated ? ' (first 1,000 records)' : ''}`,
   }
+  const relationTypes = useMemo(
+    () => [...new Set(projection.edges.map((e) => e.type))].sort(),
+    [projection],
+  )
 
+  const empty = projection.stats.objects === 0
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Toolbar
+      <GraphToolbar
+        lens={lens}
+        onLens={(next) => navigate({ lens: next }, 'replace')}
+        decisions={shown}
+        chosen={chosen}
+        onAlternative={(id) => navigate({ lens: 'impact', alternative: id }, 'replace')}
         projection={projection}
         prefs={prefs}
         setPrefs={setPrefs}
         counts={counts}
         onReveal={reveal}
-        onFit={() => fitAll(reducedMotion() ? 0 : 280)}
+        onFit={() => showAll(reducedMotion() ? 0 : 260, true)}
+        hasSelection={selectedNode !== undefined}
       />
       <div className="relative min-h-0 flex-1">
         <EdgeMarkers />
@@ -291,102 +526,261 @@ function GraphCanvas() {
             'node.a11yDescription.default':
               'Press Enter or Space to select and inspect. Use the expand button inside groups to show their members.',
           }}
-          aria-label="Model graph"
+          aria-label="Model canvas"
         >
           <Background
-            variant={BackgroundVariant.Dots}
-            gap={20}
-            size={1.2}
+            id="minor"
+            variant={BackgroundVariant.Lines}
+            gap={16}
+            lineWidth={1}
             color="var(--k-canvas-dot)"
           />
-          <Controls showInteractive={false} position="bottom-left" />
-          <MiniMap
-            pannable
-            zoomable
-            position="bottom-right"
-            ariaLabel="Overview of the graph"
-            nodeColor={(n) =>
-              n.type === 'object' ? 'var(--k-surface-3)' : 'var(--k-border-strong)'
-            }
-            nodeStrokeColor="var(--k-border-strong)"
-            nodeBorderRadius={4}
+          <Background
+            id="major"
+            variant={BackgroundVariant.Lines}
+            gap={80}
+            lineWidth={1}
+            color="var(--k-canvas-major)"
           />
-          {prefs.legend && (
-            <Panel position="top-right">
-              <Legend
-                projection={projection}
-                freshness={wb.freshness.available}
-                onClose={() => setPrefs((p) => ({ ...p, legend: false }))}
-              />
-            </Panel>
-          )}
+          <Controls showInteractive={false} position="bottom-left" />
         </ReactFlow>
+        <div className="pointer-events-none absolute top-2 right-3 left-3 flex">
+          <Caption>{caption}</Caption>
+        </div>
+        <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
+          {prefs.legend && wide && (
+            <Legend
+              lens={lens}
+              relationTypes={relationTypes}
+              decisions={decisionState?.legend ?? []}
+              altKey={altKey}
+            />
+          )}
+          <TitleBlock data={titleBlock} compact={!wide} />
+        </div>
+        {empty && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <EmptyState title="No elements yet" className="pointer-events-auto max-w-sm bg-surface">
+              {projection.stats.offCanvas > 0
+                ? 'Decisions and questions live in change threads. '
+                : ''}
+              Ask the Navigator for alternatives; what it proposes becomes a proposal you review
+              before it is part of the model.
+            </EmptyState>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function clusterTitle(id: string): string {
-  return isClusterId(id) ? objectTypeMeta(id.slice('cluster:'.length)).label : id
+function captionFor(c: {
+  lens: Lens
+  chosen: ReturnType<typeof chooseAlternative>
+  altKey: string | undefined
+  impactState: ReturnType<typeof impactMarks> | null
+  impactLoaded: boolean
+  freshnessAvailable: boolean
+  staleClaims: number
+  source: string
+  decisionsAvailable: boolean
+  shownDecisions: number
+  historical: boolean
+}): string {
+  switch (c.lens) {
+    case 'basis':
+      return 'Line style says where each claim comes from: solid observed, dashed inferred, a cobalt mark where a person stated it.'
+    case 'freshness':
+      if (!c.freshnessAvailable) return 'Freshness is not available from this server.'
+      return c.staleClaims === 0
+        ? `Source at ${c.source}: every claim matches its evidence.`
+        : `Source at ${c.source}: ${plural(c.staleClaims, 'claim')} no longer match${c.staleClaims === 1 ? 'es' : ''} their evidence; revision marks show where.`
+    case 'impact': {
+      if (!c.decisionsAvailable) return 'Decisions are not available from this server.'
+      if (!c.chosen || !c.altKey || !c.impactState)
+        return 'No open or accepted decision has alternatives yet. Ask the Navigator for alternatives to see their impact here.'
+      const summary = impactCaption(c.altKey, c.impactState.summary, c.impactLoaded)
+      return `${summary} · ${c.chosen.alternative.title}${c.historical ? ' (decisions as at the head)' : ''}`
+    }
+    case 'decisions':
+      if (!c.decisionsAvailable) return 'Decisions are not available from this server.'
+      return c.shownDecisions === 0
+        ? 'No open or accepted decision changes the model yet.'
+        : `Flagged: elements that ${plural(c.shownDecisions, 'open or accepted decision')} change. Decisions themselves live in change threads.`
+  }
+}
+
+/** The path prefix every endpoint shares, such as /api/v1, left out of endpoint rows. */
+function endpointPrefix(objects: readonly ObjectVersion[]): string {
+  const paths = objects
+    .filter((o) => o.type === 'software.Endpoint' && o.lifecycle === 'active')
+    .map((o) => (o.attributes as Record<string, unknown>).path)
+    .filter((p): p is string => typeof p === 'string')
+  if (paths.length < 3) return ''
+  const split = paths.map((p) => p.split('/'))
+  const first = split[0] as string[]
+  let n = 0
+  while (n < first.length - 1 && split.every((s) => s.length > n + 1 && s[n] === first[n])) n++
+  return n <= 1 ? '' : first.slice(0, n).join('/')
+}
+
+function nodeName(
+  projection: Projection,
+  id: string,
+  nameOf: (id: string) => string | undefined,
+): string {
+  const node = projection.nodes.find((n) => n.id === id)
+  if (node?.kind === 'package') return node.title
+  if (node?.kind === 'cluster') return objectTypeMeta(node.type).label
+  return nameOf(id) ?? id
+}
+
+function memberSummary(counts: Record<string, number>): string {
+  return Object.entries(counts)
+    .sort(([a], [b]) => compareTypes(a, b))
+    .map(([type, n]) => typePlural(type, n))
+    .join(' · ')
 }
 
 // ---------- projection -> React Flow ----------
 
+interface FlowContext {
+  lens: Lens
+  selected: string | undefined
+  selectedNode: string | undefined
+  focus: Set<string> | null
+  revisions: Map<string, number> | undefined
+  impact: ReturnType<typeof impactMarks> | null
+  decisions: Map<string, string[]> | undefined
+  altKey: string | undefined
+  pathPrefix: string
+  statusOf: (claimId: string) => string | undefined
+  onToggle: (id: string) => void
+}
+
+function marksFor(n: ProjectedNode, ctx: FlowContext): NodeMarks {
+  const object = n.kind === 'object' || n.kind === 'group' ? n.object : undefined
+  return {
+    dimmed: isDimmed(ctx.focus, {
+      id: n.id,
+      ...(n.kind !== 'object' ? { expanded: n.expanded } : {}),
+    }),
+    draft: object?.stance === 'toBe',
+    basis: ctx.lens === 'basis' ? object?.claim.basis : undefined,
+    changes: ctx.lens === 'impact' ? ctx.impact?.numbers.get(n.id) : undefined,
+    reached: ctx.lens === 'impact' ? ctx.impact?.reached.has(n.id) : undefined,
+    revisions: ctx.lens === 'freshness' ? ctx.revisions?.get(n.id) : undefined,
+    decisions: ctx.lens === 'decisions' ? ctx.decisions?.get(n.id) : undefined,
+    holdsSelection:
+      ctx.selected !== undefined && ctx.selected !== n.id && ctx.selectedNode === n.id,
+  }
+}
+
+function accessibleState(n: ProjectedNode, marks: NodeMarks, ctx: FlowContext): string {
+  const object = n.kind === 'object' || n.kind === 'group' ? n.object : undefined
+  return lensDescription(ctx.lens, {
+    ...(marks.changes ? { changeNumbers: marks.changes } : {}),
+    ...(ctx.altKey ? { alternativeKey: ctx.altKey } : {}),
+    ...(marks.reached ? { reached: true } : {}),
+    ...(marks.revisions ? { revisions: marks.revisions } : {}),
+    ...(marks.decisions ? { decisionTags: marks.decisions } : {}),
+    proposed: marks.draft,
+    ...(object ? { basisLabel: basisMeta(object.claim.basis).label } : {}),
+    stale: object ? NEEDS_REVIEW.has(ctx.statusOf(object.id) ?? '') : false,
+  })
+}
+
 function toFlowNodes(
   projection: Projection,
-  boxes: ReturnType<typeof layoutProjection>['boxes'],
-  freshness: ReadonlyMap<string, ClaimFreshness>,
-  selected: string | undefined,
-  selectedNode: string | undefined,
-  neighbourhood: Set<string> | null,
-  onToggle: (id: string) => void,
+  boxes: ReadonlyMap<string, Box>,
+  ctx: FlowContext,
 ): FlowNode[] {
-  const dim = (id: string, parentId: string | undefined) =>
-    neighbourhood !== null && !neighbourhood.has(id) && !(parentId && neighbourhood.has(parentId))
   return projection.nodes.map((n): FlowNode => {
-    const box = boxes.get(n.id) ?? { x: 0, y: 0, width: 200, height: 60 }
+    const box = boxes.get(n.id) ?? { x: 0, y: 0, width: 200, height: 50 }
+    const marks = marksFor(n, ctx)
+    const state = accessibleState(n, marks, ctx)
     const base = {
       id: n.id,
       position: { x: box.x, y: box.y },
       width: box.width,
       height: box.height,
-      // The layout knows every size; passing it as measured keeps fitView and the minimap exact
-      // when node objects are rebuilt (React Flow would otherwise wait for a resize to re-measure).
+      // The layout knows every size; passing it as measured keeps fitting exact when node objects
+      // are rebuilt (React Flow would otherwise wait for a resize to re-measure).
       measured: { width: box.width, height: box.height },
-      selected: n.id === selected,
+      selected: n.id === ctx.selected,
       ...(n.parentId ? { parentId: n.parentId, extent: 'parent' as const } : {}),
     }
     if (n.kind === 'object') {
+      const type = objectTypeMeta(n.object.type).label
       return {
         ...base,
         type: 'object',
-        ariaLabel: `${objectTypeMeta(n.object.type).label} ${objectLabel(n.object)}, ${BASIS_META[n.object.claim.basis as keyof typeof BASIS_META]?.label ?? n.object.claim.basis}`,
-        data: {
-          object: n.object,
-          freshness: freshness.get(n.id)?.status,
-          holdsSelection: false,
-          dimmed: dim(n.id, n.parentId),
-        },
+        ariaLabel: `${type} ${objectLabel(n.object)}${state ? `, ${state}` : ''}`,
+        data: { object: n.object, row: n.row, pathPrefix: ctx.pathPrefix, marks },
       }
     }
-    const holdsSelection = selected !== undefined && selected !== n.id && selectedNode === n.id
-    const memberCounts = n.kind === 'group' ? n.memberCounts : { [n.type]: n.memberIds.length }
     const total = n.memberIds.length
-    const name = n.kind === 'group' ? objectLabel(n.object) : objectTypeMeta(n.type).label
+    let data: Pick<HolderNodeData, 'holder' | 'tag' | 'title' | 'summary' | 'boundary'> & {
+      object?: ObjectVersion
+    }
+    if (n.kind === 'group') {
+      const isModule = n.object.type === 'software.Module'
+      const detail = objectDetail(n.object)
+      const meta = objectTypeMeta(n.object.type).label
+      const rows = n.memberCounts['software.Endpoint'] ?? 0
+      data = {
+        holder: 'group',
+        object: n.object,
+        tag: isModule ? meta : [meta, detail].filter(Boolean).join(' · '),
+        title: isModule ? objectShortLabel(n.object).label : objectLabel(n.object),
+        summary:
+          isModule && n.expanded
+            ? rows > 0 && ctx.pathPrefix
+              ? `under ${ctx.pathPrefix}`
+              : ''
+            : [n.expanded && detail ? detail : '', memberSummary(n.memberCounts)]
+                .filter(Boolean)
+                .join(' · '),
+        boundary: n.object.type === 'software.System',
+      }
+    } else if (n.kind === 'package') {
+      data = {
+        holder: 'package',
+        tag: 'Package',
+        title: n.title,
+        summary: memberSummary(n.memberCounts),
+        boundary: false,
+      }
+    } else {
+      data = {
+        holder: 'cluster',
+        tag: 'Group',
+        title: `${typePlural(n.type, total).replace(/^[\d,]+ /, '')} · ${total}`.replace(
+          /^./,
+          (c) => c.toUpperCase(),
+        ),
+        summary: `Top-level ${typePlural(n.type, total).replace(/^[\d,]+ /, '')}`,
+        boundary: false,
+      }
+    }
+    const kind =
+      n.kind === 'group'
+        ? objectTypeMeta(n.object.type).label
+        : n.kind === 'package'
+          ? 'Package'
+          : 'Group'
     return {
       ...base,
-      type: n.kind,
-      selected: n.kind === 'group' && n.id === selected,
+      type: 'holder',
+      selected: n.kind === 'group' && n.id === ctx.selected,
       selectable: n.kind === 'group',
-      ariaLabel: `${n.kind === 'group' ? objectTypeMeta(n.object.type).label : 'Group of'} ${name}, ${plural(total, 'member')}, ${n.expanded ? 'expanded' : 'collapsed'}`,
+      ariaLabel: `${kind} ${data.title}, ${plural(total, 'member')}, ${n.expanded ? 'expanded' : 'collapsed'}${state ? `, ${state}` : ''}`,
       data: {
-        ...(n.kind === 'group' ? { object: n.object } : { clusterType: n.type }),
+        ...data,
         expanded: n.expanded,
-        memberCounts,
-        memberFreshness: n.memberFreshness,
-        holdsSelection,
-        dimmed: !n.expanded && dim(n.id, undefined),
-        onToggle,
+        memberTotal: total,
+        marks,
+        onToggle: ctx.onToggle,
       },
     }
   })
@@ -394,361 +788,38 @@ function toFlowNodes(
 
 function toFlowEdges(
   projection: Projection,
+  routes: LayoutResult['routes'],
+  lens: Lens,
   selected: string | undefined,
-  selectedNode: string | undefined,
+  focus: Set<string> | null,
+  changed: ReadonlyMap<string, number[]> | undefined,
   nameOf: (id: string) => string | undefined,
 ): RelationFlowEdge[] {
   return projection.edges.map((e) => {
-    const basisLabel = BASIS_META[e.basis as keyof typeof BASIS_META]?.label ?? e.basis
+    const basisLabel = basisMeta(e.basis).label
     const count = e.relationIds.length
+    const hot =
+      lens === 'impact' && changed !== undefined && (changed.has(e.source) || changed.has(e.target))
     return {
       id: e.id,
       source: e.source,
       target: e.target,
       type: 'relation',
       selected: count === 1 && e.relationIds[0] === selected,
-      ariaLabel: `${e.type} from ${nameOf(e.source) ?? clusterTitle(e.source)} to ${nameOf(e.target) ?? clusterTitle(e.target)}, ${basisLabel}${count > 1 ? `, ${count} relations` : ''}`,
+      ariaLabel: `${e.type} from ${nodeName(projection, e.source, nameOf)} to ${nodeName(projection, e.target, nameOf)}, ${basisLabel}${e.toBe ? ', proposed' : ''}${count > 1 ? `, ${count} relations` : ''}`,
       data: {
         relationType: e.type,
         basis: e.basis,
+        toBe: e.toBe,
         count,
         aggregated: e.aggregated,
         parallelIndex: e.parallelIndex,
         parallelCount: e.parallelCount,
-        dimmed:
-          selectedNode !== undefined && e.source !== selectedNode && e.target !== selectedNode,
+        dimmed: focus !== null && !(focus.has(e.source) && focus.has(e.target)),
+        hot,
+        annotate: lens === 'basis',
+        route: routeBetween(routes, e.source, e.target),
       },
     }
   })
-}
-
-// ---------- toolbar, filters, legend ----------
-
-function Toolbar({
-  projection,
-  prefs,
-  setPrefs,
-  counts,
-  onReveal,
-  onFit,
-}: {
-  projection: Projection
-  prefs: GraphPrefs
-  setPrefs: (update: (p: GraphPrefs) => GraphPrefs) => void
-  counts: ReturnType<typeof typeCounts>
-  onReveal: (id: string) => void
-  onFit: () => void
-}) {
-  const hidden = prefs.hiddenObjectTypes.size + prefs.hiddenRelationTypes.size
-  const allExpanded =
-    projection.expandable.length > 0 && projection.expandable.every((id) => prefs.expanded.has(id))
-  return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-border border-b bg-surface px-3 py-2">
-      <GraphSearch onReveal={onReveal} />
-      <FilterMenu counts={counts} prefs={prefs} setPrefs={setPrefs} hidden={hidden} />
-      <span aria-hidden className="mx-1 h-5 w-px bg-border" />
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={projection.expandable.length === 0}
-        onClick={() =>
-          setPrefs((p) => ({
-            ...p,
-            expanded: allExpanded ? new Set() : new Set(projection.expandable),
-          }))
-        }
-      >
-        {allExpanded ? <FoldVertical aria-hidden /> : <UnfoldVertical aria-hidden />}
-        {allExpanded ? 'Collapse all' : 'Expand all'}
-      </Button>
-      <Button size="sm" variant="ghost" onClick={onFit}>
-        <LocateFixed aria-hidden /> Fit
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        aria-pressed={prefs.legend}
-        onClick={() => setPrefs((p) => ({ ...p, legend: !p.legend }))}
-      >
-        <Info aria-hidden /> Legend
-      </Button>
-      <p className="ml-auto text-fg-muted text-xs tabular-nums">
-        {plural(projection.nodes.length, 'node')} · {plural(projection.edges.length, 'edge')}
-        <span className="text-fg-subtle">
-          {' '}
-          for {plural(projection.stats.objects, 'object')},{' '}
-          {plural(projection.stats.relations, 'relation')}
-          {projection.stats.hiddenObjects + projection.stats.hiddenRelations > 0 &&
-            ` · ${projection.stats.hiddenObjects + projection.stats.hiddenRelations} filtered`}
-        </span>
-      </p>
-    </div>
-  )
-}
-
-function GraphSearch({ onReveal }: { onReveal: (id: string) => void }) {
-  const wb = useWorkbench()
-  const [query, setQuery] = useState('')
-  const [active, setActive] = useState(0)
-  const [open, setOpen] = useState(false)
-  const listId = 'graph-search-results'
-  const matches = useMemo(() => {
-    if (!wb.model) return []
-    return searchObjects(wb.model.objects, query, 8)
-  }, [query, wb.model])
-  const choose = (id: string) => {
-    onReveal(id)
-    setOpen(false)
-  }
-  return (
-    <div className="relative">
-      <label className="relative flex items-center">
-        <span className="sr-only">Find an object</span>
-        <Search aria-hidden className="pointer-events-none absolute left-2 size-4 text-fg-subtle" />
-        <input
-          data-view-search
-          type="search"
-          role="combobox"
-          aria-expanded={open && matches.length > 0}
-          aria-controls={listId}
-          aria-activedescendant={open && matches[active] ? `${listId}-${active}` : undefined}
-          aria-autocomplete="list"
-          value={query}
-          placeholder="Find and focus an object  /"
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setActive(0)
-            setOpen(true)
-          }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') {
-              setActive((a) => Math.min(a + 1, matches.length - 1))
-              e.preventDefault()
-            } else if (e.key === 'ArrowUp') {
-              setActive((a) => Math.max(a - 1, 0))
-              e.preventDefault()
-            } else if (e.key === 'Enter' && matches[active]) {
-              choose(matches[active].id)
-              e.preventDefault()
-            } else if (e.key === 'Escape') {
-              setOpen(false)
-            }
-          }}
-          className="h-8 w-64 rounded-md border border-border-strong bg-surface pr-2 pl-8 text-sm placeholder:text-fg-subtle"
-        />
-      </label>
-      {open && matches.length > 0 && (
-        <div
-          id={listId}
-          role="listbox"
-          aria-label="Matching objects"
-          className="absolute top-9 left-0 z-40 w-80 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-pop"
-        >
-          {matches.map((o, i) => (
-            <div
-              key={o.id}
-              id={`${listId}-${i}`}
-              role="option"
-              tabIndex={-1}
-              aria-selected={i === active}
-              onMouseDown={(e) => {
-                e.preventDefault()
-                choose(o.id)
-              }}
-              className={cn(
-                'flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-sm',
-                i === active && 'bg-accent-soft',
-              )}
-            >
-              <TypeLabel type={o.type} className="w-24 shrink-0 text-fg-muted text-xs" />
-              <span className="truncate">{objectLabel(o)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function FilterMenu({
-  counts,
-  prefs,
-  setPrefs,
-  hidden,
-}: {
-  counts: ReturnType<typeof typeCounts>
-  prefs: GraphPrefs
-  setPrefs: (update: (p: GraphPrefs) => GraphPrefs) => void
-  hidden: number
-}) {
-  const toggle = (key: 'hiddenObjectTypes' | 'hiddenRelationTypes', type: string) =>
-    setPrefs((p) => {
-      const next = new Set(p[key])
-      if (next.has(type)) next.delete(type)
-      else next.add(type)
-      return { ...p, [key]: next }
-    })
-  return (
-    <Popover.Root>
-      <Popover.Trigger asChild>
-        <Button size="sm" variant={hidden > 0 ? 'primary' : 'secondary'}>
-          <Funnel aria-hidden /> Filter
-          {hidden > 0 && <span className="tabular-nums">· {hidden} hidden</span>}
-        </Button>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content
-          align="start"
-          sideOffset={6}
-          className="z-50 grid w-[520px] grid-cols-2 gap-4 rounded-lg border border-border bg-surface p-3 shadow-pop"
-        >
-          <fieldset className="min-w-0">
-            <legend className="mb-1.5 font-semibold text-2xs text-fg-subtle uppercase tracking-[0.06em]">
-              Object types
-            </legend>
-            <ul className="space-y-0.5">
-              {counts.objectTypes.map(([type, n]) => (
-                <li key={type}>
-                  <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-surface-2">
-                    <input
-                      type="checkbox"
-                      className="size-3.5 accent-[var(--k-accent)]"
-                      checked={!prefs.hiddenObjectTypes.has(type)}
-                      onChange={() => toggle('hiddenObjectTypes', type)}
-                    />
-                    <TypeLabel type={type} className="min-w-0 flex-1 text-sm" />
-                    <span className="font-mono text-fg-subtle text-xs tabular-nums">{n}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </fieldset>
-          <fieldset className="min-w-0">
-            <legend className="mb-1.5 font-semibold text-2xs text-fg-subtle uppercase tracking-[0.06em]">
-              Relation types
-            </legend>
-            <ul className="space-y-0.5">
-              {counts.relationTypes.map(([type, n]) => (
-                <li key={type}>
-                  <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-surface-2">
-                    <input
-                      type="checkbox"
-                      className="size-3.5 accent-[var(--k-accent)]"
-                      checked={!prefs.hiddenRelationTypes.has(type)}
-                      onChange={() => toggle('hiddenRelationTypes', type)}
-                    />
-                    <EdgeSample color={relationMeta(type).color} dash={undefined} width={16} />
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs">{type}</span>
-                    <span className="font-mono text-fg-subtle text-xs tabular-nums">{n}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 text-2xs text-fg-subtle">
-              Hiding <span className="font-mono">contains</span> hides its edges; grouping by
-              container stays.
-            </p>
-          </fieldset>
-          <div className="col-span-2 flex justify-end gap-2 border-border border-t pt-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() =>
-                setPrefs((p) => ({
-                  ...p,
-                  hiddenObjectTypes: new Set(),
-                  hiddenRelationTypes: new Set(),
-                }))
-              }
-            >
-              Show everything
-            </Button>
-          </div>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
-  )
-}
-
-function Legend({
-  projection,
-  freshness,
-  onClose,
-}: {
-  projection: Projection
-  freshness: boolean
-  onClose: () => void
-}) {
-  const relationTypes = [...new Set(projection.edges.map((e) => e.type))].sort()
-  return (
-    <section
-      aria-label="Legend"
-      className="w-60 rounded-lg border border-border bg-surface/95 p-3 text-xs shadow-pop backdrop-blur-sm"
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="font-semibold text-2xs text-fg-subtle uppercase tracking-[0.06em]">
-          Legend
-        </h2>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-1 text-fg-subtle text-xs hover:bg-surface-2 hover:text-fg"
-        >
-          Hide
-        </button>
-      </div>
-      <p className="mb-1 font-medium text-fg-muted">Claim basis · line and border</p>
-      <ul className="mb-3 space-y-1">
-        {BASIS_ORDER.map((b) => {
-          const meta = BASIS_META[b]
-          return (
-            <li key={b} className="flex items-center gap-2" title={meta.description}>
-              <EdgeSample color="var(--k-fg-muted)" dash={meta.dash} width={30} />
-              <StatusBadge tone={meta.tone} icon={BASIS_ICONS[b]} label={meta.label} size="sm" />
-            </li>
-          )
-        })}
-      </ul>
-      {relationTypes.length > 0 && (
-        <>
-          <p className="mb-1 font-medium text-fg-muted">Relation type · colour</p>
-          <ul className="mb-3 grid grid-cols-2 gap-x-2 gap-y-1">
-            {relationTypes.map((t) => (
-              <li
-                key={t}
-                className="flex min-w-0 items-center gap-1.5"
-                title={relationMeta(t).description}
-              >
-                <EdgeSample color={relationMeta(t).color} dash={undefined} width={14} />
-                <span className="truncate font-mono text-[11px]">{t}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      <p className="text-fg-subtle leading-snug">
-        A number on an edge counts the relations it stands for. Hatched nodes are to-be (intended).
-      </p>
-      {freshness && (
-        <>
-          <p className="mt-3 mb-1 font-medium text-fg-muted">Freshness</p>
-          <ul className="flex flex-wrap gap-1">
-            {(['current', 'weakened', 'stale', 'derived-stale', 'unknown'] as const).map((s) => (
-              <li key={s}>
-                <StatusBadge
-                  tone={FRESHNESS_META[s].tone}
-                  icon={FRESHNESS_ICONS[s]}
-                  label={FRESHNESS_META[s].label}
-                  description={FRESHNESS_META[s].description}
-                  size="sm"
-                />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </section>
-  )
 }

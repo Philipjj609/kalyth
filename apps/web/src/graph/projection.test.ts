@@ -1,7 +1,17 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { claim, demoScaleModel, obj, rel, resetIds } from '../test/records.ts'
-import { layoutProjection } from './layout.ts'
-import { clusterId, type GroupNode, projectGraph } from './projection.ts'
+import { type Box, layoutProjection, packIsolated, routeBetween } from './layout.ts'
+import {
+  clusterId,
+  commonDirectory,
+  type GroupNode,
+  type ObjectNode,
+  type PackageNode,
+  packageId,
+  projectGraph,
+  siblingsBetween,
+  typeCounts,
+} from './projection.ts'
 
 beforeEach(resetIds)
 
@@ -32,35 +42,110 @@ function smallModel() {
   return { objects, relations, system, api, web, routes, db, client, endpoint, item }
 }
 
-describe('projectGraph', () => {
-  it('starts collapsed: system, containers as groups with member counts', () => {
+const node = (p: ReturnType<typeof projectGraph>, id: string) => p.nodes.find((n) => n.id === id)
+const edgeList = (p: ReturnType<typeof projectGraph>) =>
+  p.edges.map((e) => [e.source, e.target, e.type, e.basis, e.relationIds.length])
+
+describe('projectGraph: structure', () => {
+  it('opens a small model: the system frame, its containers, and endpoints as rows', () => {
     const m = smallModel()
     const p = projectGraph(m.objects, m.relations)
-    expect(p.nodes.map((n) => [n.kind, n.id])).toEqual([
-      ['object', m.system.id],
-      ['group', m.api.id],
-      ['group', m.web.id],
-      ['object', m.item.id],
+    const shape = p.nodes.map((n) => [
+      n.kind,
+      n.id,
+      n.parentId ?? null,
+      n.kind === 'object' ? n.row : (n as GroupNode).expanded,
     ])
-    const api = p.nodes[1] as GroupNode
-    expect(api.expanded).toBe(false)
-    expect(api.memberCounts).toEqual({ 'software.Module': 2, 'software.Endpoint': 1 })
-    expect(p.representative.get(m.routes.id)).toBe(m.api.id)
-    expect(p.containerOf.get(m.client.id)).toBe(m.web.id)
-    expect(p.expandable).toEqual([m.api.id, m.web.id])
+    expect(shape).toEqual([
+      ['group', m.system.id, null, true],
+      ['object', m.item.id, null, false],
+      ['group', m.api.id, m.system.id, true],
+      ['group', m.web.id, m.system.id, true],
+      ['object', m.db.id, m.api.id, false],
+      ['group', m.routes.id, m.api.id, true],
+      ['object', m.client.id, m.web.id, false],
+      ['object', m.endpoint.id, m.routes.id, true],
+    ])
+    // The endpoint belongs to the module exposing it, inside its own container.
+    expect(p.ancestors.get(m.endpoint.id)).toEqual([m.system.id, m.api.id, m.routes.id])
+    expect(p.containerOf.get(m.endpoint.id)).toBe(m.routes.id)
+    expect([...p.defaultOpen].sort()).toEqual([m.system.id, m.api.id, m.web.id, m.routes.id].sort())
   })
 
-  it('aggregates edges of hidden members per type and basis, and drops internal ones', () => {
+  it('every holder precedes its children', () => {
     const m = smallModel()
     const p = projectGraph(m.objects, m.relations)
-    const summary = p.edges.map((e) => [e.source, e.target, e.type, e.basis, e.relationIds.length])
-    expect(summary).toContainEqual([m.system.id, m.api.id, 'contains', 'observed', 1])
+    const order = p.nodes.map((n) => n.id)
+    for (const n of p.nodes) {
+      if (n.parentId) expect(order.indexOf(n.parentId)).toBeLessThan(order.indexOf(n.id))
+    }
+  })
+
+  it('collapsed holders stand for their members, with member counts', () => {
+    const m = smallModel()
+    const p = projectGraph(m.objects, m.relations, { collapsed: new Set([m.api.id, m.web.id]) })
+    expect(p.nodes.map((n) => n.id)).toEqual([m.system.id, m.item.id, m.api.id, m.web.id])
+    const api = node(p, m.api.id) as GroupNode
+    expect(api.expanded).toBe(false)
+    expect(api.memberCounts).toEqual({ 'software.Module': 2, 'software.Endpoint': 1 })
+    expect(p.representative.get(m.endpoint.id)).toBe(m.api.id)
+    expect(p.representative.get(m.routes.id)).toBe(m.api.id)
+    expect(p.expandable).toEqual([m.system.id, m.api.id, m.routes.id, m.web.id])
+  })
+
+  it('starts containers collapsed when the model is large', () => {
+    const model = demoScaleModel()
+    const p = projectGraph(model.objects, model.relations)
+    expect((node(p, model.system.id) as GroupNode).expanded).toBe(true)
+    expect((node(p, model.backend.id) as GroupNode).expanded).toBe(false)
+    expect((node(p, model.frontend.id) as GroupNode).expanded).toBe(false)
+  })
+
+  it('leaves decisions, alternatives and other records out of the canvas', () => {
+    const model = demoScaleModel()
+    const p = projectGraph(model.objects, model.relations)
+    const kinds = p.nodes.flatMap((n) =>
+      n.kind === 'object' || n.kind === 'group' ? [n.object.type] : [],
+    )
+    expect(kinds.some((t) => t.startsWith('core.'))).toBe(false)
+    expect(p.stats.offCanvas).toBe(3)
+    expect(p.edges.some((e) => e.type === 'decides' || e.type === 'alternativeOf')).toBe(false)
+    expect(typeCounts(model.objects, model.relations).objectTypes.map(([t]) => t)).not.toContain(
+      'core.Decision',
+    )
+  })
+
+  it('hiding the container type lifts members to the system frame', () => {
+    const m = smallModel()
+    const p = projectGraph(m.objects, m.relations, {
+      hiddenObjectTypes: new Set(['software.Container']),
+    })
+    expect(p.nodes.some((n) => n.kind === 'group' && n.object.type === 'software.Container')).toBe(
+      false,
+    )
+    expect(node(p, m.routes.id)?.parentId).toBe(m.system.id)
+    expect(node(p, m.client.id)?.parentId).toBe(m.system.id)
+  })
+
+  it('an endpoint with two exposing modules stays with its container', () => {
+    const m = smallModel()
+    const relations = [...m.relations, rel('exposes', m.db, m.endpoint)]
+    const p = projectGraph(m.objects, relations)
+    expect(node(p, m.endpoint.id)?.parentId).toBe(m.api.id)
+    expect((node(p, m.endpoint.id) as ObjectNode).row).toBe(false)
+  })
+})
+
+describe('projectGraph: edges', () => {
+  it('aggregates edges of collapsed members per type and basis, and drops internal ones', () => {
+    const m = smallModel()
+    const p = projectGraph(m.objects, m.relations, { collapsed: new Set([m.api.id, m.web.id]) })
+    const summary = edgeList(p)
     expect(summary).toContainEqual([m.web.id, m.api.id, 'dependsOn', 'inferred', 2])
     expect(summary).toContainEqual([m.web.id, m.api.id, 'dependsOn', 'observed', 1])
-    expect(summary).toContainEqual([m.api.id, m.item.id, 'reads', 'inferred', 1])
-    // Four contains plus routes -> db and routes -> endpoint fold inside the groups.
-    expect(p.edges).toHaveLength(5)
-    expect(p.stats.internalRelations).toBe(6)
+    // The read leaves the system frame: it joins the frame and the entity outside it.
+    expect(summary).toContainEqual([m.system.id, m.item.id, 'reads', 'inferred', 1])
+    expect(p.edges).toHaveLength(3)
     const parallel = p.edges.filter((e) => e.source === m.web.id && e.target === m.api.id)
     expect(parallel.map((e) => [e.parallelIndex, e.parallelCount])).toEqual([
       [0, 2],
@@ -69,29 +154,44 @@ describe('projectGraph', () => {
     expect(parallel.every((e) => e.aggregated)).toBe(true)
   })
 
-  it('expands a group: members nest under it and relations between them are drawn', () => {
+  it('shows contains and exposes by nesting, not as edges', () => {
     const m = smallModel()
-    const p = projectGraph(m.objects, m.relations, { expanded: new Set([m.api.id]) })
-    const nested = p.nodes.filter((n) => n.parentId === m.api.id).map((n) => n.id)
-    expect(nested.sort()).toEqual([m.routes.id, m.db.id, m.endpoint.id].sort())
-    // Parents precede children.
-    const order = p.nodes.map((n) => n.id)
-    expect(order.indexOf(m.api.id)).toBeLessThan(order.indexOf(m.routes.id))
-    const edges = p.edges.map((e) => [e.source, e.target, e.type])
-    expect(edges).toContainEqual([m.routes.id, m.db.id, 'dependsOn'])
-    expect(edges).toContainEqual([m.routes.id, m.endpoint.id, 'exposes'])
-    expect(edges).toContainEqual([m.web.id, m.routes.id, 'dependsOn'])
-    expect(edges).toContainEqual([m.endpoint.id, m.item.id, 'reads'])
-    // Nesting replaces the container -> member contains edges.
-    expect(edges.filter(([s, , t]) => s === m.api.id && t === 'contains')).toEqual([])
-    const direct = p.edges.find((e) => e.source === m.routes.id && e.target === m.db.id)
-    expect(direct?.aggregated).toBe(false)
+    const p = projectGraph(m.objects, m.relations)
+    expect(p.edges.some((e) => e.type === 'contains' || e.type === 'exposes')).toBe(false)
+  })
+
+  it('joins the frames that separate the ends of an edge, unless one end is the selection', () => {
+    const m = smallModel()
+    const lifted = projectGraph(m.objects, m.relations)
+    expect(edgeList(lifted)).toContainEqual([m.web.id, m.api.id, 'dependsOn', 'inferred', 2])
+    expect(edgeList(lifted)).toContainEqual([m.system.id, m.item.id, 'reads', 'inferred', 1])
+    const exact = projectGraph(m.objects, m.relations, { exactFor: m.client.id })
+    expect(edgeList(exact)).toContainEqual([m.client.id, m.routes.id, 'dependsOn', 'inferred', 1])
+    expect(edgeList(exact)).toContainEqual([m.client.id, m.db.id, 'dependsOn', 'inferred', 1])
+    const read = projectGraph(m.objects, m.relations, { exactFor: m.endpoint.id })
+    expect(edgeList(read)).toContainEqual([m.endpoint.id, m.item.id, 'reads', 'inferred', 1])
+  })
+
+  it('draws imports between members of one container only for the selection, or on request', () => {
+    const m = smallModel()
+    const quiet = projectGraph(m.objects, m.relations)
+    expect(edgeList(quiet)).not.toContainEqual([m.routes.id, m.db.id, 'dependsOn', 'observed', 1])
+    expect(quiet.stats.detailRelations).toBe(1)
+    const all = projectGraph(m.objects, m.relations, { detail: 'all' })
+    expect(edgeList(all)).toContainEqual([m.routes.id, m.db.id, 'dependsOn', 'observed', 1])
+    const selected = projectGraph(m.objects, m.relations, { exactFor: m.db.id })
+    expect(edgeList(selected)).toContainEqual([m.routes.id, m.db.id, 'dependsOn', 'observed', 1])
+    // Between containers of a system, imports stay visible.
+    expect(
+      edgeList(quiet).some(
+        ([s, t, type]) => s === m.web.id && t === m.api.id && type === 'dependsOn',
+      ),
+    ).toBe(true)
   })
 
   it('filters by relation type and by object type', () => {
     const m = smallModel()
     const p = projectGraph(m.objects, m.relations, {
-      expanded: new Set([m.api.id, m.web.id]),
       hiddenRelationTypes: new Set(['dependsOn']),
       hiddenObjectTypes: new Set(['software.DataEntity']),
     })
@@ -102,29 +202,22 @@ describe('projectGraph', () => {
     expect(p.stats.hiddenRelations).toBe(5)
   })
 
-  it('hiding the container type lifts members to the top level', () => {
-    const m = smallModel()
-    const p = projectGraph(m.objects, m.relations, {
-      hiddenObjectTypes: new Set(['software.Container']),
-    })
-    expect(p.nodes.every((n) => n.kind === 'object')).toBe(true)
-    expect(p.nodes.map((n) => n.id)).toContain(m.routes.id)
-  })
-
-  it('clusters many top-level objects of one type, and expands the cluster', () => {
-    const app = obj('software.Container', { name: 'app' })
-    const libs = Array.from({ length: 6 }, (_, i) => obj('software.Library', { name: `lib${i}` }))
-    const relations = libs.map((l) => rel('dependsOn', app, l))
-    const collapsed = projectGraph([app, ...libs], relations)
-    const id = clusterId('software.Library')
-    expect(collapsed.nodes.map((n) => n.id)).toEqual([app.id, id])
-    expect(collapsed.edges).toHaveLength(1)
-    expect(collapsed.edges[0]?.relationIds).toHaveLength(6)
-
-    const open = projectGraph([app, ...libs], relations, { expanded: new Set([id]) })
-    expect(open.nodes.filter((n) => n.parentId === id)).toHaveLength(6)
-    expect(open.edges).toHaveLength(6)
-    expect(projectGraph([app, ...libs.slice(1)], relations.slice(1)).nodes).toHaveLength(6)
+  it('keeps one basis per drawn edge, and marks to-be edges', () => {
+    const a = obj('software.Container', { name: 'a' })
+    const b = obj('software.Container', { name: 'b' })
+    const relations = (['observed', 'inferred', 'stated', 'imported'] as const).map((basis) =>
+      rel('dependsOn', a, b, basis, {
+        claim: claim(basis),
+        stance: basis === 'stated' ? 'toBe' : 'asIs',
+      }),
+    )
+    const p = projectGraph([a, b], relations)
+    expect(p.edges.map((e) => [e.basis, e.toBe]).sort()).toEqual([
+      ['imported', false],
+      ['inferred', false],
+      ['observed', false],
+      ['stated', true],
+    ])
   })
 
   it('handles unknown types and ignores retired records', () => {
@@ -140,32 +233,89 @@ describe('projectGraph', () => {
     expect(p.nodes.map((n) => n.id)).toEqual([sys.id, odd.id])
     expect(p.edges.map((e) => e.type)).toEqual(['poweredBy'])
   })
+})
 
-  it('rolls member freshness up onto collapsed groups', () => {
+describe('projectGraph: clusters and packages', () => {
+  it('clusters many top-level objects of one type, and opens the cluster', () => {
+    const app = obj('software.Container', { name: 'app' })
+    const libs = Array.from({ length: 6 }, (_, i) => obj('software.Library', { name: `lib${i}` }))
+    const relations = libs.map((l) => rel('dependsOn', app, l))
+    const collapsed = projectGraph([app, ...libs], relations)
+    const id = clusterId('software.Library')
+    expect(collapsed.nodes.map((n) => n.id)).toEqual([app.id, id])
+    expect(collapsed.edges).toHaveLength(1)
+    expect(collapsed.edges[0]?.relationIds).toHaveLength(6)
+
+    const open = projectGraph([app, ...libs], relations, { expanded: new Set([id]) })
+    expect(open.nodes.filter((n) => n.parentId === id)).toHaveLength(6)
+    // The edges reach into the open cluster's frame, and to each library for the selection.
+    expect(open.edges).toHaveLength(1)
+    expect(
+      projectGraph([app, ...libs], relations, { expanded: new Set([id]), exactFor: app.id }).edges,
+    ).toHaveLength(6)
+    expect(projectGraph([app, ...libs.slice(1)], relations.slice(1)).nodes).toHaveLength(6)
+  })
+
+  it('finds the common directory of paths', () => {
+    expect(commonDirectory(['a/b/c.py', 'a/b/d/e.py'])).toBe('a/b/')
+    expect(commonDirectory(['a/b.py', 'c/d.py'])).toBe('')
+    expect(commonDirectory(['a/b/c.py'])).toBe('a/b/')
+  })
+
+  it('groups a container with many modules into directory packages', () => {
+    const backend = obj('software.Container', { name: 'backend' })
+    const paths = [
+      ...['__init__', 'crud', 'main', 'models', 'utils'].map((f) => `backend/app/${f}.py`),
+      ...['env', 'v1', 'v2', 'v3', 'v4', 'v5'].map((f) => `backend/app/alembic/${f}.py`),
+      ...['deps', 'main', 'routes/items', 'routes/users', 'routes/login'].map(
+        (f) => `backend/app/api/${f}.py`,
+      ),
+      ...['config', 'db'].map((f) => `backend/app/core/${f}.py`),
+      ...Array.from({ length: 9 }, (_, i) => `backend/tests/test_${i}.py`),
+    ]
+    const modules = paths.map((path) => obj('software.Module', { path }))
+    const relations = modules.map((m) => rel('contains', backend, m))
+    const p = projectGraph([backend, ...modules], relations, { expanded: new Set([backend.id]) })
+    const level = p.nodes.filter((n) => n.parentId === backend.id)
+    const packages = level.filter((n): n is PackageNode => n.kind === 'package')
+    expect(packages.map((n) => [n.title, n.memberIds.length])).toEqual([
+      ['app/alembic/', 6],
+      ['app/api/', 5],
+      ['tests/', 9],
+    ])
+    // Directories with fewer than three modules stay loose.
+    expect(level.filter((n) => n.kind === 'object')).toHaveLength(7)
+    expect(packages.every((n) => !n.expanded)).toBe(true)
+    const api = packageId(backend.id, 'backend/app/api/')
+    expect(p.expandable).toContain(api)
+    const open = projectGraph([backend, ...modules], relations, {
+      expanded: new Set([backend.id, api]),
+    })
+    expect(open.nodes.filter((n) => n.parentId === api)).toHaveLength(5)
+    expect(open.ancestors.get(modules[12]?.id as string)).toEqual([backend.id, api])
+  })
+
+  it('finds the nodes where the ends of an edge meet', () => {
+    const ancestors = new Map([
+      ['a', ['s', 'c1']],
+      ['b', ['s', 'c2', 'p']],
+      ['c1', ['s']],
+    ])
+    expect(siblingsBetween('a', 'b', ancestors)).toEqual(['c1', 'c2'])
+    expect(siblingsBetween('c1', 'a', ancestors)).toEqual(['c1', 'a'])
+    expect(siblingsBetween('x', 'y', ancestors)).toEqual(['x', 'y'])
+  })
+
+  it('rolls member freshness up onto collapsed holders', () => {
     const m = smallModel()
     const status: Record<string, string> = { [m.routes.id]: 'stale', [m.db.id]: 'current' }
     const p = projectGraph(m.objects, m.relations, { freshnessOf: (id) => status[id] })
-    const api = p.nodes.find((n) => n.id === m.api.id) as GroupNode
+    const api = node(p, m.api.id) as GroupNode
     expect(api.memberFreshness).toEqual({ stale: 1, current: 1 })
-  })
-
-  it('keeps one basis per drawn edge', () => {
-    const a = obj('software.Container', { name: 'a' })
-    const b = obj('software.Container', { name: 'b' })
-    const relations = (['observed', 'inferred', 'stated', 'imported'] as const).map((basis) =>
-      rel('dependsOn', a, b, basis, { claim: claim(basis) }),
-    )
-    const p = projectGraph([a, b], relations)
-    expect(p.edges.map((e) => e.basis).sort()).toEqual([
-      'imported',
-      'inferred',
-      'observed',
-      'stated',
-    ])
   })
 })
 
-describe('demo-scale projection', () => {
+describe('demo-scale projection and layout', () => {
   it('reduces ~250 objects and ~500 relations to a readable default view', () => {
     const model = demoScaleModel()
     expect(model.objects.length).toBeGreaterThanOrEqual(240)
@@ -175,67 +325,95 @@ describe('demo-scale projection', () => {
     const placed = layoutProjection(p)
     const elapsed = performance.now() - started
     expect(p.nodes.length).toBeLessThanOrEqual(12)
-    expect(p.edges.length).toBeLessThanOrEqual(20)
+    expect(p.edges.length).toBeLessThanOrEqual(8)
     expect(placed.boxes.size).toBe(p.nodes.length)
     expect(elapsed).toBeLessThan(2000)
   })
 
-  it('lays out an expanded container of 130 members without overlaps', () => {
+  it('lays out an opened container of 100 modules and 30 endpoints without overlaps', () => {
     const model = demoScaleModel()
     const p = projectGraph(model.objects, model.relations, {
       expanded: new Set([model.backend.id]),
     })
     const placed = layoutProjection(p)
-    const group = placed.boxes.get(model.backend.id)
-    expect(group).toBeDefined()
+    const group = placed.boxes.get(model.backend.id) as Box
     const kids = p.nodes.filter((n) => n.parentId === model.backend.id)
-    expect(kids).toHaveLength(130)
-    const boxes = kids.map((k) => placed.boxes.get(k.id) as NonNullable<typeof group>)
-    for (const box of boxes) {
-      expect(box.x).toBeGreaterThanOrEqual(0)
-      expect(box.y).toBeGreaterThanOrEqual(0)
-      expect(box.x + box.width).toBeLessThanOrEqual((group?.width ?? 0) + 0.5)
-      expect(box.y + box.height).toBeLessThanOrEqual((group?.height ?? 0) + 0.5)
-    }
+    expect(kids).toHaveLength(100)
+    const boxes = kids.map((k) => placed.boxes.get(k.id) as Box)
+    for (const box of boxes) expectInside(box, group)
     expectNoOverlap(boxes)
+    // Endpoint rows sit inside the module that exposes them.
+    const rows = p.nodes.filter((n) => n.kind === 'object' && n.row)
+    expect(rows).toHaveLength(30)
+    for (const row of rows) {
+      const parent = placed.boxes.get(row.parentId as string) as Box
+      expectInside(placed.boxes.get(row.id) as Box, parent)
+    }
     const top = p.nodes.filter((n) => n.parentId === undefined)
-    expectNoOverlap(top.map((n) => placed.boxes.get(n.id) as NonNullable<typeof group>))
+    expectNoOverlap(top.map((n) => placed.boxes.get(n.id) as Box))
   })
 })
 
 describe('layoutProjection', () => {
   it('is deterministic', () => {
     const m = smallModel()
-    const p = projectGraph(m.objects, m.relations, { expanded: new Set([m.api.id]) })
+    const p = projectGraph(m.objects, m.relations, { detail: 'all' })
     const a = layoutProjection(p)
     const b = layoutProjection(p)
     expect([...a.boxes.entries()]).toEqual([...b.boxes.entries()])
   })
 
-  it('places the system above the containers it contains', () => {
+  it('places members inside their open holders, below the header', () => {
     const m = smallModel()
-    const placed = layoutProjection(projectGraph(m.objects, m.relations))
-    const system = placed.boxes.get(m.system.id)
-    const api = placed.boxes.get(m.api.id)
-    expect(system && api && system.y + system.height <= api.y).toBe(true)
+    const p = projectGraph(m.objects, m.relations)
+    const placed = layoutProjection(p)
+    const system = placed.boxes.get(m.system.id) as Box
+    const api = placed.boxes.get(m.api.id) as Box
+    expectInside(api, system)
+    expect(api.y).toBeGreaterThanOrEqual(30)
   })
 
-  it('ranks annotations below what they are about, keeping the system on top', () => {
+  it('ranks a constraint below what it constrains, keeping the system on top', () => {
     const m = smallModel()
-    const decision = obj('core.Decision', { title: 'Cache?' }, { stance: 'toBe' })
-    const alternative = obj('core.Alternative', { title: 'Redis' }, { stance: 'toBe' })
-    const relations = [
-      ...m.relations,
-      rel('decides', decision, m.web, 'stated'),
-      rel('alternativeOf', alternative, decision, 'stated'),
-    ]
-    const placed = layoutProjection(projectGraph([...m.objects, decision, alternative], relations))
+    const constraint = obj('core.Constraint', { title: 'No logs' }, { stance: 'toBe' })
+    const relations = [...m.relations, rel('constrains', constraint, m.item, 'stated')]
+    const placed = layoutProjection(
+      projectGraph([...m.objects, constraint], relations, { collapsed: new Set([m.system.id]) }),
+    )
     const y = (id: string) => placed.boxes.get(id)?.y ?? Number.NaN
-    expect(y(m.system.id)).toBeLessThan(y(m.web.id))
-    expect(y(m.web.id)).toBeLessThan(y(decision.id))
-    expect(y(decision.id)).toBeLessThan(y(alternative.id))
+    expect(y(m.item.id)).toBeLessThan(y(constraint.id))
+  })
+
+  it('keeps the lanes dagre reserved for sibling edges, oriented either way', () => {
+    const a = obj('software.Container', { name: 'a' })
+    const b = obj('software.Container', { name: 'b' })
+    const c = obj('software.Container', { name: 'c' })
+    const relations = [rel('dependsOn', a, b), rel('dependsOn', b, c), rel('dependsOn', a, c)]
+    const placed = layoutProjection(projectGraph([a, b, c], relations))
+    const forward = routeBetween(placed.routes, a.id, c.id)
+    const back = routeBetween(placed.routes, c.id, a.id)
+    expect(forward?.lanes.length).toBeGreaterThan(0)
+    expect(back?.lanes).toEqual([...(forward?.lanes ?? [])].reverse())
+  })
+
+  it('packs a large frame beside a grid of small items', () => {
+    const items = [
+      { id: 'big', width: 600, height: 400 },
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, width: 200, height: 50 })),
+    ]
+    const packed = packIsolated(items, 20)
+    expect(packed.positions.get('big')).toEqual({ x: 0, y: 0 })
+    for (let i = 0; i < 6; i++) expect(packed.positions.get(`s${i}`)?.x).toBeGreaterThanOrEqual(620)
+    expect(packed.height).toBe(400)
   })
 })
+
+function expectInside(box: Box, parent: Box) {
+  expect(box.x).toBeGreaterThanOrEqual(0)
+  expect(box.y).toBeGreaterThanOrEqual(0)
+  expect(box.x + box.width).toBeLessThanOrEqual(parent.width + 0.5)
+  expect(box.y + box.height).toBeLessThanOrEqual(parent.height + 0.5)
+}
 
 function expectNoOverlap(boxes: { x: number; y: number; width: number; height: number }[]) {
   for (let i = 0; i < boxes.length; i++) {
