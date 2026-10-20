@@ -85,7 +85,7 @@ describe('API client', () => {
     const calls: { url: string; init?: RequestInit }[] = []
     const fetchImpl: FetchLike = async (url, init) => {
       calls.push({ url, ...(init ? { init } : {}) })
-      return json(200, { projects: [] })
+      return json(200, url.includes('/objects') ? { objects: [] } : { projects: [] })
     }
     const api = createApi(() => 'tok-123456', fetchImpl)
     await expect(api.listProjects()).resolves.toEqual({ projects: [] })
@@ -96,6 +96,27 @@ describe('API client', () => {
     expect(calls[1]?.url).toBe(
       '/api/v1/projects/prj_1/objects?revision=4&limit=1000&includeRetired=true',
     )
+  })
+
+  it('reads a revision page by page, after the last id of each full page', async () => {
+    const urls: string[] = []
+    const ids = Array.from({ length: 2300 }, (_, i) => `rel_${String(i).padStart(32, '0')}`)
+    const fetchImpl: FetchLike = async (url) => {
+      urls.push(url)
+      const after = new URL(url, 'http://x').searchParams.get('after')
+      const start = after === null ? 0 : ids.indexOf(after) + 1
+      return json(200, {
+        projectId: 'prj_1',
+        revision: 4,
+        relations: ids.slice(start, start + 1000).map((id) => ({ id })),
+      })
+    }
+    const result = await createApi(() => 'tok-123456', fetchImpl).relations('prj_1', 4)
+    expect(result.relations).toHaveLength(2300)
+    expect(result.truncated).toBe(false)
+    expect(urls).toHaveLength(3)
+    expect(urls[1]).toContain(`after=${ids[999]}`)
+    expect(urls[2]).toContain(`after=${ids[1999]}`)
   })
 
   it('surfaces the error envelope, including stale details', async () => {

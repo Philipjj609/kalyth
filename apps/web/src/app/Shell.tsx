@@ -20,6 +20,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { MAX_PAGES, PAGE_LIMIT } from '../api/client.ts'
 import {
   useFreshness,
   useHistory,
@@ -281,7 +282,7 @@ function ProjectWorkbench({
         {workbench.isHistorical && <HistoricalBanner />}
         {model?.truncated && (
           <p className="tone-warning border-tone-bd border-b bg-tone-bg px-4 py-1 text-tone-fg text-xs">
-            Showing the first 1,000 records.
+            Showing the first {(PAGE_LIMIT * MAX_PAGES).toLocaleString('en')} records of a list.
           </p>
         )}
         <div className="relative flex min-h-0 flex-1">

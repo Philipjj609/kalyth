@@ -51,6 +51,8 @@ export const ObjectQuery = z.object({
   ids: z.array(ObjectId).min(1).max(1000).optional(),
   includeRetired: z.boolean().default(false),
   limit,
+  /** Results come in id order; the next page starts after the last id of the previous one. */
+  after: ObjectId.optional(),
 })
 export type ObjectQuery = z.input<typeof ObjectQuery>
 
@@ -70,6 +72,8 @@ export const RelationQuery = z.object({
   to: ObjectId.optional(),
   includeRetired: z.boolean().default(false),
   limit,
+  /** Results come in id order; the next page starts after the last id of the previous one. */
+  after: RelationId.optional(),
 })
 export type RelationQuery = z.input<typeof RelationQuery>
 

@@ -170,11 +170,31 @@ export interface TypeDescriptors {
   relationTypes: RelationTypeDescriptor[]
 }
 
-/** Largest page the API serves; the UI reads whole revisions up to this size. */
+/** Largest page the API serves. */
 export const PAGE_LIMIT = 1000
+/**
+ * Pages read for one list of a revision: the UI reads whole revisions page by page, up to this
+ * many records, and says when a list stops short.
+ */
+export const MAX_PAGES = 50
 const EVIDENCE_BATCH = 200
 
 const enc = encodeURIComponent
+
+/** Reads a list in id order, a page at a time, until a page comes back short or the cap is hit. */
+async function allPages<T extends { id: string }>(
+  page: (after: string | undefined) => Promise<T[]>,
+): Promise<{ items: T[]; truncated: boolean }> {
+  const items: T[] = []
+  let after: string | undefined
+  for (let n = 0; n < MAX_PAGES; n++) {
+    const batch = await page(after)
+    items.push(...batch)
+    if (batch.length < PAGE_LIMIT) return { items, truncated: false }
+    after = batch[batch.length - 1]?.id
+  }
+  return { items, truncated: true }
+}
 
 export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) {
   const doFetch: FetchLike = fetchImpl ?? ((input, init) => fetch(input, init))
@@ -240,24 +260,42 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
       request<ProjectSummary>('POST', '/api/v1/projects', input),
     overview: (projectId: string, revision?: number) =>
       request<ProjectOverview>('GET', buildUrl(project(projectId), { revision })),
-    objects: (projectId: string, revision: number, includeRetired = false) =>
-      request<ObjectQueryResult>(
-        'GET',
-        buildUrl(`${project(projectId)}/objects`, {
-          revision,
-          limit: PAGE_LIMIT,
-          includeRetired: includeRetired || undefined,
-        }),
-      ),
-    relations: (projectId: string, revision: number, includeRetired = false) =>
-      request<RelationQueryResult>(
-        'GET',
-        buildUrl(`${project(projectId)}/relations`, {
-          revision,
-          limit: PAGE_LIMIT,
-          includeRetired: includeRetired || undefined,
-        }),
-      ),
+    objects: async (
+      projectId: string,
+      revision: number,
+      includeRetired = false,
+    ): Promise<ObjectQueryResult & { truncated: boolean }> => {
+      const { items, truncated } = await allPages((after) =>
+        request<ObjectQueryResult>(
+          'GET',
+          buildUrl(`${project(projectId)}/objects`, {
+            revision,
+            limit: PAGE_LIMIT,
+            includeRetired: includeRetired || undefined,
+            after,
+          }),
+        ).then((r) => r.objects),
+      )
+      return { projectId, revision, objects: items, truncated }
+    },
+    relations: async (
+      projectId: string,
+      revision: number,
+      includeRetired = false,
+    ): Promise<RelationQueryResult & { truncated: boolean }> => {
+      const { items, truncated } = await allPages((after) =>
+        request<RelationQueryResult>(
+          'GET',
+          buildUrl(`${project(projectId)}/relations`, {
+            revision,
+            limit: PAGE_LIMIT,
+            includeRetired: includeRetired || undefined,
+            after,
+          }),
+        ).then((r) => r.relations),
+      )
+      return { projectId, revision, relations: items, truncated }
+    },
     evidence: async (projectId: string, ids: readonly string[]): Promise<EvidenceView[]> => {
       const unique = [...new Set(ids)]
       const out: EvidenceView[] = []

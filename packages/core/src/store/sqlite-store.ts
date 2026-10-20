@@ -258,6 +258,7 @@ export class SqliteStore {
       ids?: readonly string[] | undefined
       includeRetired?: boolean
       limit?: number
+      after?: string | undefined
     },
   ): ObjectVersion[] {
     const where = [`project_id = @p`, CURRENT_AT]
@@ -265,6 +266,10 @@ export class SqliteStore {
     if (!opts.includeRetired) where.push(`lifecycle = 'active'`)
     if (opts.types) where.push(`type IN (${placeholders('t', opts.types, params)})`)
     if (opts.ids) where.push(`id IN (${placeholders('i', opts.ids, params)})`)
+    if (opts.after !== undefined) {
+      where.push('id > @after')
+      params.after = opts.after
+    }
     const limit = opts.limit ? ` LIMIT ${Math.floor(opts.limit)}` : ''
     const sql = `SELECT * FROM object_versions WHERE ${where.join(' AND ')} ORDER BY id${limit}`
     return (this.db.prepare(sql).all(params) as Row[]).map(toObject)
@@ -280,6 +285,7 @@ export class SqliteStore {
       to?: string | undefined
       includeRetired?: boolean
       limit?: number
+      after?: string | undefined
     },
   ): RelationVersion[] {
     const where = [`project_id = @p`, CURRENT_AT]
@@ -294,6 +300,10 @@ export class SqliteStore {
     if (opts.to !== undefined) {
       where.push('to_id = @to')
       params.to = opts.to
+    }
+    if (opts.after !== undefined) {
+      where.push('id > @after')
+      params.after = opts.after
     }
     const limit = opts.limit ? ` LIMIT ${Math.floor(opts.limit)}` : ''
     const sql = `SELECT * FROM relation_versions WHERE ${where.join(' AND ')} ORDER BY id${limit}`

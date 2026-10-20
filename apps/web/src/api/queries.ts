@@ -26,7 +26,6 @@ import {
   type CompileContextBody,
   createApi,
   isApiError,
-  PAGE_LIMIT,
   type StartRunBody,
 } from './client.ts'
 import {
@@ -181,8 +180,7 @@ export function useRevisionModel(
           ? `${names.get(r.from) ?? r.from} —${r.type}→ ${names.get(r.to) ?? r.to}`
           : undefined
       },
-      truncated:
-        objects.data.objects.length >= PAGE_LIMIT || relations.data.relations.length >= PAGE_LIMIT,
+      truncated: objects.data.truncated || relations.data.truncated,
     }
   }, [objects.data, relations.data])
   return {

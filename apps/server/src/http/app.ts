@@ -181,6 +181,7 @@ export function registerApiRoutes(
         ...revisionOf(q),
         ...list('types', q.type),
         ...list('ids', q.id),
+        ...afterOf(q),
         ...flagsOf(q),
       }),
     )
@@ -196,6 +197,7 @@ export function registerApiRoutes(
         ...list('ids', q.id),
         ...(typeof q.from === 'string' ? { from: q.from } : {}),
         ...(typeof q.to === 'string' ? { to: q.to } : {}),
+        ...afterOf(q),
         ...flagsOf(q),
       }),
     )
@@ -515,6 +517,11 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)
 function revisionOf(q: Query): { revision?: number } {
   const v = one(q.revision)
   return v === undefined ? {} : { revision: Number(v) }
+}
+
+function afterOf(q: Query): { after?: string } {
+  const v = one(q.after)
+  return v === undefined ? {} : { after: v }
 }
 
 function limitOf(q: Query): { limit?: number } {

@@ -213,6 +213,7 @@ export class KalythServices {
       ids: q.ids,
       includeRetired: q.includeRetired,
       limit: q.limit,
+      after: q.after,
     })
     return ok({ projectId: project.id, revision, objects })
   }
@@ -228,6 +229,7 @@ export class KalythServices {
       to: q.to,
       includeRetired: q.includeRetired,
       limit: q.limit,
+      after: q.after,
     })
     return ok({ projectId: project.id, revision, relations })
   }

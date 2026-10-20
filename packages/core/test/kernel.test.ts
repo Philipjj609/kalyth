@@ -104,6 +104,33 @@ describe('projects and revisions', () => {
     expect(ctx.store.getProposal(proposalId)?.result).toEqual({ ...before, refs: {} })
   })
 
+  it('pages objects and relations in id order after a cursor', () => {
+    const ctx = setup()
+    seedSystem(ctx)
+    const all = unwrap(ctx.services.queryObjects(ctx.owner, { projectId: ctx.project.id })).objects
+    expect(all.length).toBeGreaterThan(1)
+    const first = unwrap(
+      ctx.services.queryObjects(ctx.owner, { projectId: ctx.project.id, limit: 1 }),
+    ).objects
+    const rest = unwrap(
+      ctx.services.queryObjects(ctx.owner, {
+        projectId: ctx.project.id,
+        after: first[first.length - 1]?.id,
+      }),
+    ).objects
+    expect([...first, ...rest].map((o) => o.id)).toEqual(all.map((o) => o.id))
+    const relations = unwrap(
+      ctx.services.queryRelations(ctx.owner, { projectId: ctx.project.id }),
+    ).relations
+    const after = unwrap(
+      ctx.services.queryRelations(ctx.owner, {
+        projectId: ctx.project.id,
+        after: relations[0]?.id,
+      }),
+    ).relations
+    expect(after.map((r) => r.id)).toEqual(relations.slice(1).map((r) => r.id))
+  })
+
   it('reads historical revisions after later commits', () => {
     const ctx = setup()
     const { moduleId } = seedSystem(ctx)
