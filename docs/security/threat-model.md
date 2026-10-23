@@ -246,3 +246,37 @@ Not covered by this model:
 - the hosted demo's deployment on Fly.io (ADR 0019), which follows Philip's go-ahead;
 - multi-user deployments;
 - running untrusted code. Kalyth never does it, so there is no sandbox.
+
+## Findings from the 2026-10-23 release-candidate review
+
+Surfaces new since the last review: canvas editing, the command palette, person-filed reports,
+reconcile (with its comparison of base and commit and its reading of the commits between them),
+the ingest in parts with its `pending` mark, the `after` cursor, and repository-derived text in the
+new views (entity fields, change details).
+
+Checked, no change needed:
+
+- Canvas edits are ordinary proposals under the person's own authority; nothing bypasses review.
+  The palette only navigates.
+- Filing a report and reconciling stay HTTP-only, for a person acting directly, and the hosted demo
+  refuses reconcile with the task repository switched off. Reconcile's new git reads take shas from
+  `rev-list` output, validated before use, with `--end-of-options`.
+- The ingest's parts are committed by the analyzer principal under `ingest.observed`, each with its
+  own idempotency key. An interrupted ingest leaves valid observations and the `pending` mark, and
+  running it again completes it (tested).
+- The `after` cursor is validated as an object or relation id and bound as a parameter.
+- Repository text (field names, annotations, change details) is rendered as text; the web app has
+  no raw HTML.
+- `pnpm audit --prod` reports no known vulnerabilities.
+
+Fixed:
+
+- Reconcile's own trailer match now escapes the task id, as the verifier does. Task ids are hex, so
+  this is defence in depth.
+
+Accepted, noted:
+
+- A person with commit rights can set or clear a snapshot's `pending` mark by proposal, like any
+  other record of their own model; it only changes what the workbench says.
+- Reconcile analyses the repository twice (base and commit), locally; on a very large repository
+  this takes tens of seconds of CPU.

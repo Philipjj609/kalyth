@@ -603,7 +603,9 @@ export class TaskCoordinator {
     if (base) {
       try {
         const range = git.commitsBetween(base, commit, RECONCILE_RANGE)
-        const trailer = new RegExp(`^Kalyth-Task:\\s*${view.id}\\s*$`, 'm')
+        // Escaped as the verifier does; task ids are hex, so this is defence in depth.
+        const id = view.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const trailer = new RegExp(`^Kalyth-Task:\\s*${id}\\s*$`, 'm')
         const other: string[] = []
         for (const c of range) {
           const mine = trailer.test(git.commitMessage(c))
