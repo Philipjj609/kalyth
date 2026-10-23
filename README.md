@@ -10,8 +10,9 @@ It is built for the Nebius x NVIDIA Global AI Hackathon (October 2026) and meant
 
 ## Status
 
-Phase 1. What exists and is tested today, in CI on Linux and Windows: 352 unit and integration
-tests, and 36 browser tests of the main flows by keyboard, with automated accessibility checks:
+Phase 1. What exists and is tested today, in CI on Linux and Windows: 505 unit and integration
+tests, and 63 browser tests of the main flows by keyboard (57 of the local workbench, 6 of the
+hosted demo), with automated accessibility checks:
 
 - **Semantic kernel.**
   - Typed objects and relations, with a registry of allowed endpoints and impact rules.
@@ -53,10 +54,17 @@ tests, and 36 browser tests of the main flows by keyboard, with automated access
   it carries the task's trailer, it descends from the task's base, and the files changed since the
   base are exactly those reported.
   Tests are the agent's own claim; Kalyth does not run them. A person completes the task.
-- **Workbench UI.** Overview, Graph, Records, Proposals, History, Navigator, Handoff, Tasks (board
-  or dependency graph) and Decisions views, with an inspector. Claim basis and freshness show on
-  every node and edge. Light and dark themes, and keyboard shortcuts, listed under the keyboard
-  button in the header.
+- **Reconciliation.** After a report passes verification, Kalyth's analyser reads the task's
+  commit and compares it with the commit the work started from, element by element: their own
+  source, their fields and their relations. It says which of the decision's changes the source now
+  shows, what else changed, and which changes came from other commits. Links to proposed elements
+  come back as proposals for a person.
+- **Workbench UI.** A Situation page that says what needs you; a canvas of the system with lenses
+  for claim basis, freshness, impact and decisions; one change thread per decision, from the request
+  through alternatives, questions, the decision, hand-off and agent work to reconciliation; a
+  side-by-side comparison; and Records, Proposals, Tasks, Agents and packages, and History, with an
+  inspector. Light and dark themes, and keyboard shortcuts, listed under the keyboard button in the
+  header.
 - **Export and import.** A project's whole history, as one file that rebuilds the same state.
 
 Real NVIDIA Nemotron inference through Nebius Token Factory has been tested in a keyed spike under
@@ -76,6 +84,20 @@ Not done yet:
 - the hosted demo's deployment ([deploy/README.md](deploy/README.md)).
 
 This README will say when each one works.
+
+## Limitations
+
+- **Static analysis, two frameworks.** The analyser reads Python and TypeScript with tree-sitter.
+  It finds FastAPI routes and SQLModel tables; other frameworks show up as modules, imports and
+  libraries only. Each observation states its coverage.
+- **Behaviour is not observed.** Nothing from an analysed repository is executed. "Observed" means
+  a tool read a fact in pinned source, never that the code runs correctly. An agent's tests are
+  its own claim.
+- **The model proposes; a person decides.** Navigator output is inferred, carries its citations
+  and lands only when a person commits it. A citation that does not match the pinned source is
+  rejected, but a grounded proposal can still be a poor design.
+- **Local first.** One person per server, on one machine. The hosted demo gives each visitor a
+  copy of one analysed project and does not import repositories.
 
 ## Requirements
 
@@ -117,11 +139,12 @@ or reported stale (`GET /api/v1/projects/:id/freshness`, MCP `assess_freshness`)
 
 ## Demo
 
-`pnpm demo:setup` builds `.kalyth/demo.db` from scratch: the pinned FastAPI template, analysed at
-tag 0.12.0. [docs/demo/walkthrough.md](docs/demo/walkthrough.md) is the script for the video. It
-follows a change request through a person's decision, a coding agent's work over MCP, and the
-claims that go stale when the repository advances. `pnpm demo:agent` is a scripted stand-in agent
-for rehearsals.
+[docs/demo/walkthrough.md](docs/demo/walkthrough.md) is the script for the video. It follows a
+change request through a person's decision and a coding agent's work over MCP to what the model
+learns from that work. It runs on the committed demo template (`deploy/demo/template.json`, the
+pinned FastAPI template analysed at tag 0.12.0) and replays a Nemotron run recorded against it, at
+no cost. `pnpm demo:setup` builds the same analysis from scratch, with new ids that no recording
+matches. `pnpm demo:agent` is a scripted stand-in agent for rehearsals.
 
 ## Navigator and model providers
 
