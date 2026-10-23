@@ -147,7 +147,9 @@ change request through a person's decision and a coding agent's work over MCP to
 learns from that work. It runs on the committed demo template (`deploy/demo/template.json`, the
 pinned FastAPI template analysed at tag 0.12.0) and replays a Nemotron run recorded against it, at
 no cost. `pnpm demo:setup` builds the same analysis from scratch, with new ids that no recording
-matches. `pnpm demo:agent` is a scripted stand-in agent for rehearsals.
+matches. [docs/demo/recording.md](docs/demo/recording.md) is how the video is recorded:
+`pnpm demo:recording setup` makes a disposable project, repository and agent worktree for a real,
+interactive Claude Code hand-off. `pnpm demo:agent` is a scripted stand-in for rehearsals only.
 
 ## Navigator and model providers
 

@@ -31,7 +31,8 @@
     "demo:setup": "node apps/server/src/dev/demo.ts",
     "demo:agent": "node apps/server/src/dev/demo-agent.ts",
     "demo:serve": "node apps/server/src/demo/main.ts",
-    "demo:record": "node apps/server/src/demo/record.ts"
+    "demo:record": "node apps/server/src/demo/record.ts",
+    "demo:recording": "node apps/server/src/dev/recording.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

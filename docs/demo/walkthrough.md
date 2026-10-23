@@ -5,42 +5,15 @@ The video follows one change through Kalyth on the pinned holdout repository,
 analysed code to alternatives, a person's decision, a coding agent's work, and what the model
 learns when that work comes back.
 
-Target length 2:50. The hackathon limit is under 3:00, and the video must be public on YouTube.
+Target length 2:55 at most. The hackathon limit is under 3:00, and the video must be public on YouTube.
 
 ## Set up
 
-The video uses the committed demo template (`deploy/demo/template.json`): the template analysed at
-tag 0.12.0 with analyzer 0.3.0. Its ids are fixed, so the recorded Nemotron run replays exactly.
-A fresh `pnpm demo:setup` analysis gets new ids, and no recording matches it.
-
-```bash
-pnpm install && pnpm build
-```
-
-```bash
-KALYTH_DB=.kalyth/video.db pnpm project:import deploy/demo/template.json
-```
-
-The agent's task repository is a clone of the template at 0.12.0. Put it outside the Kalyth
-checkout, so Claude Code does not read Kalyth's own instructions while it works:
-
-```bash
-git clone https://github.com/fastapi/full-stack-fastapi-template ../kalyth-video-task
-```
-
-```bash
-git -C ../kalyth-video-task switch -c multi-tenancy 0.12.0
-```
-
-```bash
-KALYTH_DB=.kalyth/video.db KALYTH_PROVIDER=replay KALYTH_REPLAY_DIR=deploy/demo/recordings pnpm dev:server
-```
-
-In PowerShell, set each variable first, for example `$env:KALYTH_DB = ".kalyth/video.db"`.
-
-Open the printed `http://127.0.0.1:4317/#token=...` link. The page moves the session token out of
-the URL at once. Do not record the terminal while it shows that link. Restarting the server issues a
-new token. In Tasks, register the absolute path of `../kalyth-video-task` as the task repository.
+[recording.md](recording.md) has the setup (`pnpm demo:recording setup`), the takes, the edit
+and the checks before publishing. It uses the committed demo template (`deploy/demo/template.json`):
+the template analysed at tag 0.12.0 with analyzer 0.3.0. Its ids are fixed, so the recorded
+Nemotron run replays exactly; a fresh `pnpm demo:setup` analysis gets new ids, and no recording
+matches it.
 
 **Model output.** The Nemotron run is replayed: it was recorded once against Nebius Token Factory
 on 23 October 2026 (KAL-20261023-041) and costs nothing to replay. It replays only for the exact
@@ -55,31 +28,20 @@ where it lands, and reconciliation shows what the code now says.
 
 | Time | Screen | What it shows | Narration in brief |
 |---|---|---|---|
-| 0:00 to 0:15 | Title, then Situation | The problem; "Needs you" and the system line for the template analysed at 0.12.0 | Coding agents and people lose the reasons behind a design. Kalyth keeps an engineering model where every fact points at the code it rests on. |
-| 0:15 to 0:35 | Canvas, then the Inspector on `Item` | Find `Item` with the canvas search; the drawing opens on `models.py`. The Inspector shows its basis (observed), its fields and its evidence `backend/app/models.py` at 84c5a9e | Static analysis only; nothing in the repository runs. Every claim carries its basis and its evidence. Note on screen: "Analysis precomputed and imported". |
+| 0:00 to 0:10 | Title, then Situation | The problem; "Needs you" and the system line for the template analysed at 0.12.0 | Coding agents and people lose the reasons behind a design. Kalyth keeps an engineering model where every fact points at the code it rests on. |
+| 0:10 to 0:35 | Canvas, then the Inspector on `Item` | Find `Item` with the canvas search; the drawing opens on `models.py`. The Inspector shows its basis (observed), its fields and its evidence `backend/app/models.py` at 84c5a9e | Static analysis only; nothing in the repository runs. Every claim carries its basis and its evidence. Note on screen: "Analysis precomputed and imported". |
 | 0:35 to 1:00 | New change, then the change thread | Request "Add multi-tenancy: every user and item belongs to an organisation." with the focus User, then Item. NVIDIA Nemotron on Nebius Token Factory proposes four alternatives (A4 a hybrid of A1 and A2), their direct changes and the questions that decide between them; commit them | The model proposes. Kalyth checks every citation against the pinned source. Nothing lands until a person commits it. |
-| 1:00 to 1:20 | Canvas, impact lens | "Show on canvas" for A1: its six direct changes numbered on the drawing, the three new elements it proposes, and the 27 more it reaches | Impact is computed by traversal, not guessed. |
-| 1:20 to 1:40 | Comparison, then accept | Trade-offs and "What changes for people" marked as the model's interpretation, evidence below; nothing chosen until the person picks a column; accept A1 with a reason, its two open questions carried with it | People decide, and the decision keeps what is still open. |
-| 1:40 to 2:10 | Hand off, then Claude Code | Compile the context package; create the task and mark it ready in the thread; copy the prompt for the agent; Claude Code claims the task, reads the package, commits with the task trailer and reports; git verifies the report. Cut Claude Code's run down in editing and say so on screen | The agent gets the context it needs at one revision, and its report is checked against git, not taken on trust. |
-| 2:10 to 2:35 | Reconcile | "Compared 84c5a9e with the commit", for Claude Code's commit. On the rehearsal's prepared commit it showed User and Item gaining `org_id` and now referencing Organisation, the items handlers changed in their own source, what the commit did not touch, and the evidence the work itself moved; Claude Code's commit decides what appears | When the work comes back, the model learns what the code now says, and what the decision still lacks. It never claims the code runs correctly. |
-| 2:35 to 2:50 | README | Limitations (FastAPI and SQLModel only; behaviour is not observed); NVIDIA Nemotron through Nebius Token Factory; Apache-2.0; the repository link | Open source. |
+| 1:00 to 1:15 | Canvas, impact lens | "Show on canvas" for A1: its six direct changes numbered on the drawing, the three new elements it proposes, and the 27 more it reaches | Impact is computed by traversal, not guessed. |
+| 1:15 to 1:35 | Comparison, then accept | Trade-offs and "What changes for people" marked as the model's interpretation, evidence below; nothing chosen until the person picks a column; accept A1 with a reason, its two open questions carried with it | People decide, and the decision keeps what is still open. |
+| 1:35 to 2:15 | Hand off, then Claude Code | Compile the context package; create the task and mark it ready in the thread; copy the prompt for the agent; Claude Code claims the task, reads the package, commits with the task trailer and reports; git verifies the report. An interactive session, recorded as it ran: shorten it by marked cuts and say so on screen (recording.md) | The agent gets the context it needs at one revision, and its report is checked against git, not taken on trust. |
+| 2:15 to 2:40 | Reconcile | "Compared 84c5a9e with the commit", for Claude Code's commit. On the rehearsal's prepared commit it showed User and Item gaining `org_id` and now referencing Organisation, the items handlers changed in their own source, what the commit did not touch, and the evidence the work itself moved; Claude Code's commit decides what appears | When the work comes back, the model learns what the code now says, and what the decision still lacks. It never claims the code runs correctly. |
+| 2:40 to 2:55 | README | Limitations (FastAPI and SQLModel only; behaviour is not observed); NVIDIA Nemotron through Nebius Token Factory; Apache-2.0; the repository link | Open source. |
 
 ## Check before recording
 
-- [ ] `.kalyth/video.db` was imported fresh from `deploy/demo/template.json`, and the server was
-      started afterwards with `KALYTH_PROVIDER=replay`.
-- [ ] The task repository is registered, outside the Kalyth checkout, on a branch at 0.12.0.
-- [ ] The Nemotron run is labelled "recorded, replayed free". No "Mock output" badge is on screen.
-- [ ] Claude Code is logged in (`claude /login`) and connected with an agent token that expires in
-      1 day, through `--mcp-config` with `--strict-mcp-config`, so it sees Kalyth and no other MCP
-      server. The commands it may run are allowed explicitly, and the rest denied (see the
-      rehearsal). Revoke the token after recording.
-- [ ] No session token, agent token or API key is visible in the final cut. The Handoff view shows a
-      new agent token once, so blur it or revoke it immediately.
-- [ ] Browser zoom suits 1080p: 150 %, which gives the 1280 by 720 layout the rehearsal used. One
-      theme is used throughout. Other tabs and notifications are closed.
-- [ ] Anything precomputed, replayed or cut down is disclosed on screen, as the Phase 0 plan
-      requires.
+[recording.md](recording.md) lists the off-camera setup, what the agent may do, and the checks
+before publishing: no session link, token, home path or email on screen, and every replayed,
+precomputed, shortened or sped-up stretch captioned.
 
 ## Rehearsal
 
