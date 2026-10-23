@@ -1,26 +1,26 @@
 [
   {
     "id": "multi-tenancy",
-    "recordedAt": "2026-10-19T13:32:01.618Z",
+    "recordedAt": "2026-10-23T07:23:21.656Z",
     "status": "completed",
-    "costMicroUsd": 24508
+    "costMicroUsd": 24266
   },
   {
     "id": "soft-delete",
-    "recordedAt": "2026-10-19T13:32:12.590Z",
+    "recordedAt": "2026-10-23T07:23:32.689Z",
     "status": "completed",
-    "costMicroUsd": 17602
+    "costMicroUsd": 20303
   },
   {
     "id": "audit-log",
-    "recordedAt": "2026-10-19T13:32:17.848Z",
+    "recordedAt": "2026-10-23T07:23:53.075Z",
     "status": "completed",
-    "costMicroUsd": 13425
+    "costMicroUsd": 30369
   },
   {
     "id": "summary-backend",
-    "recordedAt": "2026-10-19T13:32:20.030Z",
+    "recordedAt": "2026-10-23T07:23:56.357Z",
     "status": "completed",
-    "costMicroUsd": 2404
+    "costMicroUsd": 2541
   }
 ]

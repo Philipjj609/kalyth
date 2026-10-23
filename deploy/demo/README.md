@@ -11,9 +11,11 @@ of one template project.
   recordings made against it keep matching.
 - `recordings/` holds the preset runs' recorded Nemotron answers (`recordings.json`: the
   responses and a hash of each request, never a prompt or key), and `presets.json`, listing which
-  presets were recorded. They were made once, on 19 October 2026, with `pnpm demo:record` against
-  Nebius Token Factory. That was approved in KAL-20261019-030 and cost 0.058 USD, under a separate
-  ledger capped at 0.30 USD. The demo replays them at no cost.
+  presets were recorded. They were made on 23 October 2026, with `pnpm demo:record` against
+  Nebius Token Factory, after the template was rebuilt with analyzer 0.3.0. That was approved in
+  KAL-20261023-041 (D5) and cost 0.0775 USD, under a separate ledger capped at 0.15 USD. (The
+  first recording, on 19 October, cost 0.058 USD; the prompts have grown since.) The demo replays
+  them at no cost.
 
 To rebuild the template after an analyser change:
 

@@ -28,8 +28,8 @@ Not a Kalyth contributor. Tell them it is a test of the tool, not of them.
    ("Visit 8569") would distract. The session starts from a fixed project,
    `deploy/usability/clinic-bookings.json`, so a run recorded against it replays exactly on the
    day. `deploy/usability/README.md` has the commands:
-   - **Recording, once** (part of the D5 go-ahead, about 0.02 USD): import the project, run the
-     Navigator on its idea with Nebius and a capped ledger, keep the recording.
+   - **Recording, done** (23 October, under D5, 0.0201 USD): `deploy/usability/recordings`
+     holds Nemotron's answer to the session's first request.
    - **On the day** (no spend): import the project into a fresh database and start the server
      with `KALYTH_PROVIDER=replay`. The tester opens Clinic bookings instead of creating a project,
      so task 1 begins at "Sketch from the idea".

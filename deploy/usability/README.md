@@ -5,25 +5,22 @@
 fixed, so a Navigator run recorded against it replays exactly when the tester asks for the same
 thing on the day.
 
-## Recording (once, after Philip's go-ahead: it spends about 0.02 USD)
+## Recording
 
-Run from the repository root. The key stays in `.env` and is never printed.
+`recordings/` holds the session's first run: Nemotron's answer to "Sketch from the idea" for this
+project, recorded on 23 October 2026 under the D5 approval (KAL-20261023-041) for 0.0201 USD.
+Recording again spends money and needs a new go-ahead and a capped ledger of its own:
 
 ```bash
-KALYTH_DB=.kalyth/usability-record.db pnpm project:import deploy/usability/clinic-bookings.json
+KALYTH_LEDGER=<ledger> pnpm budget set 0.05 --note "<approval entry>"
 ```
 
 ```bash
-KALYTH_LEDGER=.kalyth/ledger-usability-recording.sqlite pnpm budget set 0.05 --note "<approval entry>"
+KALYTH_SESSION_RECORDING_LEDGER=<ledger> KALYTH_SESSION_NEBIUS_CONSENT=prj_01a167652db9705d82d5c35fd4ae3427 node --env-file=.env apps/server/src/demo/record-session.ts
 ```
 
-```bash
-KALYTH_DB=.kalyth/usability-record.db KALYTH_LEDGER=.kalyth/ledger-usability-recording.sqlite KALYTH_PROVIDER=nebius KALYTH_RECORD_DIR=deploy/usability/recordings node --env-file=.env apps/server/src/http/main.ts
-```
-
-Open the printed link, open Clinic bookings, choose **Sketch from the idea**, grant consent when
-asked, and choose **Propose alternatives** without changing the text. The exchange lands in
-`deploy/usability/recordings`. Stop the server and delete `.kalyth/usability-record.db*`.
+It makes exactly the request the workbench makes from "Sketch from the idea". The key stays in
+`.env` and is never printed.
 
 ## The session (no spend)
 
@@ -36,5 +33,6 @@ KALYTH_DB=.kalyth/usability.db KALYTH_PROVIDER=replay KALYTH_REPLAY_DIR=deploy/u
 ```
 
 The first run replays only if its text is the idea as written; the Navigator form starts with it
-filled in. A different request has no recording and fails with a clear message. Afterwards delete
+filled in. Replays need no budget cap and cost nothing; the run says "recorded, replayed free". A
+different request has no recording and is refused with that reason. Afterwards delete
 `.kalyth/usability.db*`.

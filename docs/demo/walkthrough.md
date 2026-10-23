@@ -26,7 +26,8 @@ new token.
 - **live:** the Navigator run happens on camera, with `KALYTH_PROVIDER=nebius`, a key in `.env`, a
   ledger cap and consent for the project; or
 - **replayed:** the run is recorded once (`KALYTH_RECORD_DIR=...`), then replayed on camera with
-  `KALYTH_PROVIDER=replay KALYTH_REPLAY_DIR=...`. The screen must say it is a recorded run.
+  `KALYTH_PROVIDER=replay KALYTH_REPLAY_DIR=...`. Replays need no budget cap and cost nothing;
+  the run says "recorded, replayed free", which counts as saying on screen that it is recorded.
 
 Until the Nebius budget is approved, rehearse with the mock provider: set
 `KALYTH_PROVIDER=mock` the same way as `KALYTH_DB`. A variable set like this wins over `.env`. Everything it writes says
