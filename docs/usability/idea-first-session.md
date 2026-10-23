@@ -24,25 +24,18 @@ Not a Kalyth contributor. Tell them it is a test of the tool, not of them.
 
 ## Setup (Philip, before the session)
 
-1. Start from a clean database, so nothing from earlier work shows:
-
-   ```bash
-   KALYTH_DB=.kalyth/usability.db KALYTH_PROVIDER=mock pnpm dev:server
-   ```
-
-2. **Model output.** The session needs real Navigator output; the mock's placeholder names
-   ("Visit 8569") would distract. A recorded run replays only for the exact project and request
-   it was recorded with, so:
-   - **Preferred:** the D5 re-recording includes one idea-first run for the "Clinic bookings"
-     project (about 0.02 USD, asked for with D5). Import that project before the session
-     (`pnpm project:import <file>`) and start the server with the recordings. The tester then
-     opens the project instead of creating it.
-   - **Fallback:** a live Nebius run during the session, with consent granted in the UI and a
-     cap Philip sets (one run costs roughly 0.01 to 0.02 USD).
-   - If neither is available, run the session with the mock and tell the tester that the
-     options are placeholders; judge the flow, not the content.
-3. Open the browser at the session link the server prints, full screen, light theme.
-4. Have this sheet and the observation table below at hand. Record the screen only with the
+1. **Model output.** The session needs real Navigator output; the mock's placeholder names
+   ("Visit 8569") would distract. The session starts from a fixed project,
+   `deploy/usability/clinic-bookings.json`, so a run recorded against it replays exactly on the
+   day. `deploy/usability/README.md` has the commands:
+   - **Recording, once** (part of the D5 go-ahead, about 0.02 USD): import the project, run the
+     Navigator on its idea with Nebius and a capped ledger, keep the recording.
+   - **On the day** (no spend): import the project into a fresh database and start the server
+     with `KALYTH_PROVIDER=replay`. The tester opens Clinic bookings instead of creating a project,
+     so task 1 begins at "Sketch from the idea".
+   - Without a recording, run with the mock and tell the tester the options are placeholders.
+2. Open the browser at the link the server prints, full screen, light theme.
+3. Have this sheet and the observation table below at hand. Record the screen only with the
    tester's agreement.
 
 ## Briefing (read as written)
@@ -62,7 +55,7 @@ Give one task at a time, on a card. Stop a task after its time limit.
 
 | # | Task (as given) | Limit | Done when |
 | --- | --- | --- | --- |
-| 1 | "You have an idea: a small clinic wants patients to book, move and cancel appointments online, and reception to fill gaps from a waiting list. Use Kalyth to get some options for building it." | 8 min | The alternatives are in front of them and committed (or they explain why not). |
+| 1 | "This project is an idea: a small clinic wants patients to book, move and cancel appointments online, and reception to fill gaps from a waiting list. Use Kalyth to get some options for building it." | 8 min | The alternatives are in front of them and committed (or they explain why not). |
 | 2 | "Choose the option you would go with, and record why." | 8 min | An alternative is accepted with a reason. |
 | 3 | "Get the work ready for a coding agent." | 7 min | A context package is compiled and a task created; they find the prompt for the agent. |
 | 4 | "Tell me what Kalyth now knows about this system, and how sure it is." | 5 min | They open the canvas or a record and describe it. |
