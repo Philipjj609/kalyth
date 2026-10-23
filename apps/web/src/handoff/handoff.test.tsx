@@ -99,6 +99,23 @@ describe('package view', () => {
   )
   const text = textOf(html)
 
+  it('says when it was compiled while an analysis was incomplete', () => {
+    const pkg = readyPackage()
+    const partial = {
+      ...pkg,
+      snapshots: pkg.snapshots.map((s) => ({
+        ...s,
+        pending: { commit: 'f'.repeat(40), parts: 3 },
+      })),
+    }
+    const shown = textOf(
+      render(<PackageView result={packageResult(partial)} headRevision={7} lookup={lookupFor()} />),
+    )
+    expect(shown).toContain(
+      'Compiled while an analysis of ffffffff was incomplete: recompile once the ingest has finished.',
+    )
+  })
+
   it('shows the header: id, uri, revision, snapshots, size against the limit and a JSON copy', () => {
     expect(text).toContain('Package status: Ready')
     expect(text).toContain('Add tenant isolation')
@@ -107,6 +124,7 @@ describe('package view', () => {
     expect(text).toContain('Revision r7')
     expect(text).not.toContain('the head is')
     expect(text).toContain('Source snapshots demo/fastapi-app @ 1a2b3c4d')
+    expect(text).not.toContain('Compiled while an analysis')
     expect(text).toContain(
       'Size against the limit 18,240 of 60,000 characters ≈ 4,560 of 15,000 tokens',
     )

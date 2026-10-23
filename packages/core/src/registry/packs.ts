@@ -160,6 +160,14 @@ export const corePack: ObjectTypeDef[] = [
       ref: z.string().max(200).optional(),
       coverage: z.string().min(1).max(4000),
       files: z.record(z.string().min(1).max(1000), z.string().regex(/^[0-9a-f]{40}$/)),
+      /**
+       * Set while an ingest of a newer commit is committed in parts and not yet complete (ADR
+       * 0025): the model then mixes this snapshot's commit with part of the newer one. The final
+       * part clears it. Still version 1: optional and additive.
+       */
+      pending: z
+        .strictObject({ commit: z.string().regex(/^[0-9a-f]{40}$/), parts: z.int().min(2) })
+        .optional(),
     }),
   },
 ]

@@ -35,7 +35,7 @@ import { FreshnessBadge } from '../components/badges.tsx'
 import { Button, Kbd, Spinner, Tip } from '../components/ui.tsx'
 import { Inspector } from '../inspector/Inspector.tsx'
 import { cn } from '../lib/cn.ts'
-import { relativeTime } from '../model/format.ts'
+import { relativeTime, shortSha } from '../model/format.ts'
 import { NavigatorIndicator } from '../navigator/NavigatorActions.tsx'
 import { OverviewView } from '../views/OverviewView.tsx'
 import { ProjectsLanding } from '../views/ProjectsLanding.tsx'
@@ -280,6 +280,20 @@ function ProjectWorkbench({
       >
         <DemoBanner />
         {workbench.isHistorical && <HistoricalBanner />}
+        {freshness.report?.snapshots
+          .filter((s) => s.pending)
+          .map((s) => (
+            <p
+              key={s.objectId}
+              role="status"
+              className="tone-warning border-tone-bd border-b bg-tone-bg px-4 py-1 text-tone-fg text-xs"
+            >
+              The analysis of {s.repo} at {shortSha(s.pending?.commit ?? '')} stopped part way (it
+              has {s.pending?.parts} parts): the model mixes {shortSha(s.commit)} with part of it,
+              and freshness still measures against {shortSha(s.commit)}. Run the ingest again to
+              complete it.
+            </p>
+          ))}
         {model?.truncated && (
           <p className="tone-warning border-tone-bd border-b bg-tone-bg px-4 py-1 text-tone-fg text-xs">
             Showing the first {(PAGE_LIMIT * MAX_PAGES).toLocaleString('en')} records of a list.

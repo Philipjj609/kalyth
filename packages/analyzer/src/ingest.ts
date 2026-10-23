@@ -144,6 +144,33 @@ export async function ingestRepository(options: {
   // every observation has landed; an interrupted ingest leaves valid observations, and running
   // it again completes it.
   const size = Math.min(MAX_OPS, Math.max(1, options.maxOps ?? MAX_OPS))
+  // Committed in parts, the model mixes two commits until the last part lands. The first part
+  // says so on the current snapshot, so freshness, packages and the workbench can tell; the
+  // last part's snapshot update clears it. (A first ingest has no snapshot yet: its records stay
+  // unchecked until the last part creates one.)
+  const current = objects.find(
+    (o) =>
+      o.type === 'core.SourceSnapshot' &&
+      o.lifecycle === 'active' &&
+      (o.attributes as { repo?: string }).repo === analysis.repo,
+  )
+  if (current && ops.length > size) {
+    const parts = Math.ceil((ops.length + 1) / size)
+    // The plan's own update of the snapshot comes last and states the new commit: it also says
+    // the ingest is complete.
+    const final = ops.findLast((op) => op.op === 'updateObject' && op.id === current.id)
+    if (final?.op === 'updateObject') final.set = { ...final.set, pending: null }
+    ops.unshift({
+      op: 'updateObject',
+      id: current.id,
+      set: { pending: { commit: analysis.commit, parts } },
+      claim: {
+        basis: 'observed',
+        ...(current.claim.observation ? { observation: current.claim.observation } : {}),
+        supports: current.claim.supports.map((g) => ({ allOf: [...g.allOf] })),
+      },
+    })
+  }
   const parts = Math.ceil(ops.length / size)
   const resolved = new Map<string, string>()
   let revision = head

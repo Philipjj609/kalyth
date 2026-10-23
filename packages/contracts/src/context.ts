@@ -97,7 +97,14 @@ export type RetrievalHint = z.infer<typeof RetrievalHint>
 export const ContextPackageBody = z.object({
   projectId: ProjectId,
   revision: z.int().min(0),
-  snapshots: z.array(z.object({ repo: z.string(), commit: z.string() })),
+  snapshots: z.array(
+    z.object({
+      repo: z.string(),
+      commit: z.string(),
+      /** Present when an analysis of a newer commit stopped part way: the model is incomplete. */
+      pending: z.object({ commit: z.string(), parts: z.int() }).optional(),
+    }),
+  ),
   focus: z.array(ObjectId),
   task: z.object({ title: z.string(), acceptanceCriteria: z.array(z.string()) }).nullable(),
   status: z.enum(['ready', 'blocked']),

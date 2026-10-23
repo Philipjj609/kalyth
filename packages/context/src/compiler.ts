@@ -487,7 +487,11 @@ export class ContextCompiler {
     }
 
     const snapshots = freshnessResult.snapshots
-      .map((sn) => ({ repo: sn.repo, commit: sn.commit }))
+      .map((sn) => ({
+        repo: sn.repo,
+        commit: sn.commit,
+        ...(sn.pending ? { pending: sn.pending } : {}),
+      }))
       .sort((a, b) => a.repo.localeCompare(b.repo))
     const task = q.task
       ? { title: q.task.title, acceptanceCriteria: q.task.acceptanceCriteria }

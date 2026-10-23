@@ -249,6 +249,12 @@ export function PackageHeader({
               {pkg.snapshots.map((s) => (
                 <li key={`${s.repo}@${s.commit}`} className="break-all font-mono text-xs">
                   {s.repo} @ {shortSha(s.commit)}
+                  {s.pending && (
+                    <span className="block font-sans text-tone-fg tone-warning">
+                      Compiled while an analysis of {shortSha(s.pending.commit)} was incomplete:
+                      recompile once the ingest has finished.
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

@@ -155,6 +155,11 @@ export const SnapshotSummary = z.object({
   repo: z.string(),
   commit: z.string(),
   ref: z.string().optional(),
+  /**
+   * An analysis of a newer commit committed in parts and not complete: the model mixes the two
+   * commits until it is run again (ADR 0025).
+   */
+  pending: z.object({ commit: z.string(), parts: z.int() }).optional(),
 })
 
 export const FreshnessQuery = z.object({ projectId: ProjectId, revision })

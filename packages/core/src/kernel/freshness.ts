@@ -12,6 +12,8 @@ export interface SnapshotState {
   commit: string
   ref?: string
   files: Readonly<Record<string, string>>
+  /** An ingest of a newer commit that stopped part way (ADR 0025). */
+  pending?: { commit: string; parts: number }
 }
 
 type EvidenceState = 'fresh' | 'stale' | 'unknown'
@@ -37,6 +39,7 @@ export function assessFreshness(
         commit: string
         ref?: string
         files: Record<string, string>
+        pending?: { commit: string; parts: number }
       }
       return {
         objectId: o.id,
@@ -44,6 +47,7 @@ export function assessFreshness(
         commit: a.commit,
         files: a.files,
         ...(a.ref ? { ref: a.ref } : {}),
+        ...(a.pending ? { pending: a.pending } : {}),
       }
     })
   const byRepo = new Map(snapshots.map((s) => [s.repo, s]))

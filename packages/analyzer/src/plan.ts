@@ -316,6 +316,8 @@ export function planIngest(
   } else if (canonicalJson(currentSnapshot.attributes) !== canonicalJson(snapshotAttributes)) {
     const set: Record<string, JsonValue> = { ...snapshotAttributes }
     if (!analysis.ref && 'ref' in currentSnapshot.attributes) set.ref = null
+    // The final part of an ingest committed in parts says it is complete.
+    if ('pending' in currentSnapshot.attributes) set.pending = null
     snapshotOps.push(snapshotEvidence, {
       op: 'updateObject',
       id: currentSnapshot.id,
