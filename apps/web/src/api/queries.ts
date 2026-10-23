@@ -68,6 +68,7 @@ export function createQueryClient(): QueryClient {
 export const keys = {
   projects: ['projects'] as const,
   types: ['types'] as const,
+  principals: ['principals'] as const,
   overview: (projectId: string, revision: number | undefined) =>
     ['overview', projectId, revision ?? 'head'] as const,
   objects: (projectId: string, revision: number, retired: boolean) =>
@@ -117,6 +118,17 @@ export function useCreateProject() {
 
 export function useTypes() {
   return useQuery({ queryKey: keys.types, queryFn: api.types, staleTime: Number.POSITIVE_INFINITY })
+}
+
+/** Principal names by id. A server without the route leaves them unnamed, never an error. */
+export function usePrincipalNames() {
+  return useQuery({
+    queryKey: keys.principals,
+    queryFn: api.principals,
+    staleTime: 30_000,
+    retry: false,
+    select: (r) => new Map(r.principals.map((p) => [p.id, p])),
+  })
 }
 
 /** The overview at a revision; undefined follows the head and polls for new revisions. */

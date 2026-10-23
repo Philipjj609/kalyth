@@ -3,9 +3,10 @@ import { ArrowRight, Inbox } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { MockBadge, OriginBadge } from '../components/badges.tsx'
 import { CopyButton, EmptyState, Panel } from '../components/ui.tsx'
-import { absoluteTime, plural, relativeTime, shortId } from '../model/format.ts'
+import { absoluteTime, plural, relativeTime } from '../model/format.ts'
 import { agentPrompt, roundTripProposals } from '../model/handoff.ts'
 import { hasMockOutput } from '../model/navigator.ts'
+import { PrincipalLabel } from '../views/shared.tsx'
 
 /** The prompt to give the agent, with a copy button. A blocked package has no prompt. */
 export function AgentPromptPanel({
@@ -123,7 +124,7 @@ function ProposalRows({
                   </>
                 ) : (
                   <>
-                    by <span className="font-mono">{shortId(p.proposedBy)}</span>
+                    by <PrincipalLabel id={p.proposedBy} />
                   </>
                 )}
               </span>

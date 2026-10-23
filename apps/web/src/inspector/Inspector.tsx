@@ -36,6 +36,7 @@ import { evidenceLocation } from '../model/ops.ts'
 import { basisMeta, LIFECYCLE_META, relationMeta, STANCE_META } from '../model/semantics.ts'
 import { SummariseAction } from '../navigator/NavigatorActions.tsx'
 import { ErrorNotice, RecordLink } from '../views/shared.tsx'
+import { AttributeValues } from './AttributeValues.tsx'
 
 export function Inspector({ onClose }: { onClose: () => void }) {
   const wb = useWorkbench()
@@ -168,7 +169,7 @@ function ObjectDetails({ object }: { object: ObjectVersion }) {
       )}
       <ClaimSection claim={object.claim} freshness={freshness} selfId={object.id} />
       <Section title="Attributes">
-        <KeyValues values={attributes} />
+        <AttributeValues values={attributes} />
       </Section>
       <Section
         title="Relations"
@@ -228,7 +229,7 @@ function RelationDetails({ relation }: { relation: RelationVersion }) {
       <ClaimSection claim={relation.claim} freshness={freshness} selfId={relation.id} />
       {Object.keys(relation.properties).length > 0 && (
         <Section title="Properties">
-          <KeyValues values={relation.properties as Record<string, unknown>} />
+          <AttributeValues values={relation.properties as Record<string, unknown>} />
         </Section>
       )}
       <VersionFooter revision={relation.revision} retiredReason={relation.retiredReason} />
@@ -598,29 +599,6 @@ function EvidenceCard({
         </time>
       </p>
     </div>
-  )
-}
-
-function KeyValues({ values }: { values: Record<string, unknown> }) {
-  const entries = Object.entries(values)
-  if (entries.length === 0) return <p className="text-fg-muted text-xs">None.</p>
-  return (
-    <dl className="grid grid-cols-[minmax(80px,auto)_1fr] gap-x-3 gap-y-1.5 text-sm">
-      {entries.map(([k, v]) => (
-        <div key={k} className="contents">
-          <dt className="truncate font-mono text-fg-muted text-xs leading-5" title={k}>
-            {k}
-          </dt>
-          <dd className="min-w-0 break-words">
-            {typeof v === 'string' ? (
-              v
-            ) : (
-              <code className="font-mono text-xs">{JSON.stringify(v)}</code>
-            )}
-          </dd>
-        </div>
-      ))}
-    </dl>
   )
 }
 

@@ -30,6 +30,12 @@ import { SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_VERSION } from './schema.ts'
 type Row = Record<string, unknown>
 const str = (v: unknown): string => v as string
 const num = (v: unknown): number => v as number
+const principalOf = (row: Row): Principal => ({
+  id: str(row.id),
+  kind: row.kind as Principal['kind'],
+  displayName: str(row.display_name),
+  createdAt: str(row.created_at),
+})
 const nstr = (v: unknown): string | null => (v === null || v === undefined ? null : (v as string))
 const json = <T>(v: unknown): T => JSON.parse(v as string) as T
 
@@ -106,14 +112,14 @@ export class SqliteStore {
 
   getPrincipal(id: string): Principal | undefined {
     const row = this.#stmt('SELECT * FROM principals WHERE id = ?').get(id) as Row | undefined
-    return row
-      ? {
-          id: str(row.id),
-          kind: row.kind as Principal['kind'],
-          displayName: str(row.display_name),
-          createdAt: str(row.created_at),
-        }
-      : undefined
+    return row ? principalOf(row) : undefined
+  }
+
+  /** Every principal, oldest first. */
+  listPrincipals(): Principal[] {
+    return (this.#stmt('SELECT * FROM principals ORDER BY created_at, id').all() as Row[]).map(
+      principalOf,
+    )
   }
 
   insertGrant(g: Grant): void {

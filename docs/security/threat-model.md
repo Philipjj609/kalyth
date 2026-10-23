@@ -280,3 +280,8 @@ Accepted, noted:
   other record of their own model; it only changes what the workbench says.
 - Reconcile analyses the repository twice (base and commit), locally; on a very large repository
   this takes tens of seconds of CPU.
+- `GET /api/v1/principals` (added after the rehearsal, so screens name who did what) returns each
+  principal's id, kind and display name to the session, behind the session token like every route
+  but health. It never returns grants, scopes or token hashes. Agent principals are named by the
+  label the person gave their token. In the hosted demo each visitor's sandbox is its own store, so
+  a visitor sees only the principals of their own copy.

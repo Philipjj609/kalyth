@@ -29,7 +29,7 @@ import {
   RUN_STATUS_META,
   runSubject,
 } from '../model/navigator.ts'
-import { AppLink, ErrorNotice, RecordLink, ViewHeader } from '../views/shared.tsx'
+import { AppLink, ErrorNotice, PrincipalLabel, RecordLink, ViewHeader } from '../views/shared.tsx'
 import { DemoPresets } from './DemoPresets.tsx'
 import { ElementPicker } from './ElementPicker.tsx'
 import { RunOutput } from './ProposedOutput.tsx'
@@ -268,7 +268,7 @@ function ConsentRow({ status }: { status: NavigatorStatus }) {
               {consent.grantedBy && (
                 <>
                   {' '}
-                  by <span className="font-mono text-xs">{shortId(consent.grantedBy)}</span>
+                  by <PrincipalLabel id={consent.grantedBy} className="text-xs" />
                 </>
               )}
               {consent.grantedAt && (
@@ -696,7 +696,7 @@ function RunDetail({ runId }: { runId: string }) {
           </p>
         )}
         <p className="mt-1.5 text-fg-muted text-xs">
-          Requested by <span className="font-mono">{shortId(run.requestedBy)}</span> ·{' '}
+          Requested by <PrincipalLabel id={run.requestedBy} /> ·{' '}
           <time dateTime={run.startedAt} title={absoluteTime(run.startedAt)}>
             {relativeTime(run.startedAt)}
           </time>{' '}

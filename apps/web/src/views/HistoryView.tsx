@@ -7,7 +7,7 @@ import { OriginBadge } from '../components/badges.tsx'
 import { Button, EmptyState, Skeleton } from '../components/ui.tsx'
 import { cn } from '../lib/cn.ts'
 import { absoluteTime, relativeTime, shortId } from '../model/format.ts'
-import { ErrorNotice, ViewHeader } from './shared.tsx'
+import { ErrorNotice, PrincipalLabel, ViewHeader } from './shared.tsx'
 
 /** Proposal id -> proposal, to show what each change set was and who asked for it. */
 export function useProposalIndex(projectId: string): Map<string, Proposal> {
@@ -76,9 +76,7 @@ export function HistoryView() {
                   Project created{' '}
                   <span className="text-fg-subtle">
                     {relativeTime(wb.overview.project.createdAt)} by{' '}
-                    <span className="font-mono text-xs">
-                      {shortId(wb.overview.project.createdBy)}
-                    </span>
+                    <PrincipalLabel id={wb.overview.project.createdBy} className="text-xs" />
                   </span>
                 </td>
               </tr>
@@ -133,9 +131,7 @@ function HistoryRow({
       <td className={cell}>
         <div className="flex flex-col items-start gap-1">
           {proposal && <OriginBadge origin={proposal.origin} size="sm" />}
-          <span className="font-mono text-2xs text-fg-subtle" title={c.proposedBy}>
-            {shortId(c.proposedBy)}
-          </span>
+          <PrincipalLabel id={c.proposedBy} className="text-2xs text-fg-subtle" />
         </div>
       </td>
       <td className={cell}>
@@ -150,9 +146,7 @@ function HistoryRow({
               {relativeTime(c.committedAt)}
             </time>
           </span>
-          <span className="font-mono text-2xs text-fg-subtle" title={c.committedBy}>
-            {shortId(c.committedBy)}
-          </span>
+          <PrincipalLabel id={c.committedBy} className="text-2xs text-fg-subtle" />
         </div>
       </td>
       <td className={cn(cell, 'text-right font-mono text-xs tabular-nums')}>{c.writeCount}</td>

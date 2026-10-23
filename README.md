@@ -10,7 +10,7 @@ It is built for the Nebius x NVIDIA Global AI Hackathon (October 2026) and meant
 
 ## Status
 
-Phase 1. What exists and is tested today, in CI on Linux and Windows: 505 unit and integration
+Phase 1. What exists and is tested today, in CI on Linux and Windows: 510 unit and integration
 tests, and 63 browser tests of the main flows by keyboard (57 of the local workbench, 6 of the
 hosted demo), with automated accessibility checks:
 
@@ -95,7 +95,10 @@ This README will say when each one works.
   its own claim.
 - **The model proposes; a person decides.** Navigator output is inferred, carries its citations
   and lands only when a person commits it. A citation that does not match the pinned source is
-  rejected, but a grounded proposal can still be a poor design.
+  rejected, but a grounded proposal can still be a poor design. The Navigator has no typed way to
+  propose a new field of an existing entity, so a model may propose one as an entity of its own
+  (`User.org_id`); reconciliation then finds no element of that name, though it shows the field
+  added to the entity.
 - **Local first.** One person per server, on one machine. The hosted demo gives each visitor a
   copy of one analysed project and does not import repositories.
 

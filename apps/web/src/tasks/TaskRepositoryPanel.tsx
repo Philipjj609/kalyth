@@ -6,8 +6,8 @@ import { useSessionMode } from '../app/session.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import { useToast } from '../components/toast.tsx'
 import { Button, Panel, Skeleton, Spinner } from '../components/ui.tsx'
-import { absoluteTime, relativeTime, shortId } from '../model/format.ts'
-import { ErrorNotice } from '../views/shared.tsx'
+import { absoluteTime, relativeTime } from '../model/format.ts'
+import { ErrorNotice, PrincipalLabel } from '../views/shared.tsx'
 
 export const TASK_REPOSITORY_INPUT_ID = 'task-repository-path'
 const MAX_PATH = 1000
@@ -63,10 +63,7 @@ export function TaskRepositoryForm({
               <dd className="text-fg-muted">
                 {repository.setBy && (
                   <>
-                    by{' '}
-                    <span className="font-mono" title={repository.setBy}>
-                      {shortId(repository.setBy)}
-                    </span>{' '}
+                    by <PrincipalLabel id={repository.setBy} />{' '}
                   </>
                 )}
                 {repository.setAt && (

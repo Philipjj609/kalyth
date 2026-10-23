@@ -156,6 +156,9 @@ export function registerApiRoutes(
   app.get('/api/v1/types', async (req, reply) =>
     send(reply, workspaceOf(req).services.describeTypes(workspaceOf(req).caller)),
   )
+  app.get('/api/v1/principals', async (req, reply) =>
+    send(reply, workspaceOf(req).services.listPrincipalNames(workspaceOf(req).caller)),
+  )
 
   app.get('/api/v1/projects', async (req, reply) =>
     send(reply, workspaceOf(req).services.listProjects(workspaceOf(req).caller)),

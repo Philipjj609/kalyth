@@ -118,4 +118,22 @@ describe('HTTP API behaviour', () => {
       body: { error: { code: 'stale', currentRevision: 2, changedRefs: [moduleId] } },
     })
   })
+
+  it('names the principals, marks the caller, and gives nothing else away', async () => {
+    h = await harness()
+    const names = await h.http('GET', '/api/v1/principals')
+    expect(names.status).toBe(200)
+    const principals = names.body.principals as Record<string, unknown>[]
+    expect(principals).toContainEqual({
+      id: h.owner.id,
+      kind: 'human',
+      displayName: 'Local owner',
+      you: true,
+    })
+    expect(principals).toContainEqual(
+      expect.objectContaining({ id: h.agent.id, kind: 'agent', you: false }),
+    )
+    for (const p of principals)
+      expect(Object.keys(p).sort()).toEqual(['displayName', 'id', 'kind', 'you'])
+  })
 })

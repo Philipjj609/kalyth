@@ -31,6 +31,7 @@ import {
   ok,
   type Principal,
   type PrincipalKind,
+  type PrincipalNames,
   type ProjectExport,
   type ProjectOverview,
   ProjectRef,
@@ -476,6 +477,23 @@ export class KalythServices {
     const ctx = this.#context(caller)
     if (!ctx.ok) return ctx
     return ok(this.registry.describe())
+  }
+
+  /**
+   * The names of the principals in this store, so screens can say who proposed, decided or
+   * requested something. Names and kinds only: never grants or tokens.
+   */
+  listPrincipalNames(caller: unknown): Result<PrincipalNames> {
+    const ctx = this.#context(caller)
+    if (!ctx.ok) return ctx
+    return ok({
+      principals: this.store.listPrincipals().map((p) => ({
+        id: p.id,
+        kind: p.kind,
+        displayName: p.displayName,
+        you: p.id === ctx.value.principal.id,
+      })),
+    })
   }
 
   // ---------- agent tokens (ADR 0011) ----------

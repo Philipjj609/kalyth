@@ -39,6 +39,16 @@ export const Principal = z.object({
 })
 export type Principal = z.infer<typeof Principal>
 
+/** Who a principal id stands for, so screens can name who did what instead of showing ids. */
+export const PrincipalName = Principal.pick({ id: true, kind: true, displayName: true }).extend({
+  /** The principal making the request. */
+  you: z.boolean(),
+})
+export type PrincipalName = z.infer<typeof PrincipalName>
+
+export const PrincipalNames = z.object({ principals: z.array(PrincipalName) })
+export type PrincipalNames = z.infer<typeof PrincipalNames>
+
 export const Grant = z.object({
   id: GrantId,
   principalId: PrincipalId,

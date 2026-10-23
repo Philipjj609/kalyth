@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -37,7 +38,13 @@ const textOf = (html: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-const render = (node: ReactNode) => renderToStaticMarkup(<TooltipProvider>{node}</TooltipProvider>)
+// Principal names come from a query; with no server they stay short ids.
+const render = (node: ReactNode) =>
+  renderToStaticMarkup(
+    <QueryClientProvider client={new QueryClient()}>
+      <TooltipProvider>{node}</TooltipProvider>
+    </QueryClientProvider>,
+  )
 
 /** Plain links, so the views render without a browser location. */
 const links: TaskLinks = {

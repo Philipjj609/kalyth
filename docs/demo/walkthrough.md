@@ -112,7 +112,9 @@ will what reconcile shows; the 2:10 shot must show the result of that commit, no
 Fixed after the rehearsal: the header showed "$0.0000 left" for a free provider; an alternative's
 lead could break inside a dotted name such as `app.current_org_id`; a task had to be marked ready
 in the Tasks view; evidence the task's own commit moved was reported as if it moved on its own; the
-Navigator form was cramped beside an open Inspector.
+Navigator form was cramped beside an open Inspector; the Inspector listed an entity's fields as raw
+JSON (now one line per field, with its type, reference and base class); screens named people and
+agents by principal id (now "you", or the principal's name, with the id in the tooltip).
 
 Not rehearsed: Claude Code itself (see above), and `pnpm demo:agent`, which only proposes
 constraints and does not claim, commit or report.
@@ -121,6 +123,4 @@ Still open: Nemotron proposed `User.org_id` and `Item.org_id` as entities of the
 reconcile shows them as "same file only" while User and Item show the field added. This is a
 semantic-modelling limitation, not a reconcile defect: the model has no typed way to propose a
 field of an existing entity. A typed fix (a field change on the entity) needs a prompt and schema
-change, and so a new recording; it waits until after the release candidate. The run detail
-names the requester by principal id. The Inspector lists an entity's fields as raw JSON under
-Attributes, which reads poorly in the 0:15 shot.
+change, and so a new recording; it waits until after the release candidate.

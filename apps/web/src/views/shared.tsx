@@ -1,6 +1,8 @@
+import type { PrincipalName } from '@kalyth/contracts'
 import { CircleX, OctagonAlert, TriangleAlert } from 'lucide-react'
 import type { AnchorHTMLAttributes, ReactNode } from 'react'
 import { type ApiErrorBody, isApiError } from '../api/client.ts'
+import { usePrincipalNames } from '../api/queries.ts'
 import { type AppLocation, formatLocation, useAppLocation } from '../app/location.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import { cn } from '../lib/cn.ts'
@@ -282,6 +284,33 @@ export function ButtonLink({
 }
 
 /** Model prose without the handles the Navigator used for elements and evidence (N1, E2, S1). */
+/**
+ * Who a principal id stands for: "you" for the person using this session, otherwise the
+ * principal's name; null when the name is not known, so the caller shows the short id.
+ */
+export function principalText(p: Pick<PrincipalName, 'displayName' | 'you'> | undefined) {
+  if (!p) return null
+  return p.you ? 'you' : p.displayName
+}
+
+/** A principal by name, with its kind and id in the tooltip; the short id until names load. */
+export function PrincipalLabel({ id, className }: { id: string; className?: string }) {
+  const p = usePrincipalNames().data?.get(id)
+  const text = principalText(p)
+  if (!p || text === null) {
+    return (
+      <span className={cn('font-mono', className)} title={id}>
+        {shortId(id)}
+      </span>
+    )
+  }
+  return (
+    <span className={className} title={`${p.displayName} (${p.kind}) · ${id}`}>
+      {text}
+    </span>
+  )
+}
+
 export function withoutHandles(text: string): string {
   return text
     .replace(/\s*\((?:[NEPS]\d{1,4})(?:\s*,\s*[NEPS]\d{1,4})*\)/g, '')

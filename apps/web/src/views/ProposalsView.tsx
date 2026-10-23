@@ -12,7 +12,7 @@ import { absoluteTime, plural, relativeTime, shortId } from '../model/format.ts'
 import { hasMockOutput } from '../model/navigator.ts'
 import { describeOps, OP_LABEL, opCounts } from '../model/ops.ts'
 import { PROPOSAL_STATUS_META, PROPOSAL_STATUS_ORDER } from '../model/semantics.ts'
-import { ErrorNotice, IssueList, ViewHeader } from './shared.tsx'
+import { ErrorNotice, IssueList, PrincipalLabel, ViewHeader } from './shared.tsx'
 
 type Filter = ProposalStatus | 'all'
 
@@ -180,7 +180,7 @@ function ProposalCard({
             {p.rationale}
           </h2>
           <p className="mt-1 text-fg-muted text-xs">
-            Proposed by <span className="font-mono">{shortId(p.proposedBy)}</span> ·{' '}
+            Proposed by <PrincipalLabel id={p.proposedBy} /> ·{' '}
             <time dateTime={p.createdAt} title={absoluteTime(p.createdAt)}>
               {relativeTime(p.createdAt)}
             </time>{' '}
@@ -188,7 +188,7 @@ function ProposalCard({
             {p.decidedAt && p.decidedBy && (
               <>
                 {' '}
-                · {p.status} by <span className="font-mono">{shortId(p.decidedBy)}</span>{' '}
+                · {p.status} by <PrincipalLabel id={p.decidedBy} />{' '}
                 <time dateTime={p.decidedAt} title={absoluteTime(p.decidedAt)}>
                   {relativeTime(p.decidedAt)}
                 </time>
