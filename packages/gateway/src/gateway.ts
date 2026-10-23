@@ -139,6 +139,12 @@ export class ProviderGateway {
         if (answered) return answered
         continue
       }
+      if (this.provider.replayOnly) {
+        return failWith(
+          'not_found',
+          'there is no recording of this request; this server only replays recordings',
+        )
+      }
       if (!consented()) {
         return failWith(
           'unauthorized',

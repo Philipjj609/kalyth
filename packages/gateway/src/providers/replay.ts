@@ -21,12 +21,14 @@ export function requestKey(provider: string, request: ChatRequest): string {
 
 /**
  * Answers only requests it has a recording for, so tests and the disclosed replay mode are
- * deterministic and free. An unrecorded request fails instead of reaching a real provider.
+ * deterministic and free. Recorded answers take the gateway's recorded path: no reservation, no
+ * charge, no cap needed. An unrecorded request fails instead of reaching a real provider.
  */
 export class ReplayProvider implements Provider {
   readonly id: string
   readonly external = false
   readonly paid = false
+  readonly replayOnly = true
   readonly #source: string
   readonly #recordings: Map<string, Recording>
 
@@ -45,10 +47,14 @@ export class ReplayProvider implements Provider {
     return new ReplayProvider(source, recordings)
   }
 
+  recorded(request: ChatRequest): ChatResponse | undefined {
+    return this.#recordings.get(requestKey(this.#source, request))?.response
+  }
+
   async complete(request: ChatRequest): Promise<ChatResponse> {
-    const found = this.#recordings.get(requestKey(this.#source, request))
+    const found = this.recorded(request)
     if (!found) throw new ProviderError('no recording for this request', 404)
-    return found.response
+    return found
   }
 }
 

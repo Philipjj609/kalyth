@@ -37,6 +37,11 @@ export interface Provider {
    * it without a reservation or a charge, and marks the call as recorded (ADR 0019).
    */
   recorded?(request: ChatRequest): ChatResponse | undefined
+  /**
+   * Answers only from recordings: a request without one is refused at once, with that reason,
+   * instead of being reserved against the budget first.
+   */
+  readonly replayOnly?: boolean
 }
 
 /**

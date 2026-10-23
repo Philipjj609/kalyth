@@ -265,6 +265,60 @@ describe('mock, replay and output parsing', () => {
     }
   })
 
+  it('replays a recorded answer through the gateway with no cap, consent or charge', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kalyth-rec-'))
+    try {
+      // Record one exchange against a (fake) Nebius, under a cap and with consent.
+      const net = fakeFetch(() => completion('{"answer":"recorded"}'))
+      const recordingLedger = new BudgetLedger(':memory:')
+      recordingLedger.setCap(10_000, 'test cap')
+      recordingLedger.setConsent(PROJECT, 'nebius', true, OWNER)
+      const ask = (gateway: ProviderGateway, user: string) =>
+        gateway.generate({
+          projectId: PROJECT,
+          purpose: 'test',
+          model: SUPER,
+          system: 'Answer in JSON.',
+          user,
+          schema: Answer,
+          schemaName: 'answer',
+          maxOutputTokens: 1000,
+          reasoning: false,
+        })
+      const recorder = new ProviderGateway({
+        provider: new RecordingProvider(
+          new NebiusProvider({ apiKey: FAKE_KEY, fetch: net.fetch }),
+          dir,
+        ),
+        ledger: recordingLedger,
+        roleModels: { summarize: SUPER },
+      })
+      expect((await ask(recorder, 'Say hello.')).ok).toBe(true)
+
+      // Replayed with a ledger that has no cap and no consent: free, and nothing is booked.
+      const ledger = new BudgetLedger(':memory:')
+      const replay = new ProviderGateway({
+        provider: ReplayProvider.fromDirectory('nebius', dir),
+        ledger,
+        roleModels: { summarize: SUPER },
+      })
+      const again = await ask(replay, 'Say hello.')
+      expect(again.ok).toBe(true)
+      expect(again.calls[0]).toMatchObject({ recorded: true, costMicroUsd: 0 })
+      expect(ledger.status()).toMatchObject({ spentMicroUsd: 0, calls: 0 })
+      // Anything else is refused at once, saying why.
+      const other = await ask(replay, 'Say goodbye.')
+      expect(other.ok).toBe(false)
+      if (!other.ok) {
+        expect(other.error.code).toBe('not_found')
+        expect(other.error.message).toMatch(/no recording/)
+      }
+      expect(net.calls).toHaveLength(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('strips reasoning blocks and code fences before validating', () => {
     expect(parseOutput('<think>hmm</think>\n```json\n{"answer":"a"}\n```', Answer)).toEqual({
       ok: true,
