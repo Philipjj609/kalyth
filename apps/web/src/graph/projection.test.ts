@@ -536,6 +536,27 @@ describe('larger repositories', () => {
     expect(imports).toContain('shop/order/ > shop/payment/')
     expect(imports).not.toContain('shop/order/ > shop/product/')
     expect(p.stats.detailRelations).toBeGreaterThan(0)
+
+    // Thinning only changes the drawing: with every import on, all of them are drawn again.
+    const all = projectGraph(m.objects, m.relations, {
+      detail: 'all',
+      collapsed: new Set(
+        DOMAINS.flatMap((d) => {
+          const id = pkg(projectGraph(m.objects, m.relations), `shop/${d}/`)?.id
+          return id ? [id] : []
+        }),
+      ),
+    })
+    const allNames = (id: string) => {
+      const x = all.nodes.find((n) => n.id === id)
+      return x?.kind === 'package' ? x.path : id
+    }
+    const allImports = all.edges
+      .filter((e) => e.type === 'dependsOn')
+      .map((e) => `${allNames(e.source)} > ${allNames(e.target)}`)
+    expect(allImports).toContain('shop/order/ > shop/product/')
+    expect(allImports.filter((i) => i.endsWith('> shop/core/'))).toHaveLength(DOMAINS.length - 1)
+    expect(all.stats.detailRelations).toBe(0)
   })
 })
 

@@ -55,6 +55,7 @@ import type { z } from 'zod'
 import { SHA, TaskGit } from './git.ts'
 import { agentPrompt } from './prompt.ts'
 import {
+  attributeChanges,
   ensureAnalyzer,
   ensureReconciler,
   keyOf,
@@ -142,6 +143,8 @@ const PERSON_SCOPES: readonly Scope[] = ['proposal.create', 'proposal.commit']
 const PERSON_LEASE_MINUTES = 15
 /** Commits that carry the trailer, recorded on a task as its finding. */
 const MAX_FOUND = 5
+/** Commits between base and verified commit read to tell the task's apart from others. */
+const RECONCILE_RANGE = 200
 
 const short = (sha: string) => sha.slice(0, 12)
 const sameCommits = (a: readonly string[] | undefined, b: readonly string[]) =>
@@ -572,18 +575,57 @@ export class TaskCoordinator {
     let seen: ObservedChangeSet | null = null
     let note: string | null = null
     let base: string | null = null
+    let mergeBase: string | null = null
     try {
       base = sourceRepo.resolveCommit(view.baseCommit ?? `${commit}^`)
+      // As the verifier does: a commit that does not descend from the base is compared from
+      // their merge base, so the base's own later changes are not read as the task's.
+      if (!git.isAncestor(base, commit)) {
+        mergeBase = git.mergeBase(base, commit)
+        base = mergeBase
+        if (!base) note = 'the verified commit shares no history with the base commit'
+      }
     } catch {
       note = view.baseCommit
         ? `the base commit ${short(view.baseCommit)} is not in the task repository`
         : 'the task names no base commit and the verified commit has no parent'
+    }
+    // The commits between base and commit: the task's carry its trailer; any other (a merge
+    // from the main line, someone else's work) is told apart, and so is what it changed.
+    let commits: {
+      task: number
+      other: string[]
+      otherCount: number
+      mergeBase: string | null
+    } | null = null
+    const taskFiles = new Set<string>()
+    const otherFiles = new Set<string>()
+    if (base) {
+      try {
+        const range = git.commitsBetween(base, commit, RECONCILE_RANGE)
+        const trailer = new RegExp(`^Kalyth-Task:\\s*${view.id}\\s*$`, 'm')
+        const other: string[] = []
+        for (const c of range) {
+          const mine = trailer.test(git.commitMessage(c))
+          if (!mine) other.push(c)
+          for (const f of git.changedFiles(c)) (mine ? taskFiles : otherFiles).add(f)
+        }
+        commits = {
+          task: range.length - other.length,
+          other: other.slice(0, 20),
+          otherCount: other.length,
+          mergeBase,
+        }
+      } catch {
+        note = 'git could not list the commits between the base and the verified commit'
+      }
     }
     try {
       after = await analyzeRepository({ git: sourceRepo, repo: at.repo, ref: commit })
       if (base) {
         const before = await analyzeRepository({ git: sourceRepo, repo: at.repo, ref: base })
         seen = observeChange(before, after)
+        attributeChanges(seen, taskFiles, otherFiles)
       }
     } catch {
       note = `the analyzer could not read ${base ? `${short(base)} and ` : ''}${short(commit)}`
@@ -674,6 +716,7 @@ export class TaskCoordinator {
               commit,
               analyzer: `${ANALYZER.tool} ${ANALYZER.toolVersion}`,
               ...summariseObserved(seen, planned),
+              ...(commits ? { commits } : {}),
               note: null,
             }
           : note
@@ -684,6 +727,7 @@ export class TaskCoordinator {
                 elementsChanged: 0,
                 modulesChanged: 0,
                 unplanned: [],
+                byOthers: [],
                 note,
               }
             : null,

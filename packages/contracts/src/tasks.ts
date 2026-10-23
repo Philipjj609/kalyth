@@ -179,6 +179,13 @@ export const ObservedElementChange = z.object({
   sourceChanged: z.boolean(),
   /** What changed, in words: fields, parameters and relations added or removed. */
   details: z.array(z.string()).max(50),
+  /**
+   * Which commits changed the files the element's evidence cites, when the compared range also
+   * holds commits without this task's trailer: `task`, `other` (only commits that are not the
+   * task's), `both`, or `unclear` (no commit in the range changed its files; a relation moved
+   * because of a change elsewhere). Absent when every commit in the range is the task's.
+   */
+  origin: z.enum(['task', 'other', 'both', 'unclear']).optional(),
 })
 export type ObservedElementChange = z.infer<typeof ObservedElementChange>
 
@@ -199,10 +206,11 @@ export const ReconciledChange = z.object({
   /**
    * What the source shows for the target between the base and the verified commit: `changed` when
    * its own source or structure changed (or, for a proposed element, an element of its type and
-   * name appeared), `nearby` when only another part of a file it cites changed, `unchanged`
-   * otherwise. Null when the two commits could not be compared.
+   * name appeared), `other` when it changed only through commits that are not this task's,
+   * `nearby` when only another part of a file it cites changed, `unchanged` otherwise. Null when
+   * the two commits could not be compared.
    */
-  observed: z.enum(['changed', 'nearby', 'unchanged']).nullable().default(null),
+  observed: z.enum(['changed', 'other', 'nearby', 'unchanged']).nullable().default(null),
   /** What changed for the target, in words. */
   details: z.array(z.string()).default([]),
 })
@@ -295,6 +303,18 @@ export const ReconcileResult = z.object({
       modulesChanged: z.int().min(0),
       /** Changed elements that no direct change of the decisions names. */
       unplanned: z.array(ObservedElementChange).max(100),
+      /** The commits compared: the task's (with its trailer) and others between base and commit. */
+      commits: z
+        .object({
+          task: z.int().min(0),
+          other: z.array(sha).max(20),
+          otherCount: z.int().min(0),
+          /** Set when the commit does not descend from the base: compared from their merge base. */
+          mergeBase: sha.nullable(),
+        })
+        .optional(),
+      /** Elements changed only by commits that are not this task's: not counted as its work. */
+      byOthers: z.array(ObservedElementChange).max(100).default([]),
       /** Why there is no comparison, or what limits it. */
       note: z.string().nullable(),
     })

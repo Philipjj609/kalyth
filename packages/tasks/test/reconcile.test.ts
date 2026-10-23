@@ -473,6 +473,57 @@ describe('reconciling the model with a task (ADR 0024)', () => {
     expect(unwrap(w.tasks.getTask(w.owner, { taskId: w.taskId })).status).toBe('review')
   })
 
+  it('tells the task’s own changes from those of other commits in the range', async () => {
+    const w = await world()
+    // Someone else's commit lands between the base and the task's work, without the trailer, and
+    // happens to add the Organisation table the decision proposes.
+    w.repo.write({
+      'backend/app/audit.py': [
+        'from sqlmodel import Field, SQLModel',
+        '',
+        '',
+        'class Organisation(SQLModel, table=True):',
+        '    id: int | None = Field(default=None, primary_key=True)',
+        '',
+      ].join('\n'),
+    })
+    const other = w.repo.commit('Add organisations (unrelated work)')
+    const { lease } = unwrap(w.tasks.claim(w.agent, { taskId: w.taskId }))
+    w.repo.write({ [ITEMS]: V1[ITEMS] as string })
+    const sha = w.repo.commit(`Add the POST route
+
+${taskTrailer(w.taskId)}`)
+    const reported = unwrap(
+      w.tasks.submitReport(w.agent, {
+        taskId: w.taskId,
+        leaseId: lease.id,
+        idempotencyKey: `report-${sha.slice(0, 8)}`,
+        outcome: 'succeeded',
+        summary: 'Added the POST route; the branch also carries an unrelated commit.',
+        commit: sha,
+        filesChanged: [ITEMS, 'backend/app/audit.py'],
+      }),
+    )
+    expect(reported.verification.outcome).toBe('pass')
+
+    const result = unwrap(await w.tasks.reconcile(w.owner, { taskId: w.taskId }))
+    expect(result.observed?.commits).toEqual({
+      task: 1,
+      other: [other],
+      otherCount: 1,
+      mergeBase: null,
+    })
+    const [decision] = result.decisions
+    const change = (target: string) => decision?.changes.find((c) => c.target === target)
+    // The task's own work counts; the Organisation table, added by the other commit, does not.
+    expect(change(w.itemsModule.id)?.observed).toBe('changed')
+    expect(change(w.post)?.observed).toBe('changed')
+    expect(change(w.org)?.observed).toBe('other')
+    expect(decision?.changed).toBe(2)
+    expect(result.observed?.byOthers.map((e) => e.key)).toContain('entity:Organisation')
+    expect(result.observed?.unplanned.map((e) => e.key)).not.toContain('entity:Organisation')
+  })
+
   it('leaves the model alone when it already reflects a later commit that contains the work', async () => {
     const w = await world()
     const sha = w.deliver()

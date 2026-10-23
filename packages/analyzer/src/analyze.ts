@@ -430,6 +430,10 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
     unresolvedEntityReferences:
       'foreign keys or relationships of SQLModel tables whose target entity could not be identified',
     unfollowedCalls: `functions ${MAX_CALL_DEPTH} calls below a route handler whose own calls were not followed for data access`,
+    decoratorsNotOnARouter:
+      'decorators named like HTTP methods that are not on a FastAPI app or APIRouter (for example mock.patch, or a wrapper); not read as endpoints, so routes registered through wrappers are missed',
+    routerMountsCapped: `routers included at more than ${MAX_MOUNTS} prefixes; only the first ${MAX_MOUNTS} are shown`,
+    entityFieldsOmitted: 'table fields beyond the first 200 of their table, counted but not listed',
   })) {
     if (stats[k]) limitations.push(`${stats[k]} ${n}`)
   }
@@ -447,6 +451,7 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
       `${ANALYZER.tool} ${ANALYZER.toolVersion}: static tree-sitter analysis of ${stats.pythonFiles ?? 0} Python and ` +
       `${stats.typescriptFiles ?? 0} TypeScript files tracked at ${commit}, plus pyproject.toml, package.json and tsconfig.json manifests. ` +
       'Covers modules, imports, external libraries, FastAPI routes with their request parameters, and SQLModel tables. ' +
+      'Routes are read from decorators on FastAPI apps and APIRouters only; other frameworks (Django, Flask, GraphQL) and routes registered through wrappers or at run time are not covered. ' +
       `Reads and writes of tables by routes are taken from SQLModel and SQLAlchemy call patterns in each handler and in repository functions it calls, up to ${MAX_CALL_DEPTH} levels deep; ` +
       'FastAPI dependencies, loops and untyped variables are not followed. References between tables come from foreign keys and scalar relationships. ' +
       'No code was executed; runtime behaviour is not observed.',

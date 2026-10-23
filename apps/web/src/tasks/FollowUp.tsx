@@ -245,6 +245,13 @@ const OBSERVED_BADGE = {
     label: 'Changed',
     description: 'Its own source or structure changed between the base and the verified commit.',
   },
+  other: {
+    tone: 'caution',
+    icon: CircleDashed,
+    label: 'Changed by other commits',
+    description:
+      'It changed, but only in commits without this task’s trailer, so it is not counted as this task’s work.',
+  },
   nearby: {
     tone: 'caution',
     icon: CircleDashed,
@@ -336,6 +343,26 @@ export function ReconcileSummary({
               {plural(observed.modulesChanged, 'file')} changed. Observed in the source, within the
               analyzer's coverage; it says nothing about how the code runs.
             </span>
+            {observed.commits && observed.commits.otherCount > 0 && (
+              <span className="mt-1 block">
+                <span className="font-medium">
+                  {plural(observed.commits.otherCount, 'commit')} in the range{' '}
+                  {observed.commits.otherCount === 1 ? 'is' : 'are'} not this task's
+                </span>{' '}
+                <span className="text-fg-muted">
+                  (no trailer: {observed.commits.other.map((c) => shortSha(c)).join(', ')}
+                  {observed.commits.otherCount > observed.commits.other.length ? ', …' : ''}). What
+                  only they changed is listed separately and not counted as this task's work.
+                </span>
+              </span>
+            )}
+            {observed.commits?.mergeBase && (
+              <span className="mt-1 block text-fg-muted">
+                The commit does not descend from the task's base, so it was compared from their
+                merge base <code className="font-mono">{shortSha(observed.commits.mergeBase)}</code>
+                .
+              </span>
+            )}
           </p>
         ))}
       {result.decisions.length === 0 ? (
@@ -418,6 +445,26 @@ export function ReconcileSummary({
             )}
           </section>
         ))
+      )}
+      {observed && observed.byOthers.length > 0 && (
+        <section aria-label="Changed by other commits" className="space-y-1.5">
+          <p className="text-sm">
+            <span className="font-medium">Changed by other commits</span>{' '}
+            <span className="text-fg-muted text-xs">
+              Only commits without this task's trailer changed these.
+            </span>
+          </p>
+          <ul className="space-y-1 text-xs">
+            {observed.byOthers.map((u) => (
+              <li key={u.key} className="min-w-0">
+                <span className="font-medium">{u.label}</span>{' '}
+                <span className="text-fg-muted">
+                  {u.change}: {u.details.join('; ')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       {observed && observed.unplanned.length > 0 && (
         <section aria-label="Changed, not named by the decision" className="space-y-1.5">

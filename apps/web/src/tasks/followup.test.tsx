@@ -305,6 +305,7 @@ describe('reconciliation', () => {
             details: ['observed in app/models.py:4-6'],
           },
         ],
+        byOthers: [],
         note: null,
       },
       decisions: [

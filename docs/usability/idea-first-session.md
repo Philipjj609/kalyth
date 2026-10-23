@@ -4,6 +4,19 @@ A 35-minute moderated session at Philip's machine. One person who has not seen K
 to go from an idea to work a coding agent could start. We learn where the journey is unclear,
 and whether they can tell what Kalyth observed, what a model suggested and what they decided.
 
+## What counts as this test
+
+Only a session with a person new to Kalyth counts. Claude's own walk through the journey on an
+empty install (20 October) found and fixed obvious stalls, but it is not usability testing: Claude
+knows the product. Keep two tests apart:
+
+- **The newcomer session** (this kit): does the journey make sense to someone who has not seen
+  Kalyth? Real Navigator output, recorded or live, is preferred.
+- **A live run with the real model**: does Nemotron's output for an idea hold up? This needs
+  inference spend and its own go-ahead.
+
+If the session uses the mock, or any scripted example, say so to the tester and in the findings.
+
 ## Who
 
 Someone who builds, commissions or manages software, and has not used or been told about Kalyth.

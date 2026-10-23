@@ -175,3 +175,20 @@ correct, complete or behaves as the decision intends; the decision's change text
 superuser bypass") is not checked semantically. The implementation facet keeps counting by file
 (a file the change's evidence cites is among the files the verified report changed), because the
 kernel has no git access; the thread labels it as a count by file.
+
+### Review follow-ups (KAL-20261021-039)
+
+- **Other commits in the range.** The comparison runs from the task's base to its verified commit,
+  so every commit in between was counted as the task's: a merge from the main line, or someone
+  else's work. Reconcile now reads the commits in the range and splits them by the task's trailer.
+  Each changed element is credited by the files those commits changed: the task's, other commits'
+  (`other`), both, or unclear (a relation moved because of a change elsewhere). A direct change
+  changed only by other commits is reported as `other` and not counted; such elements are listed
+  apart, not among the changes the decision does not name. Crediting is by file, so an element in
+  a file both kinds of commit changed is `both`.
+- **Ancestry.** A verified commit that does not descend from the base is compared from their merge
+  base, as the verifier does, and the result says so.
+- **Pinned identity.** The result carries the report it used (id and commit), the base and commit
+  compared, the analyzer version, and the revision the model reached.
+- **Matching by name stays an inference.** When several observed elements share a proposed
+  element's type and name, none is matched and the count is reported; a person links the right one.

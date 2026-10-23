@@ -79,3 +79,30 @@ Loading saleor's 31,000 records takes 0.6 s.
   libraries, but no data entities or endpoints.
 - Task, report and decision reads in the task coordinator still read up to 1,000 records each;
   those counts stay small.
+
+## Review follow-ups (KAL-20261021-039)
+
+- **Identity through scoping.** A plain key that becomes scoped when a second declaration appears
+  (and plain again when it goes) would have left the old element stale beside a new one. The ingest
+  now matches a fact whose key matches no element by its declaration: an entity's name and file, an
+  endpoint's method, path and handler, a container's manifest directory. It re-keys that element,
+  so it keeps its id and what refers to it. A fixture walks User and GET /users/ from unique to
+  duplicated across two services and back. The same rule fixed a defect the fixture exposed: a
+  repository whose container is its root folder (named after the repository) could not be
+  re-ingested, because its key could not be read back from its name.
+- **Partial ingest is explicit.** The first part of an ingest in parts marks the current snapshot
+  `pending` (the newer commit and the number of parts); the last part clears it. Meanwhile
+  freshness still measures against the old snapshot, the workbench shows a banner, and a context
+  package compiled then says so. A test interrupts the ingest after every part. The old snapshot
+  stands, nothing is duplicated, another project is untouched, and running the ingest again gives
+  exactly the uninterrupted result. A first ingest has no snapshot to mark: its records stay
+  unchecked until the last part creates one. Staging the parts out of sight until the end would be
+  the longer-term design.
+- **Fields.** A field declared on a base class names it (`inheritedFrom`); fields beyond 200 are
+  counted (`fieldsOmitted`). They are annotations in source, not the runtime schema.
+- **Coverage, not completeness.** Decorators that are not on a FastAPI app or router, router
+  prefix caps and omitted fields are listed in the analysis limitations, and the coverage statement
+  says that routes come only from FastAPI apps and routers. A fixture covers an imported router
+  alias, routers included into routers, and a method named like an HTTP verb on something else.
+- **Thinning is drawing only.** Every relation stays in the model; the canvas says how many import
+  links it does not draw, and selecting an element, or turning on every import, draws them.

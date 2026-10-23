@@ -86,3 +86,90 @@ describe('route decorators', () => {
     expect(result.stats.decoratorsNotOnARouter).toBe(1)
   })
 })
+
+describe('routes through aliases, nested routers and look-alike decorators', () => {
+  let repo: FixtureRepo
+  let analysis: AnalysisResult
+  beforeAll(async () => {
+    repo = new FixtureRepo()
+    repo.write({
+      'pyproject.toml': lines('[project]', 'name = "api"', 'version = "0.1.0"'),
+      'app/__init__.py': '',
+      'app/routers/__init__.py': '',
+      'app/routers/users.py': lines(
+        'from fastapi import APIRouter',
+        '',
+        'router = APIRouter(prefix="/users")',
+        '',
+        '',
+        '@router.get("/")',
+        'def list_users():',
+        '    return []',
+      ),
+      // A route added through an imported alias of the users router.
+      'app/extra.py': lines(
+        'from app.routers.users import router as user_router',
+        '',
+        '',
+        '@user_router.get("/extra")',
+        'def extra():',
+        '    return []',
+      ),
+      // Routers included into routers: /v1, then /api, then /users.
+      'app/api.py': lines(
+        'from fastapi import APIRouter',
+        '',
+        'from app.routers.users import router as users',
+        '',
+        'api = APIRouter(prefix="/api")',
+        'api.include_router(users)',
+      ),
+      'app/main.py': lines(
+        'from fastapi import FastAPI',
+        '',
+        'from app.api import api',
+        '',
+        'app = FastAPI()',
+        'app.include_router(api, prefix="/v1")',
+      ),
+      // A method named like an HTTP verb on something that is not a router.
+      'app/cache.py': lines(
+        'class Cache:',
+        '    def get(self, key):',
+        '        return lambda f: f',
+        '',
+        '',
+        'cache = Cache()',
+        '',
+        '',
+        '@cache.get("settings")',
+        'def settings():',
+        '    return {}',
+      ),
+    })
+    const commit = repo.commit('routes')
+    analysis = await analyzeRepository({
+      git: new GitRepository(repo.path),
+      repo: 'example.org/api',
+      ref: commit,
+    })
+  })
+  afterAll(() => repo?.dispose())
+
+  it('serves aliased and nested routes at their full paths, and reads no look-alike as a route', () => {
+    const endpoints = analysis.objects
+      .filter((o) => o.type === 'software.Endpoint')
+      .map((o) => o.key)
+    expect(endpoints.sort()).toEqual([
+      'endpoint:GET /v1/api/users/',
+      'endpoint:GET /v1/api/users/extra',
+    ])
+    expect(analysis.stats.decoratorsNotOnARouter).toBe(1)
+    expect(analysis.limitations.join(' ')).toMatch(
+      /1 decorators named like HTTP methods that are not on a FastAPI app or APIRouter/,
+    )
+    expect(analysis.coverage).toMatch(
+      /Routes are read from decorators on FastAPI apps and APIRouters only/,
+    )
+  })
+})

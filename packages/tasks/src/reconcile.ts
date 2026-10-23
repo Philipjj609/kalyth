@@ -76,6 +76,8 @@ export interface ObservedChangeSet {
   base: string
   commit: string
   byKey: ReadonlyMap<string, ObservedElementChange>
+  /** The files each changed element's evidence cites, before and after. */
+  paths: ReadonlyMap<string, ReadonlySet<string>>
   /** The same entries by type and name (see `matchKey`), for proposed elements. */
   byMatch: ReadonlyMap<string, ObservedElementChange>
 }
@@ -208,7 +210,33 @@ export function observeChange(before: AnalysisResult, after: AnalysisResult): Ob
     else byMatch.set(m, e)
   }
   for (const m of ambiguousMatch) byMatch.delete(m)
-  return { base: before.commit, commit: after.commit, byKey, byMatch }
+  const paths = new Map<string, Set<string>>()
+  for (const key of byKey.keys()) {
+    const set = new Set<string>()
+    for (const f of [b.get(key), a.get(key)])
+      for (const g of f?.supports ?? []) for (const e of g) set.add(e.path)
+    paths.set(key, set)
+  }
+  return { base: before.commit, commit: after.commit, byKey, byMatch, paths }
+}
+
+/**
+ * Credits each changed element to the commits that changed the files its evidence cites, when the
+ * compared range holds commits without the task's trailer (a merge from the main line, someone
+ * else's work). File-level: an element whose files only other commits changed is theirs.
+ */
+export function attributeChanges(
+  observed: ObservedChangeSet,
+  taskFiles: ReadonlySet<string>,
+  otherFiles: ReadonlySet<string>,
+): void {
+  if (otherFiles.size === 0) return
+  for (const [key, e] of observed.byKey) {
+    const files = [...(observed.paths.get(key) ?? [])]
+    const byTask = files.some((f) => taskFiles.has(f))
+    const byOther = files.some((f) => otherFiles.has(f))
+    e.origin = byTask && byOther ? 'both' : byTask ? 'task' : byOther ? 'other' : 'unclear'
+  }
 }
 
 /**
@@ -237,12 +265,18 @@ const STRUCTURAL = new Set([
 /** Changed structural elements: how many, and those none of the planned keys names. */
 export function summariseObserved(observed: ObservedChangeSet, planned: ReadonlySet<string>) {
   const all = [...observed.byKey.values()]
+  const byKeyOrder = (x: ObservedElementChange, y: ObservedElementChange) =>
+    x.key < y.key ? -1 : 1
   return {
     elementsChanged: all.filter((e) => STRUCTURAL.has(e.type)).length,
     modulesChanged: all.filter((e) => e.type === 'software.Module').length,
     unplanned: all
-      .filter((e) => STRUCTURAL.has(e.type) && !planned.has(e.key))
-      .sort((x, y) => (x.key < y.key ? -1 : 1))
+      .filter((e) => STRUCTURAL.has(e.type) && !planned.has(e.key) && e.origin !== 'other')
+      .sort(byKeyOrder)
+      .slice(0, 100),
+    byOthers: all
+      .filter((e) => STRUCTURAL.has(e.type) && e.origin === 'other')
+      .sort(byKeyOrder)
       .slice(0, 100),
   }
 }
@@ -367,7 +401,7 @@ export function reconcileDecisions(
             change: typeof r.properties.change === 'string' ? r.properties.change : '',
             touched: hits.length > 0,
             files: hits,
-            observed: status,
+            observed: status === 'changed' && seen?.origin === 'other' ? 'other' : status,
             details: seen?.details ?? [],
           }
         })

@@ -269,6 +269,15 @@ export function GraphToolbar({
             {projection.stats.hiddenObjects + projection.stats.hiddenRelations > 0 &&
               ` · ${projection.stats.hiddenObjects + projection.stats.hiddenRelations} filtered`}
           </span>
+          {projection.stats.detailRelations > 0 && (
+            <span
+              className="block text-fg-subtle"
+              title="Imports between modules, and package imports beyond each package's strongest, are not drawn. Select an element to draw all of its links, or turn on every import in Filter."
+            >
+              {projection.stats.detailRelations.toLocaleString('en')} import links not drawn: select
+              an element, or Filter
+            </span>
+          )}
         </p>
       </div>
     </div>
