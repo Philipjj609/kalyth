@@ -5,3 +5,10 @@ efc2435ff325ce8cb838715a72ac38148b2afb64:apps/web/src/api/api.test.ts:generic-ap
 73fcf278f7d58e4d46f2cb5a948d8afef8565e18:deploy/demo/recordings/recordings.json:generic-api-key:3
 73fcf278f7d58e4d46f2cb5a948d8afef8565e18:deploy/demo/recordings/recordings.json:generic-api-key:29
 73fcf278f7d58e4d46f2cb5a948d8afef8565e18:deploy/demo/recordings/recordings.json:generic-api-key:42
+# D5 re-recording (KAL-20261023-041): request hashes, not secrets, as above. Every "key" line is
+# listed; a hash that contains one of the rule's stopwords is not reported, and its entry is unused.
+18b8e92659ef5c981c41a6f9ccd81b4cdc206b34:deploy/demo/recordings/recordings.json:generic-api-key:3
+18b8e92659ef5c981c41a6f9ccd81b4cdc206b34:deploy/demo/recordings/recordings.json:generic-api-key:16
+18b8e92659ef5c981c41a6f9ccd81b4cdc206b34:deploy/demo/recordings/recordings.json:generic-api-key:29
+18b8e92659ef5c981c41a6f9ccd81b4cdc206b34:deploy/demo/recordings/recordings.json:generic-api-key:42
+18b8e92659ef5c981c41a6f9ccd81b4cdc206b34:deploy/usability/recordings/recordings.json:generic-api-key:3
