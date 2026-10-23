@@ -10,6 +10,7 @@
       "!**/playwright-report",
       "!pnpm-lock.yaml",
       "!deploy/demo/template.json",
+      "!deploy/usability/clinic-bookings.json",
       "!.claude"
     ]
   },
