@@ -241,8 +241,9 @@ export const softwarePack: ObjectTypeDef[] = [
       name,
       storage: z.string().max(200).optional(),
       /**
-       * Fields as declared, in order: the annotation, the key a field holds (`user.id`) and the
-       * entity a relationship points at. Observed by the analyzer; optional for every other source.
+       * Fields as declared in source, in order: the annotation, the key a field holds (`user.id`),
+       * the entity a relationship points at, and the base class a field is inherited from.
+       * Annotations, not the schema at run time. At most 200; `fieldsOmitted` counts the rest.
        */
       fields: z
         .array(
@@ -251,10 +252,12 @@ export const softwarePack: ObjectTypeDef[] = [
             type: z.string().max(200).optional(),
             references: z.string().max(200).optional(),
             relationship: z.string().max(200).optional(),
+            inheritedFrom: z.string().max(200).optional(),
           }),
         )
         .max(200)
         .optional(),
+      fieldsOmitted: z.int().min(1).optional(),
       /** Set only when another entity of this name is declared elsewhere: where this one is. */
       scope: z.string().max(1000).optional(),
     }),

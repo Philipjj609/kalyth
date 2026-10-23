@@ -404,6 +404,11 @@ export function ReconcileSummary({
                           </span>
                         )}
                       </>
+                    ) : p.ambiguous ? (
+                      <span className="text-fg-muted">
+                        shares its name with {p.ambiguous} observed elements, so none is linked
+                        automatically; link the right one yourself
+                      </span>
                     ) : (
                       <span className="text-fg-muted">has no observed match yet</span>
                     )}

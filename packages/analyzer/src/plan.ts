@@ -22,6 +22,8 @@ export interface PlanStats {
   unchanged: number
   notReobserved: number
   evidence: number
+  /** Elements kept under a new key because their name became declared twice, or unique again. */
+  rekeyed: number
 }
 
 const ANALYZER_TYPES = new Set([
@@ -72,13 +74,69 @@ export function planIngest(
   analysis: AnalysisResult,
   existing: ExistingState,
 ): { ops: OperationInput[]; stats: PlanStats } {
-  const stats: PlanStats = { created: 0, refreshed: 0, unchanged: 0, notReobserved: 0, evidence: 0 }
+  const stats: PlanStats = {
+    created: 0,
+    refreshed: 0,
+    unchanged: 0,
+    notReobserved: 0,
+    evidence: 0,
+    rekeyed: 0,
+  }
   const isOurs = (claim: ObjectVersion['claim']) => claim.observation?.tool === ANALYZER.tool
 
   const objectsByKey = new Map<string, ObjectVersion>()
   for (const o of existing.objects) {
     const key = ANALYZER_TYPES.has(o.type) && isOurs(o.claim) ? objectKey(o) : undefined
     if (key && o.lifecycle === 'active') objectsByKey.set(key, o)
+  }
+  // A name that becomes declared twice gains a scope in its key, and loses it when it is unique
+  // again (ADR 0025). The element keeps its identity through that: a fact whose key matches no
+  // element is matched by its declaration (an entity's name and file, an endpoint's method, path
+  // and handler, a container's manifest directory) and the element is re-keyed, so it is
+  // refreshed instead of left stale beside a new duplicate, and its relations follow it.
+  const evidencePath = (o: ObjectVersion): string | undefined => {
+    for (const g of o.claim.supports)
+      for (const id of g.allOf) {
+        const e = existing.evidence.get(id)
+        if (e?.source.kind === 'sourceSpan') return e.source.path
+      }
+    return undefined
+  }
+  const declarationOf = (
+    type: string,
+    attributes: Readonly<Record<string, unknown>>,
+    file: string | undefined,
+  ): string | undefined => {
+    const text = (k: string) => (typeof attributes[k] === 'string' ? (attributes[k] as string) : '')
+    if (type === 'software.DataEntity') {
+      const where = text('scope') || file
+      return where ? `entity|${text('name')}|${where}` : undefined
+    }
+    if (type === 'software.Endpoint' && text('handler'))
+      return `endpoint|${text('method')} ${text('path')}|${text('handler')}`
+    // A container is declared by its manifest; the root container is named after the
+    // repository, not its directory, so its key cannot be read back from its attributes.
+    if (type === 'software.Container' && file !== undefined)
+      return `container|${file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : ''}`
+    return undefined
+  }
+  const factKeys = new Set(analysis.objects.map((f) => f.key))
+  const byDeclaration = new Map<string, ObjectVersion>()
+  for (const [key, o] of objectsByKey) {
+    if (factKeys.has(key)) continue
+    const d = declarationOf(o.type, o.attributes, evidencePath(o))
+    if (d) byDeclaration.set(d, o)
+  }
+  for (const fact of analysis.objects) {
+    if (objectsByKey.has(fact.key)) continue
+    const d = declarationOf(fact.type, fact.attributes, fact.supports[0]?.[0]?.path)
+    const o = d ? byDeclaration.get(d) : undefined
+    if (!o) continue
+    byDeclaration.delete(d as string)
+    const old = objectKey(o)
+    if (old && objectsByKey.get(old) === o) objectsByKey.delete(old)
+    objectsByKey.set(fact.key, o)
+    if (fact.type !== 'software.Container') stats.rekeyed++
   }
   const keyById = new Map([...objectsByKey].map(([k, o]) => [o.id, k]))
   const relationsByKey = new Map<string, RelationVersion>()

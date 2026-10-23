@@ -221,6 +221,11 @@ export const ReconciledElement = z.object({
       inCommit: z.boolean(),
     })
     .nullable(),
+  /**
+   * How many observed elements share the type and name when more than one does: then none is
+   * matched, since choosing one would be a guess.
+   */
+  ambiguous: z.int().min(2).optional(),
   /** The `realizes` link from the match: committed already, or a proposal for a person. */
   link: z
     .object({

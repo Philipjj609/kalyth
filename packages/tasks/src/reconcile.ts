@@ -199,11 +199,15 @@ export function observeChange(before: AnalysisResult, after: AnalysisResult): Ob
   for (const [key, r] of rb)
     if (!ra.has(key)) relate(r.from, `${VERBS[r.type]?.[1] ?? r.type} ${labels.get(r.to) ?? r.to}`)
   const byMatch = new Map<string, ObservedElementChange>()
+  const ambiguousMatch = new Set<string>()
   for (const e of byKey.values()) {
     const f = a.get(e.key) ?? b.get(e.key)
     const m = f ? matchKey(f) : null
-    if (m && !byMatch.has(m)) byMatch.set(m, e)
+    if (!m) continue
+    if (byMatch.has(m)) ambiguousMatch.add(m)
+    else byMatch.set(m, e)
   }
+  for (const m of ambiguousMatch) byMatch.delete(m)
   return { base: before.commit, commit: after.commit, byKey, byMatch }
 }
 
@@ -311,12 +315,18 @@ export function reconcileDecisions(
   }
 
   // Observed elements by what makes them the same as a proposed one.
+  // Matching by type and name is an inference a person approves. When several observed elements
+  // share the name (scoped duplicates, ADR 0025), none is chosen: the count is reported instead.
   const observed = new Map<string, ObjectVersion>()
+  const sharing = new Map<string, number>()
   for (const o of [...model.objects.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     if (o.lifecycle !== 'active' || o.stance !== 'asIs' || o.claim.basis !== 'observed') continue
     const key = matchKey(o)
-    if (key && !observed.has(key)) observed.set(key, o)
+    if (!key) continue
+    sharing.set(key, (sharing.get(key) ?? 0) + 1)
+    if (!observed.has(key)) observed.set(key, o)
   }
+  for (const [key, n] of sharing) if (n > 1) observed.delete(key)
   const containerOf = new Map(
     active.filter((r) => r.type === 'contains').map((r) => [r.to, r.from] as const),
   )
@@ -393,6 +403,7 @@ export function reconcileDecisions(
                   inCommit: model.pathsOf(match.id).some((p) => changed.has(p)),
                 }
               : null,
+            ...((sharing.get(key ?? '') ?? 0) > 1 ? { ambiguous: sharing.get(key ?? '') } : {}),
           }
         })
 

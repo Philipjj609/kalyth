@@ -71,7 +71,7 @@ describe('static analysis', () => {
     expect(keys).not.toContain('entity:ItemBase')
     // A table inherits the fields of its base classes in the same module.
     expect(result.objects.find((o) => o.key === 'entity:Item')?.attributes.fields).toEqual([
-      { name: 'title', type: 'str' },
+      { name: 'title', type: 'str', inheritedFrom: 'ItemBase' },
       { name: 'id', type: 'int | None' },
     ])
     const relations = new Set(result.relations.map((r) => r.key))

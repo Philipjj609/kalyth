@@ -316,7 +316,8 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
       })
       const key = entityKey(file, cls)
       const scope = entityScope(file, cls)
-      const fields = entityFields(cls, py.classes)
+      const { fields, omitted } = entityFields(cls, py.classes)
+      if (omitted > 0) bump('entityFieldsOmitted', omitted)
       facts.object(
         key,
         'software.DataEntity',
@@ -324,6 +325,7 @@ export async function analyzeRepository(options: AnalyzeOptions): Promise<Analys
           name: cls.name,
           storage: 'SQL table (SQLModel)',
           ...(fields.length > 0 ? { fields } : {}),
+          ...(omitted > 0 ? { fieldsOmitted: omitted } : {}),
           ...(scope ? { scope } : {}),
         },
         [span],
@@ -473,11 +475,16 @@ function typeLabel(t: PyType): string {
 }
 
 /**
- * The fields of a table class as declared, including those of base classes in the same module
- * (SQLModel's `UserBase` pattern), each with its annotation, the foreign key it holds and the
- * entity a relationship points at. Later declarations override earlier ones of the same name.
+ * The fields of a table class as declared in source, including those of base classes in the same
+ * module (SQLModel's `UserBase` pattern), which name the class they come from. Each has its
+ * annotation, the foreign key it holds and the entity a relationship points at. These are
+ * annotations, not the schema the database has at run time. Later declarations override earlier
+ * ones of the same name; beyond MAX_FIELDS the rest are counted, not listed.
  */
-function entityFields(cls: PyClass, classes: readonly PyClass[]): Record<string, string>[] {
+function entityFields(
+  cls: PyClass,
+  classes: readonly PyClass[],
+): { fields: Record<string, string>[]; omitted: number } {
   const byName = new Map(classes.map((c) => [c.name, c]))
   const seen = new Set<string>()
   const ordered: PyClass[] = []
@@ -500,9 +507,11 @@ function entityFields(cls: PyClass, classes: readonly PyClass[]): Record<string,
       if (fk) field.references = 'literal' in fk ? fk.literal : fk.expr
       const target = f.relationship ? (f.type ?? f.relationship.target) : null
       if (target) field.relationship = typeLabel(target)
+      if (c !== cls) field.inheritedFrom = c.name
       fields.delete(f.name)
       fields.set(f.name, field)
     }
   }
-  return [...fields.values()].slice(0, MAX_FIELDS)
+  const all = [...fields.values()]
+  return { fields: all.slice(0, MAX_FIELDS), omitted: Math.max(0, all.length - MAX_FIELDS) }
 }

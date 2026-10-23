@@ -9,6 +9,7 @@ import {
   matchKey,
   observeChange,
   RECONCILE_METHOD,
+  reconcileDecisions,
   summariseObserved,
   TaskCoordinator,
   taskTrailer,
@@ -276,6 +277,76 @@ describe('what the source shows changed (ADR 0024, amendment of 2026-10-20)', ()
       'entity:Team',
     ])
     expect(summary.modulesChanged).toBe(2)
+  })
+})
+
+describe('matching a proposed element by name', () => {
+  it('links none when several observed elements share the name, and says how many', () => {
+    let n = 0
+    const id = (p: string) => `${p}_${String(++n).padStart(32, '0')}`
+    const object = (
+      type: string,
+      attributes: Record<string, string>,
+      stance: 'asIs' | 'toBe',
+    ): ObjectVersion =>
+      ({
+        id: id('obj'),
+        type,
+        typeVersion: 1,
+        stance,
+        lifecycle: 'active',
+        attributes,
+        claim: {
+          basis: stance === 'asIs' ? 'observed' : 'inferred',
+          supports: [],
+          contradictedBy: [],
+          derivedFrom: [],
+        },
+        revision: 1,
+        retiredReason: null,
+      }) as ObjectVersion
+    const decision = object(
+      'core.Decision',
+      { title: 'd', question: 'q', status: 'accepted' },
+      'toBe',
+    )
+    const alternative = object(
+      'core.Alternative',
+      { title: 'a', summary: 's', status: 'accepted' },
+      'toBe',
+    )
+    const proposed = object('software.DataEntity', { name: 'User' }, 'toBe')
+    const first = object('software.DataEntity', { name: 'User', scope: 'a/models.py' }, 'asIs')
+    const second = object('software.DataEntity', { name: 'User', scope: 'b/models.py' }, 'asIs')
+    const relation = (type: string, from: ObjectVersion, to: ObjectVersion) => ({
+      id: id('rel'),
+      type,
+      typeVersion: 1,
+      from: from.id,
+      to: to.id,
+      stance: 'toBe' as const,
+      lifecycle: 'active' as const,
+      properties: { change: 'add User' },
+      claim: { basis: 'inferred' as const, supports: [], contradictedBy: [], derivedFrom: [] },
+      revision: 1,
+      retiredReason: null,
+    })
+    const objects = [decision, alternative, proposed, first, second]
+    const [draft] = reconcileDecisions(
+      {
+        objects: new Map(objects.map((o) => [o.id, o])),
+        relations: [
+          relation('alternativeOf', alternative, decision),
+          relation('impacts', alternative, proposed),
+        ] as never,
+        pathsOf: () => [],
+      },
+      [{ id: decision.id, type: 'core.Decision' }],
+      [],
+    )
+    expect(draft?.proposed).toEqual([
+      expect.objectContaining({ id: proposed.id, match: null, ambiguous: 2 }),
+    ])
   })
 })
 
