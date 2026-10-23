@@ -30,7 +30,8 @@ const text = (o: ObjectVersion, key: string) => {
  * - implementation: how far the tasks that implement the decision or one of its alternatives got,
  *   and how many of the changes considered the verified reports touched: a file that the change
  *   target's evidence cites is among the files changed of a task's latest report that passed
- *   verification (ADR 0024). `pathsOf` gives the files an element's evidence cites.
+ *   verification (ADR 0024). `pathsOf` gives the files an element's or a relation's evidence
+ *   cites. A stale change also says whether its stale evidence cites one of those files.
  * - verification: what git confirmed about the latest report on each of those tasks.
  *
  * Acceptance is the decision's own status and is not repeated here. Nothing is written.
@@ -51,28 +52,6 @@ export function decisionFacets(
   const accepted = alternatives.filter((a) => text(a, 'status') === 'accepted')
   const considered = new Set((accepted.length > 0 ? accepted : alternatives).map((a) => a.id))
   const changes = active.filter((r) => r.type === 'impacts' && considered.has(r.from))
-
-  const stale: DecisionFacets['freshness']['stale'] = []
-  let checkable = 0
-  for (const change of changes) {
-    const own = freshness.get(change.id)
-    const target = freshness.get(change.to)
-    const checks = (f: ClaimFreshness | undefined) =>
-      f !== undefined && f.status !== 'not-applicable'
-    if (checks(own) || checks(target)) checkable++
-    const worst = [own, target].find((f) => f !== undefined && NEEDS_REVIEW.has(f.status))
-    if (!worst) continue
-    stale.push({
-      relationId: change.id,
-      target: change.to,
-      label: labelOf(change.to),
-      status: worst.status,
-      reason:
-        worst === own
-          ? `the evidence this change cites ${worst.reason.startsWith('derived') ? 'derives from a claim that needs review' : 'no longer matches the source'}`
-          : `${labelOf(change.to)} no longer matches the source`,
-    })
-  }
 
   // Tasks implementing the decision or one of its alternatives, oldest first.
   const implemented = new Set([decisionId, ...alternatives.map((a) => a.id)])
@@ -139,6 +118,32 @@ export function decisionFacets(
     verifiedFiles.size === 0
       ? 0
       : changes.filter((c) => pathsOf(c.to).some((p) => verifiedFiles.has(p))).length
+
+  // A stale change whose stale evidence cites a file the verified work changed may have been moved
+  // by that work: it is still listed, and says so (ADR 0024, follow-up of 2026-10-23).
+  const stale: DecisionFacets['freshness']['stale'] = []
+  let checkable = 0
+  for (const change of changes) {
+    const own = freshness.get(change.id)
+    const target = freshness.get(change.to)
+    const checks = (f: ClaimFreshness | undefined) =>
+      f !== undefined && f.status !== 'not-applicable'
+    if (checks(own) || checks(target)) checkable++
+    const worst = [own, target].find((f) => f !== undefined && NEEDS_REVIEW.has(f.status))
+    if (!worst) continue
+    const cited = pathsOf(worst === own ? change.id : change.to)
+    stale.push({
+      relationId: change.id,
+      target: change.to,
+      label: labelOf(change.to),
+      status: worst.status,
+      reason:
+        worst === own
+          ? `the evidence this change cites ${worst.reason.startsWith('derived') ? 'derives from a claim that needs review' : 'no longer matches the source'}`
+          : `${labelOf(change.to)} no longer matches the source`,
+      byVerifiedWork: cited.some((p) => verifiedFiles.has(p)),
+    })
+  }
 
   return {
     freshness: {

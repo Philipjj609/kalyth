@@ -468,6 +468,7 @@ export function DecisionFacetsList({ decision }: { decision: DecisionSummary }) 
               {freshness.stale.map((s) => (
                 <li key={s.relationId}>
                   <RecordLink id={s.target}>{s.label}</RecordLink>: {s.reason}
+                  {s.byVerifiedWork && '; the verified commit changed the file it cites'}
                 </li>
               ))}
             </ul>

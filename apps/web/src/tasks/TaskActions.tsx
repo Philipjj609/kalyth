@@ -217,9 +217,7 @@ export function StatusDialog({
  */
 export function TaskActionsPanel({ task, baseRevision }: { task: TaskView; baseRevision: number }) {
   const wb = useWorkbench()
-  const notify = useToast()
-  const change = useChangeTaskStatus(wb.projectId)
-  const [choosing, setChoosing] = useState<TaskAction | null>(null)
+  const { change, choose, dialog } = useStatusChange(task, baseRevision)
   const outcome = change.data
   const done = change.variables
   const hint = statusHint(task)
@@ -227,14 +225,7 @@ export function TaskActionsPanel({ task, baseRevision }: { task: TaskView; baseR
     <section aria-label="Actions" className="space-y-2 rounded-md border border-border p-3">
       <SectionTitle>Actions</SectionTitle>
       {hint && <p className="text-fg-muted text-xs">{hint}</p>}
-      <TaskActionButtons
-        status={task.status}
-        disabled={change.isPending}
-        onChoose={(action) => {
-          change.reset()
-          setChoosing(action)
-        }}
-      />
+      <TaskActionButtons status={task.status} disabled={change.isPending} onChoose={choose} />
       {outcome && 'committed' in outcome && done && (
         <p
           role="status"
@@ -262,38 +253,75 @@ export function TaskActionsPanel({ task, baseRevision }: { task: TaskView; baseR
           </p>
         </div>
       )}
-      <StatusDialog
-        task={task}
-        action={choosing}
-        pending={change.isPending}
-        error={change.error}
-        onClose={() => setChoosing(null)}
-        onSubmit={(rationale) => {
-          if (!choosing) return
-          const action = choosing
-          change.mutate(
-            { taskId: task.id, status: action.to, rationale, baseRevision },
-            {
-              onSuccess: (result) => {
-                setChoosing(null)
-                if ('committed' in result) {
-                  notify({
-                    tone: 'success',
-                    title: `${action.label}: ${task.title}`,
-                    body: `Committed as r${result.committed.revision}. ${rationale}`,
-                  })
-                } else {
-                  notify({
-                    tone: result.refused.body.code === 'stale' ? 'caution' : 'danger',
-                    title: `Not committed: ${result.refused.body.code}`,
-                    body: result.refused.body.message,
-                  })
-                }
-              },
-            },
-          )
-        }}
-      />
+      {dialog}
     </section>
   )
+}
+
+/**
+ * "Mark ready" for a proposed task shown outside the Tasks view, such as in a change thread, so a
+ * person can open it to agents where they created it. Same rationale dialog as the Actions panel.
+ */
+export function MarkReadyButton({ task, baseRevision }: { task: TaskView; baseRevision: number }) {
+  const { change, choose, dialog } = useStatusChange(task, baseRevision)
+  const ready = taskActions(task.status).find((a) => a.to === 'ready')
+  if (!ready) return null
+  return (
+    <>
+      <Button size="sm" variant="primary" disabled={change.isPending} onClick={() => choose(ready)}>
+        {ready.label}…
+      </Button>
+      {dialog}
+    </>
+  )
+}
+
+/**
+ * A person's status change on a task: the rationale dialog, then one setTaskStatus proposal against
+ * the revision the person saw, committed, with a toast saying how it went.
+ */
+function useStatusChange(task: TaskView, baseRevision: number) {
+  const wb = useWorkbench()
+  const notify = useToast()
+  const change = useChangeTaskStatus(wb.projectId)
+  const [choosing, setChoosing] = useState<TaskAction | null>(null)
+  const choose = (action: TaskAction) => {
+    change.reset()
+    setChoosing(action)
+  }
+  const dialog = (
+    <StatusDialog
+      task={task}
+      action={choosing}
+      pending={change.isPending}
+      error={change.error}
+      onClose={() => setChoosing(null)}
+      onSubmit={(rationale) => {
+        if (!choosing) return
+        const action = choosing
+        change.mutate(
+          { taskId: task.id, status: action.to, rationale, baseRevision },
+          {
+            onSuccess: (result) => {
+              setChoosing(null)
+              if ('committed' in result) {
+                notify({
+                  tone: 'success',
+                  title: `${action.label}: ${task.title}`,
+                  body: `Committed as r${result.committed.revision}. ${rationale}`,
+                })
+              } else {
+                notify({
+                  tone: result.refused.body.code === 'stale' ? 'caution' : 'danger',
+                  title: `Not committed: ${result.refused.body.code}`,
+                  body: result.refused.body.message,
+                })
+              }
+            },
+          },
+        )
+      }}
+    />
+  )
+  return { change, choose, dialog }
 }

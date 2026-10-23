@@ -102,7 +102,9 @@ export function decisionStatusLine(d: DecisionSummary, questionsOpen: number): s
     if (verification.state === 'passed') parts.push('verified')
     else if (verification.state === 'failed') parts.push('verification failed')
   }
-  if (freshness.status === 'stale') parts.push(`${freshness.stale.length} stale`)
+  const moved = freshness.stale.filter((c) => !c.byVerifiedWork).length
+  if (moved > 0) parts.push(`${moved} stale`)
+  else if (freshness.status === 'stale') parts.push('evidence moved by the work')
   return parts.join(' · ')
 }
 
@@ -133,7 +135,7 @@ export function changeItems(
   }))
   const fromDecisions: ChangeItem[] = decisions.map((d) => {
     const open = questionsOpen(d.id)
-    const stale = d.facets.freshness.status === 'stale'
+    const stale = d.facets.freshness.stale.some((c) => !c.byVerifiedWork)
     const review = d.facets.implementation.state === 'reported'
     return {
       ref: { kind: 'decision', id: d.id },
@@ -179,6 +181,8 @@ export interface ThreadState {
   questionsOpen: number
   /** A context package was compiled for the decision. */
   hasPackage: boolean
+  /** Tasks for the decision that are still proposed, so no agent can claim them yet. */
+  proposedTasks?: number
 }
 
 /**
@@ -189,12 +193,25 @@ export function nextStep(s: ThreadState): NextStep {
   const d = s.decision
   const { freshness, implementation, verification } = d.facets
   if (freshness.status === 'stale') {
-    return {
-      text: `Review ${freshness.stale.length} change${freshness.stale.length === 1 ? '' : 's'} whose evidence moved`,
-      detail:
-        'The source changed since these were proposed. Check them before you rely on the decision or hand it off.',
-      stage: d.status === 'open' ? 'alternatives' : 'decide',
-      tone: 'attention',
+    const moved = freshness.stale.filter((c) => !c.byVerifiedWork).length
+    if (moved > 0) {
+      return {
+        text: `Review ${moved} change${moved === 1 ? '' : 's'} whose evidence moved`,
+        detail:
+          'The source changed since these were proposed. Check them before you rely on the decision or hand it off.',
+        stage: d.status === 'open' ? 'alternatives' : 'decide',
+        tone: 'attention',
+      }
+    }
+    // Every stale change cites a file the verified work changed: the work landing moved them.
+    if (implementation.state === 'reported') {
+      const n = freshness.stale.length
+      return {
+        text: 'Check the work against the decision, then complete the task',
+        detail: `The task’s verified commit changed the files behind ${n} change${n === 1 ? '' : 's'}, so the excerpts they cite show the code before it. Reconciling shows what the source says now.`,
+        stage: 'reconcile',
+        tone: 'action',
+      }
     }
   }
   if (d.status === 'open') {
@@ -227,6 +244,15 @@ export function nextStep(s: ThreadState): NextStep {
         tone: 'action',
       }
     case 'planned':
+      if ((s.proposedTasks ?? 0) > 0) {
+        return {
+          text: 'Mark the task ready for a coding agent',
+          detail:
+            'Agents cannot claim a proposed task. Once it is ready, copy its prompt into Claude Code or Codex connected over MCP.',
+          stage: 'work',
+          tone: 'action',
+        }
+      }
       return {
         text: 'Give the task to a coding agent',
         detail:
@@ -288,11 +314,16 @@ export function tradeoffLevels(text: string | null): { label: string; level: Lev
   })
 }
 
-/** The first one or two sentences of a summary, for a card's lead. */
+/**
+ * The first one or two sentences of a summary, for a card's lead. A sentence ends at a stop
+ * followed by a space, so a dotted name such as `app.current_org_id` stays inside its sentence.
+ */
 export function lead(summary: string, sentences = 2): string {
-  const parts = summary.match(/[^.!?]+[.!?]+(\s|$)/g)
-  if (!parts) return summary
-  return parts.slice(0, sentences).join('').trim()
+  return summary
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .slice(0, sentences)
+    .join(' ')
 }
 
 /** The alternative accepted on a decision, if any. */

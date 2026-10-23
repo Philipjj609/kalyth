@@ -220,6 +220,13 @@ export const DecisionFacets = z.object({
         label: z.string(),
         status: FreshnessStatus,
         reason: z.string(),
+        /**
+         * The stale evidence cites a file that a verified report of a task for this decision
+         * changed, so the task's own work may be what moved it (ADR 0024). The change still needs
+         * a person's look: reconciling shows what the source now says. Optional for readers of
+         * earlier results.
+         */
+        byVerifiedWork: z.boolean().optional(),
       }),
     ),
   }),

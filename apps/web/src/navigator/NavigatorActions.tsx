@@ -60,7 +60,11 @@ function LocalIndicator() {
     ? 'danger'
     : (warnings[0]?.tone ?? 'neutral')
   const remaining = formatMicroUsd(s.budget.remainingMicroUsd)
-  const summary = `Navigator provider ${s.provider.id}${s.provider.paid ? '' : ' (free)'}, ${remaining} of the budget remaining`
+  // A free provider (the mock, or replaying recordings) never touches the budget, so its remainder
+  // says nothing; "$0.0000 left" would read as if runs were blocked.
+  const summary = s.provider.paid
+    ? `Navigator provider ${s.provider.id}, ${remaining} of the budget remaining`
+    : `Navigator provider ${s.provider.id}, free: its runs need no budget`
   return (
     <Tip
       label={
@@ -87,8 +91,14 @@ function LocalIndicator() {
         <Compass aria-hidden className="size-3.5" />
         <span className="font-mono">{s.provider.id}</span>
         <span aria-hidden className="h-3 w-px bg-tone-bd" />
-        <span className="font-mono tabular-nums">{remaining}</span>
-        <span className="text-fg-muted">left</span>
+        {s.provider.paid ? (
+          <>
+            <span className="font-mono tabular-nums">{remaining}</span>
+            <span className="text-fg-muted">left</span>
+          </>
+        ) : (
+          <span className="text-fg-muted">free</span>
+        )}
       </button>
     </Tip>
   )

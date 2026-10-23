@@ -410,9 +410,11 @@ export class KalythServices {
         ? assessFreshness(objects, relations, evidence).claims.map((c) => [c.id, c] as const)
         : [],
     )
-    // The source files an element's evidence cites, for what verified reports touched (ADR 0024).
+    // The source files an element's or a relation's evidence cites, for what verified reports
+    // touched (ADR 0024).
+    const relationById = new Map(relations.map((r) => [r.id, r]))
     const pathsOf = (id: string): string[] => {
-      const o = byId.get(id)
+      const o = byId.get(id) ?? relationById.get(id)
       if (!o) return []
       return [
         ...new Set(

@@ -29,6 +29,7 @@ import { AcceptDialog, RunOutput } from '../navigator/ProposedOutput.tsx'
 import { useFileReport, useReconcileTask } from '../tasks/api.ts'
 import { CreateTaskForm } from '../tasks/CreateTaskForm.tsx'
 import { canReconcile, ReconcileAction, ReportAction, verifiedReport } from '../tasks/FollowUp.tsx'
+import { MarkReadyButton } from '../tasks/TaskActions.tsx'
 import { AgentPrompt } from '../tasks/TaskDetail.tsx'
 import { AppLink, ButtonLink, ErrorNotice, RecordLink, withoutHandles } from '../views/shared.tsx'
 import {
@@ -278,17 +279,18 @@ function DecisionThread({ decisionId }: { decisionId: string }) {
   const open = questions.filter((q) => q.status === 'open')
   const decisive = open.filter((q) => DECISIVE.has(q.inquiryRole))
   const ownPackages = (packages.data?.packages ?? []).filter((p) => p.focus.includes(decision.id))
-  const step = nextStep({
-    decision,
-    decisiveOpen: decisive.length,
-    questionsOpen: open.length,
-    hasPackage: ownPackages.length > 0,
-  })
   const implementing = (tasks.data?.tasks ?? []).filter((t) =>
     t.implements.some(
       (i) => i.id === decision.id || decision.alternatives.some((a) => a.id === i.id),
     ),
   )
+  const step = nextStep({
+    decision,
+    decisiveOpen: decisive.length,
+    questionsOpen: open.length,
+    hasPackage: ownPackages.length > 0,
+    proposedTasks: implementing.filter((t) => t.status === 'proposed').length,
+  })
 
   return (
     <div className="flex min-h-full flex-wrap items-stretch">
@@ -928,6 +930,7 @@ function HandoffStage({
 const UNCLAIMED = new Set(['proposed', 'ready'])
 
 function WorkStage({ decision, tasks }: { decision: DecisionSummary; tasks: TaskView[] }) {
+  const wb = useWorkbench()
   if (tasks.length === 0) {
     return (
       <p className="text-fg-muted text-sm">
@@ -959,6 +962,14 @@ function WorkStage({ decision, tasks }: { decision: DecisionSummary; tasks: Task
                   : '; not verified'}
                 .
               </p>
+            )}
+            {t.status === 'proposed' && !wb.isHistorical && (
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="min-w-0 flex-[1_1_240px] text-fg-muted">
+                  Agents cannot claim a proposed task. Mark it ready when they may.
+                </p>
+                <MarkReadyButton task={t} baseRevision={wb.headRevision} />
+              </div>
             )}
             {t.agentPrompt && UNCLAIMED.has(t.status) && (
               <details className="group">
@@ -1030,6 +1041,7 @@ function ReconcileStage({ decision, tasks }: { decision: DecisionSummary; tasks:
           {freshness.stale.map((s) => (
             <li key={s.relationId}>
               <RecordLink id={s.target}>{s.label}</RecordLink>: {s.reason}
+              {s.byVerifiedWork && '; the verified commit changed the file it cites'}
             </li>
           ))}
         </ul>
@@ -1056,6 +1068,8 @@ const VERIFICATION: Record<string, string> = {
 /** The four facets, each on its own row (ADR 0023). */
 function Facets({ decision }: { decision: DecisionSummary }) {
   const { implementation, verification, freshness } = decision.facets
+  // Stale only because the verified work changed the files its changes cite.
+  const byWork = freshness.status === 'stale' && freshness.stale.every((s) => s.byVerifiedWork)
   const rows: [string, string, string | null][] = [
     [
       'Decision',
@@ -1076,14 +1090,18 @@ function Facets({ decision }: { decision: DecisionSummary }) {
     ['Verification', VERIFICATION[verification.state] ?? verification.state, verification.coverage],
     [
       'Evidence',
-      freshness.status === 'stale'
-        ? 'Needs review'
-        : freshness.status === 'current'
-          ? 'Current'
-          : 'Unchecked',
+      byWork
+        ? 'Moved by the work'
+        : freshness.status === 'stale'
+          ? 'Needs review'
+          : freshness.status === 'current'
+            ? 'Current'
+            : 'Unchecked',
       freshness.status === 'unchecked'
         ? 'The changes cite no source that could go stale'
-        : `${freshness.stale.length} of ${freshness.changes} changes moved`,
+        : byWork
+          ? `${freshness.stale.length} of ${freshness.changes} changes: the verified commit changed the files they cite`
+          : `${freshness.stale.length} of ${freshness.changes} changes moved`,
     ],
   ]
   return (
@@ -1097,7 +1115,7 @@ function Facets({ decision }: { decision: DecisionSummary }) {
               <span
                 className={cn(
                   'font-medium',
-                  k === 'Evidence' && freshness.status === 'stale' && 'text-revision',
+                  k === 'Evidence' && freshness.status === 'stale' && !byWork && 'text-revision',
                 )}
               >
                 {v}

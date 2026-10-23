@@ -192,3 +192,16 @@ kernel has no git access; the thread labels it as a count by file.
   compared, the analyzer version, and the revision the model reached.
 - **Matching by name stays an inference.** When several observed elements share a proposed
   element's type and name, none is matched and the count is reported; a person links the right one.
+
+### Rehearsal follow-up (2026-10-23)
+
+Reconciling moves the model to the task's commit, so the excerpts the decision's changes cite,
+taken from the code before the work, no longer match: the changes are stale, and the thread used
+to say "check them before you rely on the decision or hand it off", as if the code had moved on its
+own. Each stale change in the decision facets (ADR 0023) now says whether its stale evidence cites
+a file that a verified report of a task for the decision changed (`byVerifiedWork`). Freshness
+stays `stale`; nothing is hidden or refreshed. When every stale change is explained this way and
+the task awaits review, the next step is to check the work against the decision and complete the
+task, and the Evidence facet reads "Moved by the work". A stale change the verified work does not
+explain still comes first, as before. Like the implementation count, this is by file: the work
+changed a file the evidence cites, not necessarily the cited lines.

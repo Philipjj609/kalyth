@@ -71,6 +71,38 @@ describe('the next step of a change', () => {
     })
   })
 
+  it('tells stale evidence the verified work moved from evidence that moved on its own', () => {
+    const change = (n: string, byVerifiedWork: boolean) => ({
+      relationId: `rel_${n.repeat(32)}`,
+      target: `obj_${n.repeat(32)}`,
+      label: 'User',
+      status: 'stale' as const,
+      reason: 'x',
+      byVerifiedWork,
+    })
+    const reported = (stale: ReturnType<typeof change>[]) =>
+      nextStep(
+        state(
+          decision({
+            status: 'accepted',
+            facets: facets({
+              freshness: { status: 'stale', changes: 3, stale },
+              implementation: { state: 'reported', tasks: [] },
+            }),
+          }),
+        ),
+      )
+    expect(reported([change('1', true), change('2', true)])).toMatchObject({
+      tone: 'action',
+      stage: 'reconcile',
+      text: 'Check the work against the decision, then complete the task',
+    })
+    expect(reported([change('1', true), change('2', false)])).toMatchObject({
+      tone: 'attention',
+      text: 'Review 1 change whose evidence moved',
+    })
+  })
+
   it('asks for the deciding questions before the comparison while a decision is open', () => {
     expect(nextStep(state(decision(), 2))).toMatchObject({ stage: 'questions', tone: 'action' })
     expect(nextStep(state(decision()))).toMatchObject({
@@ -95,6 +127,22 @@ describe('the next step of a change', () => {
     expect(accepted('reported')).toBe('work')
     expect(accepted('complete')).toBe('reconcile')
   })
+
+  it('asks to mark a proposed task ready before handing it to an agent', () => {
+    const planned = (proposedTasks: number) =>
+      nextStep({
+        decision: decision({
+          status: 'accepted',
+          facets: facets({ implementation: { state: 'planned', tasks: [] } }),
+        }),
+        decisiveOpen: 0,
+        questionsOpen: 0,
+        hasPackage: true,
+        proposedTasks,
+      }).text
+    expect(planned(1)).toBe('Mark the task ready for a coding agent')
+    expect(planned(0)).toBe('Give the task to a coding agent')
+  })
 })
 
 describe('reading what the model wrote', () => {
@@ -114,6 +162,15 @@ describe('reading what the model wrote', () => {
 
   it('keeps the first sentences of a summary, and removes handles from prose', () => {
     expect(lead('One. Two. Three.')).toBe('One. Two.')
+    // A dotted name is not the end of a sentence (seen with a recorded Nemotron alternative).
+    expect(
+      lead(
+        'Add org_id on User and Item (as in A1). Enable RLS with SET app.current_org_id per request. Then test it.',
+      ),
+    ).toBe(
+      'Add org_id on User and Item (as in A1). Enable RLS with SET app.current_org_id per request.',
+    )
+    expect(lead('No stop at the end')).toBe('No stop at the end')
     expect(withoutHandles('Across User (N1) and Item (N2) entities.')).toBe(
       'Across User and Item entities.',
     )

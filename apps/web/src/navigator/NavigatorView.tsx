@@ -50,7 +50,7 @@ export function NavigatorView() {
   const selectedRunId = loc.run ?? runList?.[0]?.id
 
   return (
-    <div className="mx-auto w-full max-w-[1200px] space-y-4 p-6">
+    <div className="@container mx-auto w-full max-w-[1200px] space-y-4 p-6">
       <ViewHeader
         title="Navigator"
         description="Describe what you want. The Navigator, a language model, proposes two to four ways to do it, what each one changes, and the questions that decide between them. Nothing is added to the model until you accept it."
@@ -68,7 +68,8 @@ export function NavigatorView() {
         </div>
       ) : (
         <>
-          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+          {/* Side by side only when the view itself is wide: an open Inspector narrows it. */}
+          <div className="grid grid-cols-1 items-start gap-4 @3xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
             <div className="space-y-4">
               {demo && <DemoPresets runs={runList} />}
               <ChangeRequestForm status={status.data} runs={runList} />

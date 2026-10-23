@@ -210,4 +210,34 @@ describe('decision facets (ADR 0023)', () => {
     ).implementation
     expect(accepted).toMatchObject({ touched: 0, changes: 1 })
   })
+
+  it('says when a stale change’s evidence cites a file the verified work changed', () => {
+    const task = obj('t1', 'core.Task', { title: 'API filter', status: 'review' })
+    const report = {
+      ...obj('rep1', 'core.ExecutionReport', { outcome: 'succeeded' }),
+      attributes: { outcome: 'succeeded', filesChanged: ['backend/app/api/routes/items.py'] },
+    }
+    const work = (outcome: string) => [
+      task,
+      report,
+      obj('ver1', 'core.Verification', { outcome }, 'Commits checked.'),
+    ]
+    const linked = [
+      rel('i1', 'implements', 't1', 'd'),
+      rel('p1', 'reports', 'rep1', 't1'),
+      rel('v1', 'verifies', 'ver1', 'rep1'),
+    ]
+    // The change's own claim cites the routes file the task's commit changed.
+    const paths = { c1: ['backend/app/api/routes/items.py'], ep: ['backend/app/main.py'] }
+    const own = (outcome: string, freshness: [string, ClaimFreshness][]) =>
+      facets([...base, ...work(outcome)], [...links, ...linked], freshness, paths).freshness
+    expect(own('pass', [fresh('c1', 'stale')])).toMatchObject({
+      status: 'stale',
+      stale: [{ relationId: 'c1', byVerifiedWork: true }],
+    })
+    // Under a failed verification the work explains nothing.
+    expect(own('fail', [fresh('c1', 'stale')]).stale[0]?.byVerifiedWork).toBe(false)
+    // When the target is what went stale, its own evidence decides: main.py was not changed.
+    expect(own('pass', [fresh('ep', 'stale')]).stale[0]?.byVerifiedWork).toBe(false)
+  })
 })
