@@ -282,6 +282,7 @@ repository root at startup. A variable set in the environment wins over `.env`, 
   [SECURITY.md](SECURITY.md) explains how to report a vulnerability.
 - [docs/evaluation](docs/evaluation/README.md): the evaluation and its ground truth.
 - [docs/demo/walkthrough.md](docs/demo/walkthrough.md): the demo script.
+- [docs/releases](docs/releases/v0.1.0-rc.1.md): release notes, starting with 0.1.0-rc.1.
 
 ## Repository layout
 
