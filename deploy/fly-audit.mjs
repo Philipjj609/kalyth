@@ -3,23 +3,38 @@
 // exists (ADR 0019, billing controls). Fly.io cannot cap spending, so Philip runs this weekly and
 // after every deployment, with his own flyctl login:
 //
-//   node deploy/fly-audit.mjs [app name]
+//   node deploy/fly-audit.mjs <app name> <organisation>
 //
-// Expected: one machine (shared CPU, 1 CPU, at most 1 GB), one volume of at most 1 GB, and no
-// dedicated IPv4 address. It reads only; it never changes anything. flyctl's JSON field names are
-// read defensively, and this script will be checked against real output at the first deployment.
+// The organisation may also come from KALYTH_FLY_ORG. Expected: the app in that organisation and no
+// other app there; one machine (shared CPU, 1 CPU, at most 1 GB), one volume of at most 1 GB, and
+// no dedicated IPv4 address. It reads only; it never changes anything. flyctl's JSON field names
+// are read defensively, and this script will be checked against real output at the first
+// deployment.
 
 import { execFileSync } from 'node:child_process'
 
 const app = process.argv[2] ?? 'kalyth-demo'
-const fly = (...args) =>
-  JSON.parse(execFileSync('flyctl', [...args, '-a', app, '--json'], { encoding: 'utf8' }) || '[]')
+const org = process.argv[3] ?? process.env.KALYTH_FLY_ORG
+if (!org) {
+  console.error('usage: node deploy/fly-audit.mjs <app name> <organisation> (or KALYTH_FLY_ORG)')
+  process.exit(2)
+}
+const flyctl = (args) =>
+  JSON.parse(execFileSync('flyctl', [...args, '--json'], { encoding: 'utf8' }) || '[]')
+const fly = (...args) => flyctl([...args, '-a', app])
 const list = (value) => (Array.isArray(value) ? value : [])
 
 const problems = []
+const apps = list(flyctl(['apps', 'list', '--org', org])).map((a) => String(a.Name ?? a.name))
 const machines = list(fly('machines', 'list'))
 const volumes = list(fly('volumes', 'list'))
 const ips = list(fly('ips', 'list'))
+
+console.log(`organisation ${org}: ${apps.join(', ') || 'no apps'}`)
+if (!apps.includes(app)) problems.push(`${app} is not in the organisation ${org}`)
+for (const other of apps.filter((name) => name !== app)) {
+  problems.push(`another app in ${org}: ${other}, billed to the same invoice`)
+}
 
 console.log(`app ${app}`)
 for (const m of machines) {
