@@ -43,6 +43,29 @@ With these changes:
    normalised, apart from exact ones. `fly.toml` sets `KALYTH_GROUNDING_PYTHON_STRINGS=1`; local
    mode keeps the fallback off unless a person sets it.
 
+### Limits added after the security review (24 October 2026)
+
+The review found that one visitor could take the demo from everyone. A single address, within its
+request limit, could use up the day's 3 GB of traffic in about two minutes. A sandbox could also
+grow without limit on the disk all copies share. Since commit `9edf947`:
+
+- **Traffic is shared out.**
+  - Each address may be sent 150 MB a UTC day; an IPv6 /64 counts as one address.
+  - The last 500 MB of the day's 3 GB serves judges' sessions only. Up to 100 MB of it lets anyone
+    load the UI and enter a judge code.
+  - A heavy walkthrough measures 6.9 MB, and a first visit about 2.8 MB.
+- **Requests and sandboxes are bounded.**
+  - Request bodies are limited to 64 KB; the UI's largest is under 1 KB.
+  - A sandbox takes no more changes past 24 MB.
+  - All sandboxes together stay within 640 MB. When room is needed, the fullest go first, then the
+    least recently used.
+- **Sandboxes are on the 1 GB volume.** The volume now holds the template and the sandboxes beside
+  the ledgers, so their limit fits a disk of known size. The server deletes leftover sandboxes at
+  start, so a restart still starts everyone afresh. About 100 copies fit at once, not 200.
+- **A dedicated Fly.io organisation.** By Philip's decision before staging, the demo has its own
+  organisation, so it gets its own invoice and its own private network. `deploy/fly-audit.mjs` checks that the
+  app is the only one in it.
+
 ### Fly.io billing controls
 
 Fly.io has no enforceable spending limit:
@@ -60,14 +83,16 @@ So the 15 USD cannot be enforced by Fly.io. It is kept by what we run, and by ch
   configuration fixes one machine in one region, with no autoscaler, no dedicated IPv4 (2 USD a
   month), no database add-ons and no extra volumes.
 - **Traffic, the only part that grows with use,** at 0.02 USD per GB. The demo stops serving, except
-  its health check, once it has sent 3 GB in a UTC day: more than 2,000 first visits of about 1 MB
+  its health check, once it has sent 3 GB in a UTC day: about 1,000 first visits of about 2.8 MB
   each. That bounds traffic to at most 0.06 USD a day, about 2.80 USD for the whole period.
-- **Who can create resources.** Only Philip's account, from his own machine. No Fly.io token is
-  stored in GitHub or CI, and deployments are run by Philip, or by Claude only with his go-ahead
-  each time.
-- **Monitoring.** `deploy/fly-audit.mjs` lists the app's machines, volumes and IP addresses with
-  `flyctl` and fails if anything beyond the expected set exists. Philip runs it, and looks at the
-  invoice so far in the dashboard, weekly and after every deployment.
+- **Who can create resources.** Only Philip's account, from his own machine, in the demo's own
+  organisation. No Fly.io token is stored in the repository, GitHub or CI. Deployments are run by
+  Philip, or by Claude only with his go-ahead each time. If automation ever needs a token, it is an
+  app-scoped deploy token with a short expiry (`deploy/README.md`).
+- **Monitoring.** `deploy/fly-audit.mjs` checks the organisation's apps and the app's machines,
+  volumes and IP addresses with `flyctl`, and fails if anything beyond the expected set exists.
+  Philip runs it, and looks at the organisation's invoice so far in the dashboard, weekly and
+  after every deployment.
 - **The end.** On 15 December after 12:00 PT, the machine and volume are destroyed and the demo's
   Nebius key is revoked.
 
@@ -137,7 +162,8 @@ gateway and UI stay the same.
   reaches any other visitor.
 - **Sandboxes expire** after 24 hours without use, and at most 200 are kept; the oldest is removed
   first. They live on the machine's ephemeral disk, so a restart starts everyone afresh. That is
-  acceptable for a demo.
+  acceptable for a demo. (Since the security review they live on the volume, are bounded in size,
+  and about 100 fit; see "Limits added after the security review".)
 - **No repository import.** The clone and ingest paths are off. The only repositories are the ones
   built into the image.
 - **MCP over HTTP is off** (amendment 2). Context packages still compile in the Handoff view.
@@ -219,7 +245,7 @@ recorded runs.
 | Server-side request abuse (making the server fetch URLs) | Repository import and cloning are off; the only outbound calls go to the Nebius API | None known. |
 | Cross-site requests and session theft | Cookie `HttpOnly`, `Secure`, `SameSite=Strict`; the existing Host and Origin checks with the public host name; the existing CSP; HSTS | A visitor's own browser extensions are out of scope. |
 | Agent tokens leaking | None can be issued: MCP is off (amendment 2) | None while MCP is off. |
-| Denial of service | Body limit, per-IP limits on requests, sessions and runs, at most 200 sandboxes, a daily limit of 3 GB sent, the platform's own protections | A large attack could make the demo unavailable for a while. Judges may also judge from the video. |
+| Denial of service | A 64 KB body limit; per-address limits (an IPv6 /64 as one) on requests, sessions, runs and traffic (150 MB a day); a daily limit of 3 GB sent, of which 500 MB is kept for judges; sandboxes of at most 24 MB, 640 MB in all; the platform's own protections | Many addresses (about 17) can use up the public share of a day's traffic; judges keep theirs. A large attack could make the demo unavailable for a while. Judges may also judge from the video. |
 | Prompt injection through free-text requests | The output is still only a proposal in the visitor's own sandbox, grounded and checked as in local mode | A visitor can make the model say odd things to themselves. |
 | Key exposure | Platform secret, dedicated key, scrubbed from errors, never logged | Platform compromise is out of scope. |
 

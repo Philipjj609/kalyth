@@ -188,12 +188,18 @@ internet. It is built and tested, and not deployed. It adds these controls:
   its own copy of a read-only template project. Visitors act as the owner of their copy only;
   nothing they write reaches another visitor. Sessions and their files expire after a day idle, and
   at most 200 exist.
+- **Size.** Request bodies are limited to 64 KB. A sandbox takes no more changes past 24 MB, and all
+  sandboxes together stay within 640 MB on the persistent volume (about 100 copies). To make room,
+  copies more than half full go first, largest first, then the least recently used, never one with
+  a run in progress. Sandboxes left by an earlier process are deleted at start.
 - **Less surface.** No MCP endpoint and no agent tokens, until they are tested in hosted mode. No
   consent changes, no repository registration, no reconciliation with a repository and no
   repository import, so the server reads no path and fetches no URL a visitor chooses. The only outbound calls go to Nebius.
 - **Requests.** Host and Origin must be the public host. Every change needs the UI's
-  `x-kalyth-ui` header, which a cross-site form cannot send. Requests, new sessions, runs and judge
-  code attempts are limited per address (`Fly-Client-IP` behind Fly.io's proxy).
+  `x-kalyth-ui` header, which a cross-site form cannot send. Requests, new sessions, runs, judge
+  code attempts and traffic are limited per address (`Fly-Client-IP` behind Fly.io's proxy). An
+  IPv6 /64 counts as one address. Whether Fly.io's proxy replaces a `Fly-Client-IP` that a client
+  sends is checked at staging (`deploy/README.md`).
 - **Spend.**
   - Recorded runs are answered from recordings, with no consent, reservation or charge.
   - Live runs need the operator's consent and the demo's own key.
@@ -202,16 +208,22 @@ internet. It is built and tested, and not deployed. It adds these controls:
     total.
   - Each session has 3 live runs a day and one run at a time.
   - The judge code (at least 16 characters) is compared in constant time.
-- **Traffic.** After 3 GB sent in a UTC day, the demo serves only its health check until the next
-  day, which bounds what Fly.io can bill for traffic.
+- **Traffic.** Each address may be sent 150 MB a UTC day. After 2.5 GB in total, only judges'
+  sessions are served, plus up to 100 MB more for loading the UI and entering a judge code. After
+  3 GB, the demo serves only its health check until the next day, which bounds what Fly.io can bill
+  for traffic.
+- **Hosting.** The demo has its own Fly.io organisation, with its own invoice and private network.
+  No Fly.io token is kept in the repository or CI. The audit script checks that the demo is the
+  only app there.
 - **Image.** `.env` files, local data and agent instructions are excluded. The Nebius key and the
   judge code are runtime secrets, never printed.
 
 Remaining risks:
 
-- One address can use the public share of a day's allowance; judges keep theirs.
-- Many addresses can fill the 200 sessions and push out idle ones; a visitor then gets a fresh
-  copy.
+- One address can use the public share of a day's inference allowance; judges keep theirs.
+- About 17 addresses can use up the public share of a day's traffic; judges keep theirs.
+- Many addresses can fill the sandboxes and push out others' copies, the least recently used
+  first, whether idle or not; a visitor then gets a fresh copy.
 - A large flood can make the demo unavailable for a while; judges may also judge from the video.
 
 ## Supply chain
