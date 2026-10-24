@@ -135,6 +135,14 @@ alembic heads`, was refused in don't-ask mode, and Claude Code printed a tip aft
 both are kept out of view. The agent says in its final message that the refused check did not
 run, and that line is in the cut.
 
+The sound is added after the render and muxed onto it, the picture copied unchanged. The music is
+original, composed in code for this film: chords in D major that turn where the film turns, a
+plucked arpeggio at 100 BPM from the moment the app appears, soft hats that thicken while the
+agent works, and nothing under the end card but the last chord. Interface sounds sit on the takes'
+recorded clicks and keystrokes, with a faint tick on each of the agent's tool calls and a short
+air movement between acts; they are Pixabay sounds bundled with HyperFrames, free to use without
+credit. The mix is at -16 LUFS. There is no voice-over: the captions carry it.
+
 ## Before publishing
 
 - [ ] No frame shows the session link, an agent token, a home path, an email address or another
