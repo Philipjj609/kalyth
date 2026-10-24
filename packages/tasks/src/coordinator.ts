@@ -1306,6 +1306,7 @@ export class TaskCoordinator {
             agentPrompt: agentPrompt({
               id: t.id,
               title,
+              description: text(t, 'description') || null,
               acceptanceCriteria,
               baseCommit,
               contextPackageId,

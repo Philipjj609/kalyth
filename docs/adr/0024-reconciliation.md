@@ -24,16 +24,17 @@ facets. Reconciliation must add to them without merging them into one "implement
 - the task id and title, and to use the Kalyth MCP tools;
 - call `claim_task` and read the context package with `get_context_package`;
 - branch from the task base commit, or work in one commit when there is none;
-- change only what the acceptance criteria allow, listed;
+- change only what the acceptance criteria allow, listed, followed by the person's notes on the
+  task (its description) when it has any;
 - end every commit message with the trailer;
 - report with `submit_execution_report`: the lease, the last commit, the files changed and the
   tests run, saying plainly what was not run.
 
 It is computed from the task alone, so it is deterministic. It names tools and never holds a token:
-the agent connects with its own credential. The title and criteria are put on one line each with
-control and bidirectional characters escaped, so a title cannot add instructions on lines of its
-own, and text that matches Kalyth's secret patterns is withheld. The brief named the report tool
-`report_task_result`; the prompt names the tool that exists, `submit_execution_report`.
+the agent connects with its own credential. The title, criteria and notes are put on one line
+each with control and bidirectional characters escaped, so a title cannot add instructions on
+lines of its own, and text that matches Kalyth's secret patterns is withheld. The brief named the
+report tool `report_task_result`; the prompt names the tool that exists, `submit_execution_report`.
 
 A context package compiled for a task (`task` set) carries a task policy in `mandatory.policy`:
 claim, renew, branch from the base, stay within the criteria, use the trailer, report, and propose

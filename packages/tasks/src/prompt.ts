@@ -24,7 +24,10 @@ function quoted(text: string): string {
  * agent connects to Kalyth with its own credential.
  */
 export function agentPrompt(
-  task: Pick<TaskView, 'id' | 'title' | 'acceptanceCriteria' | 'baseCommit' | 'contextPackageId'>,
+  task: Pick<
+    TaskView,
+    'id' | 'title' | 'description' | 'acceptanceCriteria' | 'baseCommit' | 'contextPackageId'
+  >,
 ): string {
   const criteria =
     task.acceptanceCriteria.length === 0
@@ -35,6 +38,11 @@ export function agentPrompt(
           '3. Change only what these acceptance criteria allow:',
           ...task.acceptanceCriteria.map((c) => `   - ${quoted(c)}`),
         ]
+  // The person's own notes on the task (the form asks for scope, constraints and anything the
+  // agent should know), quoted like the rest.
+  if (task.description?.trim()) {
+    criteria.push(`   The person's notes on the task: ${quoted(task.description)}`)
+  }
   return [
     `Work on Kalyth task ${task.id}: "${quoted(task.title)}". Use the Kalyth MCP tools for every Kalyth step.`,
     '',
