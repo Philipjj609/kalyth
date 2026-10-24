@@ -1,0 +1,958 @@
+{
+  "format": "kalyth-independent-eval/1",
+  "version": 1,
+  "status": "frozen",
+  "frozenAt": "2026-10-24",
+  "writtenBy": "Claude Opus 5.5 in the evaluation-design session (not the session that implements Kalyth), acting as independent reviewer",
+  "countersignedBy": null,
+  "independence": "Written from the source of each repository at its pinned commit, read with git and grep, before any evaluation run exists. Kalyth's analyzer, impact traversal, context compiler and agents were not run on either scenario while writing it, and no context package for either scenario was read. For scenario template-tenancy-complete the writer read the recorded Navigator alternatives (deploy/demo/recordings/recordings.json, alternative A1), because the protocol takes that scenario's decision from them, and the demo walkthrough's account of earlier agent runs. Any later change is a new version with a new SHA-256, published with its evidence and applied to every arm; nothing is ever changed toward Kalyth's output.",
+  "unit": "Files are repository-relative paths of files that exist at the pinned commit. 'required' files are changed by every correct, complete implementation; 'acceptable' files may or may not change depending on design and are not penalised; any other changed existing file is out of scope. New files are listed for context and not scored at file level. Elements are scored from the diff by the blind reviewer; acceptance checks are run by the scorer.",
+  "scenarios": [
+    {
+      "id": "autogen-studio-user-scoping",
+      "role": "unseen repository; Kalyth was not developed, tuned or demonstrated on it",
+      "repository": "https://github.com/microsoft/autogen",
+      "commit": "004749e6b7102c8fd317b9b1499ce5807223c278",
+      "commitDate": "2026-10-16",
+      "subtree": "python/packages/autogen-studio",
+      "license": "MIT (LICENSE-CODE)",
+      "request": "Make every AutoGen Studio API endpoint act as the authenticated user. Today most routes take a user_id query parameter or body field and trust it, so any client can read or change another user's teams, sessions, runs, messages, galleries and settings. Change the backend so that the user is always the one the existing authentication established (request.state.user, set by AuthMiddleware; with auth type \"none\" this is the default user), and a user_id sent by a client is ignored. Every read, list, create, update and delete of Team, Session, Run, Message, Gallery and Settings rows must be limited to rows owned by that user; a row owned by another user is reported as not found (404) and is never changed. Rows created through the API get the authenticated user's id. The run WebSocket (/api/ws/runs/{run_id}) must check ownership before it registers the connection, and must close a connection that does not own the run without affecting the owner's run. Keep paths, methods and response shapes as they are, so the existing frontend keeps working; do not change the frontend. Add or update backend tests for the new behaviour.",
+      "notes": [
+        "Ignore a client-supplied user_id (query parameter or body field); do not reject the request. The frontend keeps sending it.",
+        "Report another user's row as not found (404), not as forbidden.",
+        "No role gets extra access through these endpoints. The run WebSocket's existing exception for the admin role may stay as it is.",
+        "Out of scope: the MCP endpoints (/api/mcp/...), the validation endpoints, the auth endpoints, authentication itself (providers, tokens, middleware), the database schema and the frontend.",
+        "Do not add endpoints."
+      ],
+      "acceptanceCriteria": [
+        "Every Team, Session, Run, Message, Gallery and Settings endpoint acts as the authenticated user; a user_id query parameter or body field sent by the client has no effect.",
+        "Listing returns only the caller's rows; reading, updating or deleting another user's row returns 404 and leaves the row unchanged.",
+        "Rows created through the API are owned by the caller, and a create or update request cannot overwrite another user's row by sending its id.",
+        "The run WebSocket closes a connection from a user who does not own the run before registering it, and the owner's connection and run continue.",
+        "Paths, methods and response shapes are unchanged, and the frontend is not changed.",
+        "Backend tests cover cross-user access for each resource and pass, and the existing tests still pass."
+      ],
+      "decision": {
+        "source": "stated by a person before the runs; no Navigator call",
+        "informationParity": "The decision names only what the request names, so arm K gets no affected element that the other arms' text lacks.",
+        "title": "Act as the authenticated user on every endpoint",
+        "question": "How should the API decide whose data a request may read or change?",
+        "acceptedAlternative": {
+          "title": "Owner from authentication",
+          "summary": "Take the user from the existing authentication on every endpoint and ignore a client-supplied user_id. Read, list, create, update and delete only rows owned by that user; report other users' rows as not found. The run WebSocket checks ownership before registering a connection."
+        },
+        "directChanges": [
+          {
+            "element": "Team",
+            "change": "Read, list, create, update and delete only rows owned by the authenticated user."
+          },
+          {
+            "element": "Session",
+            "change": "Read, list, create, update and delete only rows owned by the authenticated user."
+          },
+          {
+            "element": "Run",
+            "change": "Read, list, create, update and delete only rows owned by the authenticated user."
+          },
+          {
+            "element": "Message",
+            "change": "Read and list only messages of runs owned by the authenticated user."
+          },
+          {
+            "element": "Gallery",
+            "change": "Read, list, create, update and delete only rows owned by the authenticated user."
+          },
+          {
+            "element": "Settings",
+            "change": "Read, create and update only the authenticated user's settings."
+          }
+        ]
+      },
+      "files": {
+        "required": [
+          "python/packages/autogen-studio/autogenstudio/web/routes/teams.py",
+          "python/packages/autogen-studio/autogenstudio/web/routes/sessions.py",
+          "python/packages/autogen-studio/autogenstudio/web/routes/runs.py",
+          "python/packages/autogen-studio/autogenstudio/web/routes/gallery.py",
+          "python/packages/autogen-studio/autogenstudio/web/routes/settingsroute.py",
+          "python/packages/autogen-studio/autogenstudio/web/routes/ws.py"
+        ],
+        "acceptable": [
+          "python/packages/autogen-studio/autogenstudio/web/deps.py",
+          "python/packages/autogen-studio/autogenstudio/web/auth/dependencies.py",
+          "python/packages/autogen-studio/autogenstudio/web/auth/wsauth.py",
+          "python/packages/autogen-studio/autogenstudio/web/managers/connection.py",
+          "python/packages/autogen-studio/autogenstudio/database/db_manager.py",
+          "python/packages/autogen-studio/autogenstudio/datamodel/db.py",
+          "python/packages/autogen-studio/autogenstudio/web/app.py",
+          "python/packages/autogen-studio/tests/test_db_manager.py"
+        ],
+        "outOfScopeNotable": [
+          "python/packages/autogen-studio/frontend/ (any file)",
+          "python/packages/autogen-studio/autogenstudio/web/routes/mcp.py",
+          "python/packages/autogen-studio/autogenstudio/web/routes/validation.py",
+          "python/packages/autogen-studio/autogenstudio/web/auth/authroutes.py",
+          "python/packages/autogen-studio/autogenstudio/web/auth/manager.py",
+          "python/packages/autogen-studio/autogenstudio/web/auth/middleware.py",
+          "python/packages/autogen-studio/autogenstudio/web/auth/providers.py",
+          "python/packages/autogen-studio/autogenstudio/database/schema_manager.py",
+          "python/packages/autogen-studio/autogenstudio/lite/ (any file)",
+          "python/packages/autogen-studio/autogenstudio/eval/ (any file)",
+          "python/packages/autogen-studio/autogenstudio/teammanager/ (any file)",
+          "any file outside python/packages/autogen-studio"
+        ],
+        "newFiles": [
+          "backend tests for the new behaviour under python/packages/autogen-studio/tests/"
+        ]
+      },
+      "elements": {
+        "entities": [
+          {
+            "name": "Team",
+            "file": "python/packages/autogen-studio/autogenstudio/datamodel/db.py",
+            "affected": "access scoping only; no schema change"
+          },
+          {
+            "name": "Session",
+            "file": "python/packages/autogen-studio/autogenstudio/datamodel/db.py",
+            "affected": "access scoping only; no schema change"
+          },
+          {
+            "name": "Run",
+            "file": "python/packages/autogen-studio/autogenstudio/datamodel/db.py",
+            "affected": "access scoping only; no schema change"
+          },
+          {
+            "name": "Message",
+            "file": "python/packages/autogen-studio/autogenstudio/datamodel/db.py",
+            "affected": "access scoping through its run: WebSocketManager._save_message stores messages with user_id None, so ownership cannot be read from Message.user_id"
+          },
+          {
+            "name": "Gallery",
+            "file": "python/packages/autogen-studio/autogenstudio/datamodel/db.py",
+            "affected": "access scoping only; no schema change"
+          },
+          {
+            "name": "Settings",
+            "file": "python/packages/autogen-studio/autogenstudio/datamodel/db.py",
+            "affected": "access scoping only; no schema change"
+          },
+          {
+            "name": "EvalTaskDB",
+            "file": "python/packages/autogen-studio/autogenstudio/datamodel/db.py",
+            "affected": "no: no endpoint exposes it"
+          },
+          {
+            "name": "EvalCriteriaDB",
+            "file": "python/packages/autogen-studio/autogenstudio/datamodel/db.py",
+            "affected": "no: no endpoint exposes it"
+          },
+          {
+            "name": "EvalRunDB",
+            "file": "python/packages/autogen-studio/autogenstudio/datamodel/db.py",
+            "affected": "no: no endpoint exposes it"
+          }
+        ],
+        "relations": [
+          {
+            "from": "Session",
+            "to": "Team",
+            "via": "team_id foreign key",
+            "relevance": "a session may name another user's team; checking it is acceptable, not required"
+          },
+          {
+            "from": "Run",
+            "to": "Session",
+            "via": "session_id foreign key",
+            "relevance": "creating a run requires a session owned by the caller"
+          },
+          {
+            "from": "Message",
+            "to": "Run",
+            "via": "run_id foreign key",
+            "relevance": "message ownership is the ownership of its run"
+          },
+          {
+            "from": "Message",
+            "to": "Session",
+            "via": "session_id foreign key",
+            "relevance": "alternative path for message ownership"
+          },
+          {
+            "from": "EvalRunDB",
+            "to": "EvalTaskDB",
+            "via": "task_id foreign key",
+            "relevance": "none"
+          }
+        ],
+        "endpoints": {
+          "codeChange": [
+            {
+              "id": "A-E1",
+              "method": "GET",
+              "path": "/api/teams/",
+              "handler": "teams.list_teams",
+              "change": "list the authenticated user's teams; the default team is created for that user"
+            },
+            {
+              "id": "A-E2",
+              "method": "GET",
+              "path": "/api/teams/{team_id}",
+              "handler": "teams.get_team",
+              "change": "404 unless owned by the authenticated user"
+            },
+            {
+              "id": "A-E3",
+              "method": "POST",
+              "path": "/api/teams/",
+              "handler": "teams.create_team",
+              "change": "owner is the authenticated user; an id in the body that names another user's team must not overwrite it (upsert updates by id)"
+            },
+            {
+              "id": "A-E4",
+              "method": "DELETE",
+              "path": "/api/teams/{team_id}",
+              "handler": "teams.delete_team",
+              "change": "delete only the authenticated user's team"
+            },
+            {
+              "id": "A-E5",
+              "method": "GET",
+              "path": "/api/sessions/",
+              "handler": "sessions.list_sessions",
+              "change": "list the authenticated user's sessions"
+            },
+            {
+              "id": "A-E6",
+              "method": "GET",
+              "path": "/api/sessions/{session_id}",
+              "handler": "sessions.get_session",
+              "change": "404 unless owned by the authenticated user"
+            },
+            {
+              "id": "A-E7",
+              "method": "POST",
+              "path": "/api/sessions/",
+              "handler": "sessions.create_session",
+              "change": "owner is the authenticated user; no overwrite of another user's session by id"
+            },
+            {
+              "id": "A-E8",
+              "method": "PUT",
+              "path": "/api/sessions/{session_id}",
+              "handler": "sessions.update_session",
+              "change": "ownership from authentication; the row updated is the path's session, not an id from the body, and its owner stays the caller"
+            },
+            {
+              "id": "A-E9",
+              "method": "DELETE",
+              "path": "/api/sessions/{session_id}",
+              "handler": "sessions.delete_session",
+              "change": "delete only the authenticated user's session"
+            },
+            {
+              "id": "A-E10",
+              "method": "GET",
+              "path": "/api/sessions/{session_id}/runs",
+              "handler": "sessions.list_session_runs",
+              "change": "ownership of the session from authentication"
+            },
+            {
+              "id": "A-E11",
+              "method": "POST",
+              "path": "/api/runs/",
+              "handler": "runs.create_run",
+              "change": "the session must be owned by the authenticated user; the run's user_id is that user; CreateRunRequest.user_id is ignored"
+            },
+            {
+              "id": "A-E12",
+              "method": "GET",
+              "path": "/api/runs/{run_id}",
+              "handler": "runs.get_run",
+              "change": "has no ownership check today; 404 unless the run is owned by the authenticated user"
+            },
+            {
+              "id": "A-E13",
+              "method": "GET",
+              "path": "/api/runs/{run_id}/messages",
+              "handler": "runs.get_run_messages",
+              "change": "has no ownership check today; 404 unless the run is owned by the authenticated user; the owner still gets messages stored with user_id None"
+            },
+            {
+              "id": "A-E14",
+              "method": "PUT",
+              "path": "/api/gallery/{gallery_id}",
+              "handler": "gallery.update_gallery_entry",
+              "change": "ownership from authentication; 404 (not 403) for another user's entry"
+            },
+            {
+              "id": "A-E15",
+              "method": "POST",
+              "path": "/api/gallery/",
+              "handler": "gallery.create_gallery_entry",
+              "change": "owner is the authenticated user; no overwrite of another user's entry by id"
+            },
+            {
+              "id": "A-E16",
+              "method": "GET",
+              "path": "/api/gallery/",
+              "handler": "gallery.list_gallery_entries",
+              "change": "list the authenticated user's entries; the default entry is created for that user"
+            },
+            {
+              "id": "A-E17",
+              "method": "GET",
+              "path": "/api/gallery/{gallery_id}",
+              "handler": "gallery.get_gallery_entry",
+              "change": "404 unless owned by the authenticated user"
+            },
+            {
+              "id": "A-E18",
+              "method": "DELETE",
+              "path": "/api/gallery/{gallery_id}",
+              "handler": "gallery.delete_gallery_entry",
+              "change": "delete only the authenticated user's entry"
+            },
+            {
+              "id": "A-E19",
+              "method": "GET",
+              "path": "/api/settings/",
+              "handler": "settingsroute.get_settings",
+              "change": "the authenticated user's settings, created for that user if absent"
+            },
+            {
+              "id": "A-E20",
+              "method": "PUT",
+              "path": "/api/settings/",
+              "handler": "settingsroute.update_settings",
+              "change": "has no check today; update only the authenticated user's settings, never a row named by another user's id"
+            },
+            {
+              "id": "A-E21",
+              "method": "WEBSOCKET",
+              "path": "/api/ws/runs/{run_id}",
+              "handler": "ws.run_websocket",
+              "change": "today ws_manager.connect registers the socket under run_id, replacing the owner's, before authentication, and on refusal the finally block calls disconnect(run_id), which stops the owner's run; authenticate and check ownership first, close the refused socket without touching the manager's state for that run"
+            }
+          ],
+          "unaffected": [
+            "POST /api/validate/ (validation.validate_component)",
+            "POST /api/validate/test (validation.test_component)",
+            "POST /api/mcp/ws/connect (mcp.create_mcp_websocket_connection)",
+            "GET /api/mcp/ws/status/{session_id} (mcp.get_mcp_session_status)",
+            "WEBSOCKET /api/mcp/ws/{session_id} (mcp.mcp_websocket)",
+            "GET /api/auth/login-url",
+            "GET /api/auth/callback",
+            "POST /api/auth/callback-handler",
+            "GET /api/auth/me",
+            "GET /api/auth/type",
+            "GET /api/version",
+            "GET /api/health",
+            "GET /predict/{task} (web/serve.py, a separate app)"
+          ]
+        }
+      },
+      "requiredChanges": [
+        {
+          "id": "A-R1",
+          "covers": ["A-E1", "A-E5", "A-E16", "A-E19"],
+          "change": "List and default-creation endpoints use the authenticated user, not the user_id query parameter."
+        },
+        {
+          "id": "A-R2",
+          "covers": ["A-E2", "A-E4", "A-E6", "A-E9", "A-E10", "A-E17", "A-E18"],
+          "change": "Read and delete endpoints filter by the authenticated user and answer 404 for other users' rows."
+        },
+        {
+          "id": "A-R3",
+          "covers": ["A-E3", "A-E7", "A-E15"],
+          "change": "Create endpoints set the owner to the authenticated user and cannot overwrite another user's row through an id in the body."
+        },
+        {
+          "id": "A-R4",
+          "covers": ["A-E8", "A-E14", "A-E20"],
+          "change": "Update endpoints check ownership from authentication, update only the caller's row and keep the caller as owner."
+        },
+        {
+          "id": "A-R5",
+          "covers": ["A-E11"],
+          "change": "Run creation checks the session's owner against the authenticated user and records that user on the run."
+        },
+        {
+          "id": "A-R6",
+          "covers": ["A-E12", "A-E13"],
+          "change": "Run and run-message reads, unchecked today, are limited to the run's owner; messages are reached through the run."
+        },
+        {
+          "id": "A-R7",
+          "covers": ["A-E21"],
+          "change": "The run WebSocket authenticates and checks ownership before ws_manager.connect, and refusing a connection does not disconnect or stop the owner's run."
+        },
+        {
+          "id": "A-R8",
+          "covers": [],
+          "change": "Backend tests for cross-user access to each resource, including the WebSocket."
+        }
+      ],
+      "acceptanceChecks": {
+        "setup": "The real app (autogenstudio.web.app) with a temporary SQLite database and app directory, and an auth config of type github with a test jwt_secret, so AuthMiddleware sets request.state.user from a bearer token. Users alice and bob get tokens from AuthManager.create_token. Alice owns team TA, session SA (team TA), run RA (session SA, status active), message MA (run RA, stored with user_id None), gallery GA and settings STA; bob owns TB, SB, RB, GB and STB. Each check sends bob's token unless it says otherwise, and adds ?user_id=alice or a body user_id of alice wherever the route accepts one.",
+        "checks": [
+          {
+            "id": "A-C1",
+            "covers": ["A-R1"],
+            "check": "GET /api/teams/, /api/sessions/ and /api/gallery/ return none of alice's rows; GET /api/settings/ returns bob's settings, never STA."
+          },
+          {
+            "id": "A-C2",
+            "covers": ["A-R2"],
+            "check": "GET /api/teams/{TA}, /api/sessions/{SA}, /api/sessions/{SA}/runs and /api/gallery/{GA} return 404."
+          },
+          {
+            "id": "A-C3",
+            "covers": ["A-R2"],
+            "check": "DELETE /api/teams/{TA}, /api/sessions/{SA} and /api/gallery/{GA} leave the rows in the database."
+          },
+          {
+            "id": "A-C4",
+            "covers": ["A-R3"],
+            "check": "POST /api/teams/, /api/sessions/ and /api/gallery/ with body user_id alice create rows whose user_id is bob."
+          },
+          {
+            "id": "A-C5",
+            "covers": ["A-R3"],
+            "check": "POST /api/teams/ with body id TA, POST /api/sessions/ with body id SA and POST /api/gallery/ with body id GA leave alice's rows unchanged."
+          },
+          {
+            "id": "A-C6",
+            "covers": ["A-R4"],
+            "check": "PUT /api/sessions/{SA} returns 404 and SA is unchanged; PUT /api/sessions/{SB} with body id SA leaves SA unchanged."
+          },
+          {
+            "id": "A-C7",
+            "covers": ["A-R4"],
+            "check": "PUT /api/gallery/{GA} returns 404 and GA is unchanged; PUT /api/settings/ with body id STA and user_id alice leaves STA unchanged."
+          },
+          {
+            "id": "A-C8",
+            "covers": ["A-R5"],
+            "check": "POST /api/runs/ with session_id SA and user_id alice returns 404 and creates no run."
+          },
+          {
+            "id": "A-C9",
+            "covers": ["A-R6"],
+            "check": "GET /api/runs/{RA} and GET /api/runs/{RA}/messages return 404 for bob; as alice, GET /api/runs/{RA}/messages returns MA."
+          },
+          {
+            "id": "A-C10",
+            "covers": ["A-R7"],
+            "check": "With alice connected to /api/ws/runs/{RA}, bob connects with his token: bob's socket is closed without a 'connected' system message, alice's socket stays registered, and RA is not stopped (its status is unchanged)."
+          },
+          {
+            "id": "A-C11",
+            "covers": ["A-R7"],
+            "check": "Alice connecting to /api/ws/runs/{RA} with her token is accepted and receives the 'connected' system message."
+          },
+          {
+            "id": "A-C12",
+            "covers": ["A-R1", "A-R2", "A-R3", "A-R4"],
+            "check": "As alice, every endpoint above works on her own rows with the response shape of the base commit ({status, data} or the Response model)."
+          },
+          {
+            "id": "A-C13",
+            "covers": ["A-R1"],
+            "check": "With auth type none, requests without a token act as guestuser@gmail.com: GET /api/teams/ creates and returns a default team owned by that user."
+          },
+          {
+            "id": "A-C14",
+            "covers": ["A-R8"],
+            "check": "The arm's own tests and the base commit's tests that pass at the base commit pass in the arm's tree; ruff check passes on the changed files."
+          }
+        ]
+      },
+      "staticallyUnknowable": [
+        {
+          "id": "A-U1",
+          "item": "Which auth type a deployment runs (none, github, msal or firebase) and its exclude_paths come from runtime configuration (AUTOGENSTUDIO_AUTH_CONFIG, AUTOGENSTUDIO_AUTH_DISABLED); with type none every request is the same default user, so the change separates nobody."
+        },
+        {
+          "id": "A-U2",
+          "item": "The user_id values already stored in a deployed database (null, the guest id, provider ids); rows whose stored id differs from what authentication now returns become invisible to their users."
+        },
+        {
+          "id": "A-U3",
+          "item": "Whether request.state.user is set on every API request at run time (middleware order, configured exclusions); BaseHTTPMiddleware does not run for WebSocket connections, so WebSocket authentication rests on the handler alone."
+        },
+        {
+          "id": "A-U4",
+          "item": "Whether the frontend sends a bearer token on every request and on the WebSocket URL, and so whether it keeps working; only running it shows this."
+        },
+        {
+          "id": "A-U5",
+          "item": "The WebSocketManager's in-memory state (connections, cancellation tokens, input queues) and races between connect, stop and disconnect."
+        },
+        {
+          "id": "A-U6",
+          "item": "How lite mode and the CLI start the server (settings, default user) in a given installation."
+        }
+      ],
+      "analyzerCoverage": {
+        "basis": "Kalyth's coverage rules (packages/analyzer/src/analyze.ts, ADRs 0021 and 0025) applied by reading the code; Kalyth was not run on this repository. The run's step 0 records the analyzer's own coverage and limitations.",
+        "size": "The monorepo at the commit has 546 Python and 125 TypeScript files; AutoGen Studio is 73 Python files (62 in autogenstudio, 10 tests, setup.py) and 125 TypeScript files (its Gatsby frontend). The .NET half of the monorepo is not analysed and is irrelevant to the change.",
+        "inside": [
+          "All 9 SQLModel tables (table=True), 6 of them affected, with their foreign keys.",
+          "All 34 route decorators on FastAPI apps and APIRouters: 32 HTTP routes and 2 WebSocket routes (recorded with method ANY); all 21 affected endpoints are among them.",
+          "Modules and imports of the backend and the frontend."
+        ],
+        "outside": [
+          "FastAPI dependencies, so the authentication that decides the user (Depends(get_current_user), request.state.user) is not followed.",
+          "Data access through DatabaseManager: reads written as db.get(Team, filters=...) match the session.get pattern only because the receiver is named db, and the filters that carry the ownership rule are not read; writes through db.upsert and db.delete(filters=..., model_class=...) match no write pattern.",
+          "The \"/api\" prefix, which comes from app.mount(\"/api\", api), not from include_router.",
+          "The WebSocket message protocol and the WebSocketManager's in-memory state.",
+          "Runtime configuration: auth type, exclusions, environment variables.",
+          "The frontend's API calls, which are URL strings not linked to endpoints."
+        ]
+      },
+      "harness": {
+        "impacted": [
+          {
+            "path": "python/packages/autogen-studio/autogenstudio/web/routes/teams.py"
+          },
+          {
+            "path": "python/packages/autogen-studio/autogenstudio/web/routes/sessions.py"
+          },
+          {
+            "path": "python/packages/autogen-studio/autogenstudio/web/routes/runs.py"
+          },
+          {
+            "path": "python/packages/autogen-studio/autogenstudio/web/routes/gallery.py"
+          },
+          {
+            "path": "python/packages/autogen-studio/autogenstudio/web/routes/settingsroute.py"
+          },
+          {
+            "path": "python/packages/autogen-studio/autogenstudio/web/routes/ws.py"
+          }
+        ],
+        "newFiles": ["backend tests"]
+      }
+    },
+    {
+      "id": "template-tenancy-complete",
+      "role": "holdout repository; Kalyth's analyzer was developed on it and the demo uses it, so results here are in-sample",
+      "repository": "https://github.com/fastapi/full-stack-fastapi-template",
+      "commit": "84c5a9e11a9e58262599e3d772f5386924e02ca7",
+      "commitNote": "tag 0.12.0, the commit of the demo template and of the recorded Navigator run",
+      "license": "MIT",
+      "request": "Add multi-tenancy: every user and item belongs to an organisation. Add an Organisation table (id, name, created_at) and an org_id foreign key to it on User and Item. Regular users work inside their organisation: they list, read, update and delete all items of their organisation, including items other members own, and items of other organisations are reported as not found (404). Superusers keep their current global access. Every new item gets the organisation of the user who creates it. A user created by a superuser through POST /api/v1/users/ joins the organisation named by an optional org_id in the request, or the superuser's own organisation when it is omitted; an org_id that names no organisation is refused with 404. POST /api/v1/users/signup creates a new organisation for the new user, named after their email. POST /api/v1/private/users/ and the first superuser created by init_db use the default organisation, created if missing. No endpoint can change the organisation of an existing user or item. UserPublic and ItemPublic include org_id. Write an Alembic migration after fe56fa70289e that creates the organisation table, adds nullable org_id columns, puts every existing user and item into one organisation named \"Default\", then makes both columns NOT NULL; its downgrade reverses this. Do not change the frontend or regenerate its client. Update or add backend tests for the new behaviour.",
+      "notes": [
+        "This implements alternative A1, 'Explicit org on both User and Item', of the decision 'Introduce multi-tenancy with organisations'. Philip accepted it with these answers to its open questions: superusers stay global (the current semantics); PostgreSQL in production and in tests; existing data goes into a single default organisation.",
+        "Use the column and field name org_id; the organisation table's name is free.",
+        "Emails stay globally unique; login, password recovery and password reset are unchanged."
+      ],
+      "acceptanceCriteria": [
+        "After the migration, user.org_id and item.org_id are NOT NULL foreign keys to the organisation table, every pre-existing row is in one organisation named Default, and the downgrade reverses it.",
+        "Regular users list, read, update and delete exactly the items of their own organisation, including items other members own; items of other organisations return 404 and stay unchanged.",
+        "Superusers keep global access to users and items.",
+        "New items get their creator's organisation. POST /users/ uses the given org_id or the superuser's organisation and refuses an unknown org_id with 404; signup creates a new organisation; the private endpoint and init_db use the default organisation.",
+        "No endpoint changes an existing user's or item's organisation, and UserPublic and ItemPublic include org_id.",
+        "The frontend and its generated client are unchanged; backend tests are updated or added and pass on PostgreSQL."
+      ],
+      "decision": {
+        "source": "the recorded Navigator run on the demo template (deploy/demo/recordings, preset multi-tenancy, NVIDIA Nemotron 3 Ultra, recorded 2026-10-23), replayed at no cost; alternative A1 accepted by a person with the answers in the notes",
+        "recordedRequest": "Add multi-tenancy: every user and item belongs to an organisation.",
+        "recordedFocus": ["User", "Item"],
+        "acceptedAlternative": "A1, Explicit org on both User and Item: Organisation table; nullable org_id foreign keys on User and Item; all API queries filter by current_user.org_id; superusers bypass the filter; the migration backfills, then sets NOT NULL."
+      },
+      "files": {
+        "required": [
+          "backend/app/models.py",
+          "backend/app/crud.py",
+          "backend/app/core/db.py",
+          "backend/app/api/routes/items.py",
+          "backend/app/api/routes/users.py",
+          "backend/app/api/routes/private.py",
+          "backend/tests/api/routes/test_items.py"
+        ],
+        "requiredWhy": {
+          "backend/app/crud.py": "create_item builds an Item without org_id, which the NOT NULL column refuses; create_user must place the user in an organisation unless UserCreate carries it, and create_item has no such escape.",
+          "backend/app/api/routes/private.py": "builds a User directly, so it must set org_id.",
+          "backend/tests/api/routes/test_items.py": "test_read_item_not_enough_permissions, test_update_item_not_enough_permissions and test_delete_item_not_enough_permissions expect 403 for another user's item; under the new rules that item is either shared (200) or in another organisation (404)."
+        },
+        "acceptable": [
+          "backend/app/api/deps.py",
+          "backend/app/core/config.py",
+          "backend/tests/conftest.py",
+          "backend/tests/utils/user.py",
+          "backend/tests/utils/item.py",
+          "backend/tests/utils/utils.py",
+          "backend/tests/api/routes/test_users.py",
+          "backend/tests/api/routes/test_login.py",
+          "backend/tests/api/routes/test_private.py",
+          "backend/tests/crud/test_user.py"
+        ],
+        "outOfScopeNotable": [
+          "frontend/ (any file, including the generated client in frontend/src/client)",
+          "backend/app/alembic/env.py",
+          "backend/app/alembic/versions/ (any existing revision)",
+          "backend/app/core/security.py",
+          "backend/app/api/routes/login.py",
+          "backend/app/api/routes/utils.py",
+          "backend/app/api/main.py",
+          "backend/app/main.py",
+          "backend/app/initial_data.py",
+          "backend/app/utils.py"
+        ],
+        "newFiles": [
+          "an Alembic revision whose down_revision is fe56fa70289e (required, checked by acceptance checks)",
+          "new backend test files (optional)"
+        ]
+      },
+      "elements": {
+        "entities": [
+          {
+            "name": "Organisation",
+            "new": true,
+            "change": "new table: id (uuid primary key), name, created_at"
+          },
+          {
+            "name": "User",
+            "file": "backend/app/models.py",
+            "change": "org_id, NOT NULL foreign key to the organisation table"
+          },
+          {
+            "name": "Item",
+            "file": "backend/app/models.py",
+            "change": "org_id, NOT NULL foreign key to the organisation table"
+          }
+        ],
+        "relations": [
+          {
+            "from": "User",
+            "to": "Organisation",
+            "new": true,
+            "via": "org_id foreign key"
+          },
+          {
+            "from": "Item",
+            "to": "Organisation",
+            "new": true,
+            "via": "org_id foreign key"
+          },
+          {
+            "from": "Item",
+            "to": "User",
+            "new": false,
+            "via": "owner_id foreign key",
+            "change": "none"
+          }
+        ],
+        "schemas": [
+          {
+            "name": "UserPublic",
+            "change": "includes org_id"
+          },
+          {
+            "name": "ItemPublic",
+            "change": "includes org_id"
+          },
+          {
+            "name": "UserCreate",
+            "change": "optional org_id, used only by POST /users/ (superuser)"
+          },
+          {
+            "name": "UserRegister, UserUpdate, UserUpdateMe, ItemCreate, ItemUpdate",
+            "change": "must not let a client set or change org_id"
+          }
+        ],
+        "functions": [
+          {
+            "name": "crud.create_user",
+            "change": "the user gets an organisation"
+          },
+          {
+            "name": "crud.create_item",
+            "change": "the item gets its owner's organisation"
+          },
+          {
+            "name": "core.db.init_db",
+            "change": "ensure the default organisation; the first superuser joins it"
+          }
+        ],
+        "endpoints": {
+          "codeChange": [
+            {
+              "id": "B-E1",
+              "method": "GET",
+              "path": "/api/v1/items/",
+              "handler": "items.read_items",
+              "change": "regular users: the organisation's items and count; superusers: all"
+            },
+            {
+              "id": "B-E2",
+              "method": "GET",
+              "path": "/api/v1/items/{id}",
+              "handler": "items.read_item",
+              "change": "regular users: 404 outside the organisation, allowed for any item of it"
+            },
+            {
+              "id": "B-E3",
+              "method": "POST",
+              "path": "/api/v1/items/",
+              "handler": "items.create_item",
+              "change": "org_id from the creator"
+            },
+            {
+              "id": "B-E4",
+              "method": "PUT",
+              "path": "/api/v1/items/{id}",
+              "handler": "items.update_item",
+              "change": "organisation check instead of owner check; org_id unchanged"
+            },
+            {
+              "id": "B-E5",
+              "method": "DELETE",
+              "path": "/api/v1/items/{id}",
+              "handler": "items.delete_item",
+              "change": "organisation check instead of owner check"
+            },
+            {
+              "id": "B-E6",
+              "method": "POST",
+              "path": "/api/v1/users/",
+              "handler": "users.create_user",
+              "change": "org_id from the request or the superuser's organisation; 404 for an unknown org_id"
+            },
+            {
+              "id": "B-E7",
+              "method": "POST",
+              "path": "/api/v1/users/signup",
+              "handler": "users.register_user",
+              "change": "creates a new organisation named after the email"
+            },
+            {
+              "id": "B-E8",
+              "method": "POST",
+              "path": "/api/v1/private/users/",
+              "handler": "private.create_user",
+              "change": "default organisation, created if missing"
+            }
+          ],
+          "contractOnly": [
+            "GET /api/v1/users/ (UserPublic gains org_id)",
+            "GET /api/v1/users/me",
+            "PATCH /api/v1/users/me (must not accept org_id)",
+            "GET /api/v1/users/{user_id}",
+            "PATCH /api/v1/users/{user_id} (must not change org_id)",
+            "POST /api/v1/login/test-token"
+          ],
+          "unaffected": [
+            "POST /api/v1/login/access-token",
+            "POST /api/v1/password-recovery/{email}",
+            "POST /api/v1/reset-password/",
+            "POST /api/v1/password-recovery-html-content/{email}",
+            "PATCH /api/v1/users/me/password",
+            "DELETE /api/v1/users/me",
+            "DELETE /api/v1/users/{user_id}",
+            "POST /api/v1/utils/test-email/",
+            "GET /api/v1/utils/health-check/"
+          ]
+        }
+      },
+      "requiredChanges": [
+        {
+          "id": "B-R1",
+          "covers": ["Organisation", "User", "Item"],
+          "change": "Organisation table and NOT NULL org_id foreign keys on User and Item, in the models."
+        },
+        {
+          "id": "B-R2",
+          "covers": ["migration"],
+          "change": "A new Alembic revision after fe56fa70289e: create the table, add nullable columns and foreign keys, create Default, backfill users and items, set NOT NULL; downgrade drops them."
+        },
+        {
+          "id": "B-R3",
+          "covers": [
+            "UserPublic",
+            "ItemPublic",
+            "UserCreate",
+            "UserRegister",
+            "UserUpdate",
+            "UserUpdateMe",
+            "ItemCreate",
+            "ItemUpdate"
+          ],
+          "change": "Public schemas include org_id; only UserCreate accepts it; no update schema lets a client change it."
+        },
+        {
+          "id": "B-R4",
+          "covers": ["crud.create_user", "crud.create_item"],
+          "change": "crud gives new users an organisation and new items their owner's organisation."
+        },
+        {
+          "id": "B-R5",
+          "covers": ["core.db.init_db"],
+          "change": "init_db ensures the default organisation and puts the first superuser in it."
+        },
+        {
+          "id": "B-R6",
+          "covers": ["B-E1", "B-E2", "B-E4", "B-E5"],
+          "change": "Item reads, updates and deletes filter by the caller's organisation for regular users (shared within it), 404 outside it, unchanged for superusers."
+        },
+        {
+          "id": "B-R7",
+          "covers": ["B-E3"],
+          "change": "Item creation sets org_id from the creator."
+        },
+        {
+          "id": "B-R8",
+          "covers": ["B-E6"],
+          "change": "Superuser user creation takes org_id or the superuser's organisation and refuses an unknown org_id with 404."
+        },
+        {
+          "id": "B-R9",
+          "covers": ["B-E7"],
+          "change": "Signup creates a new organisation named after the email and puts the user in it."
+        },
+        {
+          "id": "B-R10",
+          "covers": ["B-E8"],
+          "change": "The private endpoint creates users in the default organisation."
+        },
+        {
+          "id": "B-R11",
+          "covers": ["backend/tests/api/routes/test_items.py"],
+          "change": "Tests reflect the new item rules, including cross-organisation 404s."
+        }
+      ],
+      "acceptanceChecks": {
+        "setup": "PostgreSQL 17 in a container, the arm's tree at its final commit, FASTAPI_ENV=development, migrations applied with alembic upgrade head, init_db run as by the prestart script. Fixtures are created through the API only, so the checks do not depend on table or class names: S is the first superuser (organisation D); UA is created by S through POST /users/ without org_id; UB signs up; UC is created by S with org_id set to UB's organisation; items IA by UA, IS by S, IB by UB.",
+        "checks": [
+          {
+            "id": "B-C1",
+            "covers": ["B-R2"],
+            "check": "On a database at fe56fa70289e holding 2 users and 3 items, alembic upgrade head leaves user.org_id and item.org_id NOT NULL with foreign keys to one table, and every row in a single organisation named Default; alembic downgrade fe56fa70289e then succeeds and removes the columns and the table."
+          },
+          {
+            "id": "B-C2",
+            "covers": ["B-R1", "B-R3", "B-R5", "B-R8", "B-R9"],
+            "check": "GET /users/me includes org_id for S, UA, UB and UC; UA has S's organisation, UB's differs from it, UC has UB's."
+          },
+          {
+            "id": "B-C3",
+            "covers": ["B-R8"],
+            "check": "POST /users/ by S with an org_id that names no organisation returns 404 and creates no user."
+          },
+          {
+            "id": "B-C4",
+            "covers": ["B-R7"],
+            "check": "An item created by UA has UA's org_id."
+          },
+          {
+            "id": "B-C5",
+            "covers": ["B-R6"],
+            "check": "GET /items/ as UA lists IA and IS and not IB, with a matching count."
+          },
+          {
+            "id": "B-C6",
+            "covers": ["B-R6"],
+            "check": "As UA, GET and PUT /items/{IS} return 200, and DELETE of another item S created returns 200."
+          },
+          {
+            "id": "B-C7",
+            "covers": ["B-R6"],
+            "check": "As UA, GET, PUT and DELETE /items/{IB} return 404 and IB is unchanged."
+          },
+          {
+            "id": "B-C8",
+            "covers": ["B-R6"],
+            "check": "As S, GET /items/ lists IA, IS and IB, and GET /items/{IB} returns 200."
+          },
+          {
+            "id": "B-C9",
+            "covers": ["B-R3"],
+            "check": "PUT /items/{IA} by UA, PATCH /users/me by UA and PATCH /users/{UA} by S, each with another org_id in the body, leave the organisation unchanged (ignored or refused with 422)."
+          },
+          {
+            "id": "B-C10",
+            "covers": ["B-R10"],
+            "check": "POST /private/users/ creates a user in S's organisation (the default)."
+          },
+          {
+            "id": "B-C11",
+            "covers": ["B-R5"],
+            "check": "On an empty database after migrations, init_db creates the first superuser in an organisation, and running it twice creates no second organisation."
+          },
+          {
+            "id": "B-C12",
+            "covers": ["B-R11"],
+            "check": "The arm's backend test suite passes on PostgreSQL, the base commit's tests not touched by the arm still pass, and the template's lint script (ruff and mypy) passes."
+          }
+        ]
+      },
+      "staticallyUnknowable": [
+        {
+          "id": "B-U1",
+          "item": "How existing users and items of a real deployment should map to organisations; the decision puts them all in Default, which may be wrong for a deployment with several customers."
+        },
+        {
+          "id": "B-U2",
+          "item": "How the migration behaves on PostgreSQL with real data: time and locks for the backfill and NOT NULL, and the constraint names the database generates; only running it against PostgreSQL shows this."
+        },
+        {
+          "id": "B-U3",
+          "item": "Whether FASTAPI_ENV enables the private router in a given deployment (runtime configuration)."
+        },
+        {
+          "id": "B-U4",
+          "item": "Query performance with the organisation filter (whether org_id needs an index) depends on data volume and query plans."
+        },
+        {
+          "id": "B-U5",
+          "item": "How the frontend behaves after the change (the items page now shows other members' items, the admin page shows org_id); it is out of scope and only running it shows this."
+        }
+      ],
+      "analyzerCoverage": {
+        "basis": "Kalyth's coverage rules applied by reading the code; the template is Kalyth's development and demo repository, analysed many times before this protocol (analyzer 0.3.0 at 0.12.0 in deploy/demo/template.json).",
+        "size": "47 Python and 109 TypeScript files at the commit.",
+        "inside": [
+          "The two SQLModel tables, User and Item, their fields and the owner_id reference.",
+          "All 23 API routes on APIRouters with their parameters, and the reads and writes the item and user handlers make through select, session.get, session.add, session.delete and delete(Item).",
+          "Modules and imports, including the Alembic revisions, the tests and the frontend."
+        ],
+        "outside": [
+          "FastAPI dependencies: CurrentUser and get_current_active_superuser, where the caller's identity and role come from, are not followed.",
+          "The private router is mounted only when FASTAPI_ENV is development; the analyzer records a conditional mount, not the runtime value.",
+          "Migrations as schema changes: Alembic revisions are modules, not read as operations.",
+          "PostgreSQL behaviour, data and query plans.",
+          "The frontend's API calls through the generated client, which are not linked to endpoints."
+        ]
+      },
+      "harness": {
+        "impacted": [
+          {
+            "path": "backend/app/models.py"
+          },
+          {
+            "path": "backend/app/crud.py"
+          },
+          {
+            "path": "backend/app/core/db.py"
+          },
+          {
+            "path": "backend/app/api/routes/items.py"
+          },
+          {
+            "path": "backend/app/api/routes/users.py"
+          },
+          {
+            "path": "backend/app/api/routes/private.py"
+          },
+          {
+            "path": "backend/tests/api/routes/test_items.py"
+          }
+        ],
+        "newFiles": ["an Alembic revision after fe56fa70289e"]
+      }
+    }
+  ]
+}
