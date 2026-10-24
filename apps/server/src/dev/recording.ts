@@ -30,12 +30,21 @@ const TOKEN = /^kalyth_at_[A-Za-z0-9_-]{43}$/
  * What Claude Code may do in the recording, and what it may not, even read-only. File tools are
  * not allowed by name: an unscoped "Read" would let the agent read outside the worktree, the MCP
  * config with the token included. Inside the worktree, reading needs no rule and edits are
- * accepted; anything else asks the person.
+ * accepted; anything else asks the person. The template's own checks run through uv, which setup
+ * installs into the worktree (its database tests need PostgreSQL and are not offered).
  */
 const CLAUDE_SETTINGS = {
   permissions: {
     defaultMode: 'acceptEdits',
-    allow: ['mcp__kalyth', 'Bash(git:*)', 'Bash(python -m py_compile:*)'],
+    allow: [
+      'mcp__kalyth',
+      'Bash(git:*)',
+      'Bash(cd:*)',
+      'Bash(python -m py_compile:*)',
+      'Bash(uv run ruff:*)',
+      'Bash(uv run mypy:*)',
+      'Bash(uv run python:*)',
+    ],
     // The token's file and these settings, by path relative to this settings file; then commands
     // that could show the machine, the environment or another project on camera, or reach the
     // network. Deny rules win over allow rules and over read-only defaults.
@@ -69,6 +78,7 @@ const { positionals, values } = parseArgs({
     dir: { type: 'string' },
     url: { type: 'string', default: 'http://127.0.0.1:4317/mcp' },
     force: { type: 'boolean', default: false },
+    'no-checks': { type: 'boolean', default: false },
   },
 })
 const stop = (message: string): never => {
@@ -118,6 +128,20 @@ function setup() {
   git('-C', paths.repo, 'worktree', 'add', '--quiet', '-b', AGENT_BRANCH, paths.worktree, base)
   writeFileSync(paths.settings, `${JSON.stringify(CLAUDE_SETTINGS, null, 2)}\n`)
 
+  // The template's own dev tools (ruff, mypy), so the agent can check its work: public packages
+  // from PyPI into the worktree's backend environment, which the template's .gitignore leaves out.
+  let checks = 'not installed (--no-checks)'
+  if (!values['no-checks']) {
+    try {
+      execFileSync('uv', ['sync', '--quiet', '--directory', join(paths.worktree, 'backend')], {
+        stdio: ['ignore', 'ignore', 'inherit'],
+      })
+      checks = 'ruff, mypy and an import check, through uv'
+    } catch {
+      checks = 'not installed: uv sync failed or uv is missing'
+    }
+  }
+
   process.stdout.write(
     [
       `demo:recording: ready in ${dir}`,
@@ -125,6 +149,7 @@ function setup() {
       `  repo      ${fwd(paths.repo)}  (register this as the task repository)`,
       `  worktree  ${fwd(paths.worktree)}  on ${AGENT_BRANCH}, the agent works here`,
       `  base      ${base}  (the task's base commit)`,
+      `  checks    ${checks}`,
       '',
       'Start the server (off camera; it prints the session link):',
       `  KALYTH_DB=${fwd(paths.db)} KALYTH_LEDGER=${fwd(paths.ledger)} KALYTH_PROVIDER=replay KALYTH_REPLAY_DIR=deploy/demo/recordings pnpm dev:server`,

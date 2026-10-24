@@ -5,7 +5,7 @@ The video follows one change through Kalyth on the pinned holdout repository,
 analysed code to alternatives, a person's decision, a coding agent's work, and what the model
 learns when that work comes back.
 
-Target length 2:55 at most. The hackathon limit is under 3:00, and the video must be public on YouTube.
+The recorded cut is 2:54. The hackathon limit is under 3:00, and the video must be public on YouTube.
 
 ## Set up
 
@@ -26,22 +26,53 @@ screen that it is recorded.
 The change runs through one change thread: the Situation page leads into it, the canvas shows
 where it lands, and reconciliation shows what the code now says.
 
-| Time | Screen | What it shows | Narration in brief |
+| Time | Chapter | What it shows | Narration in brief |
 |---|---|---|---|
-| 0:00 to 0:10 | Title, then Situation | The problem; "Needs you" and the system line for the template analysed at 0.12.0 | Coding agents and people lose the reasons behind a design. Kalyth keeps an engineering model where every fact points at the code it rests on. |
-| 0:10 to 0:35 | Canvas, then the Inspector on `Item` | Find `Item` with the canvas search; the drawing opens on `models.py`. The Inspector shows its basis (observed), its fields and its evidence `backend/app/models.py` at 84c5a9e | Static analysis only; nothing in the repository runs. Every claim carries its basis and its evidence. Note on screen: "Analysis precomputed and imported". |
-| 0:35 to 1:00 | New change, then the change thread | Request "Add multi-tenancy: every user and item belongs to an organisation." with the focus User, then Item. NVIDIA Nemotron on Nebius Token Factory proposes four alternatives (A4 a hybrid of A1 and A2), their direct changes and the questions that decide between them; commit them | The model proposes. Kalyth checks every citation against the pinned source. Nothing lands until a person commits it. |
-| 1:00 to 1:15 | Canvas, impact lens | "Show on canvas" for A1: its six direct changes numbered on the drawing, the three new elements it proposes, and the 27 more it reaches | Impact is computed by traversal, not guessed. |
-| 1:15 to 1:35 | Comparison, then accept | Trade-offs and "What changes for people" marked as the model's interpretation, evidence below; nothing chosen until the person picks a column; accept A1 with a reason, its two open questions carried with it | People decide, and the decision keeps what is still open. |
-| 1:35 to 2:15 | Hand off, then Claude Code | Compile the context package; create the task and mark it ready in the thread; copy the prompt for the agent; Claude Code claims the task, reads the package, commits with the task trailer and reports; git verifies the report. An interactive session, recorded as it ran: shorten it by marked cuts and say so on screen (recording.md) | The agent gets the context it needs at one revision, and its report is checked against git, not taken on trust. |
-| 2:15 to 2:40 | Reconcile | "Compared 84c5a9e with the commit", for Claude Code's commit. On the rehearsal's prepared commit it showed User and Item gaining `org_id` and now referencing Organisation, the items handlers changed in their own source, what the commit did not touch, and the evidence the work itself moved; Claude Code's commit decides what appears | When the work comes back, the model learns what the code now says, and what the decision still lacks. It never claims the code runs correctly. |
-| 2:40 to 2:55 | README | Limitations (FastAPI and SQLModel only; behaviour is not observed); NVIDIA Nemotron through Nebius Token Factory; Apache-2.0; the repository link | Open source. |
+| 0:00 to 0:33 | Title, 01 The model | Situation for the template analysed at 0.12.0; Canvas, by the left navigation; "Item" typed in the canvas search; the Inspector on `Item`: its basis (observed), its evidence `backend/app/models.py:91-100` at 84c5a9e | Coding agents and people lose the reasons behind a design. Kalyth keeps an engineering model where every fact points at the code it rests on. Static analysis only; nothing in the repository runs. |
+| 0:33 to 1:08 | 02 A change | New change, by the left navigation. Request "Add multi-tenancy: every user and item belongs to an organisation." with the focus User, then Item. NVIDIA Nemotron on Nebius Token Factory proposes four alternatives, their direct changes and the questions that decide between them; the person commits them | The model proposes. Kalyth checks every citation against the pinned source. Nothing lands until a person commits it. |
+| 1:08 to 1:17 | 03 Impact | "Show on canvas" for A1: its six direct changes, the three new elements it proposes, and the 27 more it reaches | Impact is computed by traversal, not guessed. |
+| 1:17 to 1:45 | 04 The decision | Trade-offs marked as the model's judgement, evidence below; the two open questions; accept A1 with a reason | People decide, and the decision keeps what is still open. |
+| 1:45 to 2:05 | 05 The hand-off | The context package; the task with its notes, acceptance criteria and base commit; the prompt for the agent | The agent gets the context it needs at one revision. |
+| 2:05 to 2:24 | 06 The agent | Claude Code, unattended: it claims the task and reads the package over MCP, edits the models, writes the migration, passes ruff, mypy and an import check, commits with the trailer, reports, and says what it did not run | The agent works from the package and reports what it checked, and what it could not. |
+| 2:24 to 2:54 | 07 What came back, end | Situation asks for a review of the report; the report checked against git; reconcile compares 84c5a9e with the commit (User and Item gained `org_id` and reference Organisation, the Organisation link proposed); verification passed and the evidence moved by the work; the repository link and the limits | When the work comes back, the model learns what the code now says. It never claims the code runs correctly. |
 
 ## Check before recording
 
 [recording.md](recording.md) lists the off-camera setup, what the agent may do, and the checks
-before publishing: no session link, token, home path or email on screen, and every replayed,
-precomputed, shortened or sped-up stretch captioned.
+before publishing: no session link, token, home path or email on screen; the scripted browser steps
+and the unattended run said on screen; every replayed stretch captioned.
+
+## The recorded run (24 October 2026, the cut's third version)
+
+Claude Code 2.1.309 (claude-opus-5-5) ran unattended in the recording worktree, started with the
+thread's prompt and the note on committing that [recording.md](recording.md) gives, for 1 min 5 s
+by its own count. From its transcript:
+
+- called `claim_task` and `get_context_package`; read the models and the latest migration; made
+  the branch `kalyth/obj_01a16dfd-org-on-user-item` from 84c5a9e;
+- added an Organisation table and a nullable `org_id` with an `org` relationship on User and Item,
+  and wrote the migration b7e4c2a91d35 after fe56fa70289e;
+- ran `uv run ruff check`, `uv run mypy app` (21 files) and an import of `app.models` that also
+  configured the mappers: all passed;
+- tried `uv run alembic heads`, which don't-ask mode refused, and checked the single head by
+  reading the migrations instead;
+- committed 33d9dd7 with the task trailer as its last line, and called `submit_execution_report`:
+  outcome succeeded, 2 files, the three checks with their counts;
+- said it did not run the pytest suite (it needs PostgreSQL), did not run the migration against a
+  database, that `alembic heads` was blocked, that the context package's note on `env.py` asks for
+  a backfill the acceptance criteria leave out, and that `org_id` has no index yet.
+
+Kalyth's git verification passed and the task moved to review. Reconcile compared 84c5a9e1 with
+33d9dd7d: 4 elements and 2 files changed; User and Item gained `org_id` and now reference
+Organisation; Organisation is observed and its link was proposed for review;
+`backend/app/alembic/env.py` was not changed; the decision's evidence was moved by the work for 5
+of its 6 changes.
+
+Two tries before it, without the note, did the same work and passed the same checks, then stopped
+at the commit: don't-ask mode refused `git commit -F - <<EOF` in one and a `-m` with a line break
+in the other, and the agent did not work around the refusal, so it neither committed nor reported.
+The cut's second version used an earlier run (commit a3976e1), which got past the same refusal by
+writing the message to a file.
 
 ## Rehearsal
 
