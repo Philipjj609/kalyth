@@ -1,4 +1,13 @@
-import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
+import {
+  appendFileSync,
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { NavigatorRun } from '@kalyth/contracts'
@@ -19,8 +28,9 @@ import { Navigator, navigatorMockResponder } from '@kalyth/navigator'
 import type { FastifyInstance } from 'fastify'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { type AllowanceSchedule, DemoAllowance } from '../src/demo/allowance.ts'
-import { buildDemoApp, UI_HEADER } from '../src/demo/app.ts'
-import { DemoSessions, type OpenSandbox } from '../src/demo/sessions.ts'
+import { buildDemoApp, type DemoOptions, UI_HEADER } from '../src/demo/app.ts'
+import { addressKey } from '../src/demo/limits.ts'
+import { DemoFullError, DemoSessions, type OpenSandbox } from '../src/demo/sessions.ts'
 import { buildTemplate, type DemoTemplate } from '../src/demo/template.ts'
 
 const EXPORT = resolve(import.meta.dirname, '../../../deploy/demo/template.json')
@@ -107,6 +117,8 @@ function demo(
     live?: boolean
     dailySendLimitBytes?: number
     limits?: Parameters<typeof buildDemoApp>[0]['limits']
+    /** Further demo options, such as the traffic and size limits. */
+    more?: Partial<DemoOptions>
   } = {},
 ) {
   const live = new FakeNebius()
@@ -144,6 +156,9 @@ function demo(
     ...(options.dailySendLimitBytes === undefined
       ? {}
       : { dailySendLimitBytes: options.dailySendLimitBytes }),
+    // Tests name the client's address in a header.
+    clientIp: (req) => String(req.headers['x-test-address'] ?? req.ip),
+    ...options.more,
   })
   apps.push(app)
 
@@ -163,8 +178,10 @@ function demo(
       },
       ...(opts.payload === undefined ? {} : { payload: opts.payload as object }),
     })
-  const visitor = async () => {
-    const res = await request('POST', '/api/v1/demo/session')
+  const visitor = async (address?: string) => {
+    const res = await request('POST', '/api/v1/demo/session', {
+      ...(address ? { headers: { 'x-test-address': address } } : {}),
+    })
     expect(res.statusCode).toBe(201)
     const cookie = /kalyth_demo=([^;]+)/.exec(String(res.headers['set-cookie']))?.[1]
     if (!cookie) throw new Error('no session cookie')
@@ -433,6 +450,158 @@ describe('hosted demo (ADR 0019)', () => {
     })
     expect(right.statusCode).toBe(429)
   })
+
+  it('gives each address its own daily share of traffic, an IPv6 /64 counting as one', async () => {
+    const d = demo({ more: { perAddressDailyBytes: 20_000 } })
+    const project = `/api/v1/projects/${template.projectId}`
+    const from = (address: string) => ({ 'x-test-address': address })
+    const a = await d.visitor('2001:db8:1:2::10')
+    let status = 200
+    for (let i = 0; i < 100 && status === 200; i++) {
+      status = (
+        await d.request('GET', project, { cookie: a.cookie, headers: from('2001:db8:1:2::10') })
+      ).statusCode
+    }
+    expect(status).toBe(429)
+    // Another address in the same /64 shares the share.
+    const same = await d.request('GET', project, {
+      cookie: a.cookie,
+      headers: from('2001:db8:1:2:ffff::1'),
+    })
+    expect(same.statusCode).toBe(429)
+    expect(same.json().error.message).toBe(
+      'This address has used its share of the Kalyth demo for today. It resumes at 00:00 UTC.',
+    )
+    const b = await d.visitor('2001:db8:1:3::10')
+    expect(
+      (await d.request('GET', project, { cookie: b.cookie, headers: from('2001:db8:1:3::10') }))
+        .statusCode,
+    ).toBe(200)
+    d.clock.now = new Date('2026-12-03T00:00:01Z')
+    expect(
+      (await d.request('GET', project, { cookie: a.cookie, headers: from('2001:db8:1:2::10') }))
+        .statusCode,
+    ).toBe(200)
+  })
+
+  it('keeps part of the day’s traffic for judges, and lets a judge arriving late in', async () => {
+    // Sized in exports of the template project, the largest response.
+    const probe = demo()
+    const p = await probe.visitor()
+    const exportUrl = `/api/v1/projects/${template.projectId}/export`
+    const x = (await probe.request('GET', exportUrl, { cookie: p.cookie })).rawPayload.length + 400
+    const d = demo({
+      judgeCode: JUDGE_CODE,
+      dailySendLimitBytes: 12 * x,
+      more: { judgesReserveBytes: 4 * x, judgesEntryBytes: 2 * x },
+    })
+    const from = (address: string) => ({ 'x-test-address': address })
+    const exportAs = (cookie: string, address: string) =>
+      d.request('GET', exportUrl, { cookie, headers: from(address) })
+    const enter = (cookie: string, address: string) =>
+      d.request('POST', '/api/v1/demo/judge', {
+        cookie,
+        payload: { code: JUDGE_CODE },
+        headers: from(address),
+      })
+    const judge = await d.visitor('198.51.100.1')
+    expect((await enter(judge.cookie, '198.51.100.1')).statusCode).toBe(200)
+
+    // An anonymous visitor uses the public share.
+    const visitor = await d.visitor('198.51.100.2')
+    let res = await exportAs(visitor.cookie, '198.51.100.2')
+    for (let i = 0; i < 20 && res.statusCode === 200; i++) {
+      res = await exportAs(visitor.cookie, '198.51.100.2')
+    }
+    expect(res.statusCode).toBe(503)
+    expect(res.json().error.message).toBe(
+      'The Kalyth demo has used its traffic allowance for today. It resumes at 00:00 UTC. Judges with a code can still use it.',
+    )
+    expect((await exportAs(judge.cookie, '198.51.100.1')).statusCode).toBe(200)
+    // A judge arriving now can still load the demo and enter the code.
+    const late = await d.visitor('198.51.100.3')
+    expect((await enter(late.cookie, '198.51.100.3')).statusCode).toBe(200)
+    expect((await exportAs(late.cookie, '198.51.100.3')).statusCode).toBe(200)
+
+    // Once the share for entering is used too, new visitors wait until tomorrow; judges do not.
+    let started = 201
+    for (let i = 0; i < 10 && started === 201; i++) {
+      await exportAs(judge.cookie, '198.51.100.1')
+      started = (await d.request('POST', '/api/v1/demo/session', { headers: from('198.51.100.4') }))
+        .statusCode
+    }
+    expect(started).toBe(503)
+    let last = 200
+    for (let i = 0; i < 20 && last === 200; i++) {
+      last = (await exportAs(judge.cookie, '198.51.100.1')).statusCode
+    }
+    expect(last).toBe(503)
+    expect((await exportAs(judge.cookie, '198.51.100.1')).json().error.message).toBe(
+      'The Kalyth demo has used its traffic allowance for today. It resumes at 00:00 UTC.',
+    )
+    expect((await d.request('GET', '/api/v1/health')).statusCode).toBe(200)
+  })
+
+  it('refuses large bodies, and changes once a copy reaches its size limit', async () => {
+    const d = demo({ more: { maxSandboxBytes: statSync(template.file).size + 400_000 } })
+    const a = await d.visitor()
+    const b = await d.visitor()
+    const proposal = (modules: number) => ({
+      baseRevision: 1,
+      rationale: 'A visitor plans modules',
+      ops: Array.from({ length: modules }, (_, i) => ({
+        op: 'createObject',
+        type: 'software.Module',
+        stance: 'toBe',
+        attributes: { path: `backend/app/m${i}/${'x'.repeat(400)}.py` },
+        claim: { basis: 'stated' },
+      })),
+    })
+    const propose = (cookie: string, body: object) =>
+      d.request('POST', `/api/v1/projects/${template.projectId}/proposals`, {
+        cookie,
+        payload: body,
+      })
+    // About 94 KB, over the 64 KB limit; the UI's largest body is under 1 KB.
+    expect((await propose(a.cookie, proposal(200))).statusCode).toBe(413)
+    let status = 201
+    for (let i = 0; i < 50 && status === 201; i++) {
+      status = (await propose(a.cookie, proposal(100))).statusCode
+    }
+    expect(status).toBe(507)
+    expect((await propose(a.cookie, proposal(1))).json().error.message).toBe(
+      'Your copy of the demo has reached its size limit, so it takes no more changes. You can still look around in it.',
+    )
+    expect(
+      (await d.request('GET', `/api/v1/projects/${template.projectId}`, { cookie: a.cookie }))
+        .statusCode,
+    ).toBe(200)
+    expect((await propose(b.cookie, proposal(1))).statusCode).toBe(201)
+  })
+
+  it('says so when there is no room for another copy', async () => {
+    const d = demo({ more: { maxSandboxesBytes: statSync(template.file).size - 1 } })
+    const res = await d.request('POST', '/api/v1/demo/session')
+    expect(res.statusCode).toBe(503)
+    expect(res.json().error.message).toBe(
+      'The Kalyth demo is full right now. Please try again in a few minutes.',
+    )
+  })
+})
+
+describe('per-address keys', () => {
+  it('counts an IPv4 address as it is and an IPv6 address by its /64', () => {
+    expect(addressKey('203.0.113.7')).toBe('203.0.113.7')
+    expect(addressKey('::ffff:203.0.113.7')).toBe('203.0.113.7')
+    expect(addressKey('2001:db8:1:2:aaaa::1')).toBe('2001:db8:1:2::/64')
+    expect(addressKey('2001:0DB8:0001:0002:ffff:ffff:ffff:ffff')).toBe('2001:db8:1:2::/64')
+    expect(addressKey('2001:db8:1:3::1')).toBe('2001:db8:1:3::/64')
+    expect(addressKey('2001:db8::1')).toBe('2001:db8:0:0::/64')
+    expect(addressKey('::1')).toBe('0:0:0:0::/64')
+    expect(addressKey('fe80::1%eth0')).toBe('fe80:0:0:0::/64')
+    expect(addressKey('64:ff9b::192.0.2.1')).toBe('64:ff9b:0:0::/64')
+    expect(addressKey('not an address')).toBe('not an address')
+  })
 })
 
 describe('demo sessions and allowance', () => {
@@ -464,6 +633,71 @@ describe('demo sessions and allowance', () => {
     expect(sessions.find(c.cookie)).toBeUndefined()
     expect(existsSync(c.session.file)).toBe(false)
     expect(sessions.find('not a cookie')).toBeUndefined()
+  })
+
+  it('bounds each sandbox and all of them together, removing the fullest first', () => {
+    const templateFile = join(tempDir(), 'template.db')
+    writeFileSync(templateFile, Buffer.alloc(1_000_000))
+    const clock = { now: 0 }
+    const sessions = new DemoSessions<OpenSandbox>({
+      template: templateFile,
+      dir: tempDir(),
+      maxSandboxBytes: 4_000_000,
+      maxTotalBytes: 8_000_000,
+      clock: () => clock.now,
+      openSandbox: () => ({ close: () => {} }),
+    })
+    const created: ReturnType<typeof sessions.create>[] = []
+    const create = () => {
+      clock.now += 1
+      const next = sessions.create()
+      created.push(next)
+      return next
+    }
+    const grow = (file: string, bytes: number) => appendFileSync(file, Buffer.alloc(bytes))
+    const a = create()
+    const b = create()
+    const c = create()
+    grow(a.session.file, 2_500_000)
+    expect(sessions.roomForChange(a.session)).toBe('ok')
+    grow(a.session.file, 600_000)
+    expect(sessions.roomForChange(a.session)).toBe('sandbox_full')
+    create()
+    // 7.1 MB, and a copy needs 1 MB more: the fullest copy goes, though b is older.
+    create()
+    expect(existsSync(a.session.file)).toBe(false)
+    expect(sessions.find(a.cookie)).toBeUndefined()
+    expect(existsSync(b.session.file)).toBe(true)
+    // With none more than half full, the least recently used goes.
+    for (let i = 0; i < 4; i++) create()
+    expect(existsSync(b.session.file)).toBe(true)
+    const last = create()
+    expect(existsSync(b.session.file)).toBe(false)
+    expect(existsSync(c.session.file)).toBe(true)
+    expect(sessions.size).toBe(8)
+    // Sandboxes with a run in progress are never removed: without room, changes and new copies wait.
+    for (const { session } of created) session.running = session !== last.session
+    expect(sessions.roomForChange(last.session)).toBe('no_room')
+    last.session.running = true
+    expect(() => sessions.create()).toThrow(DemoFullError)
+    expect(sessions.size).toBe(8)
+  })
+
+  it('deletes sandboxes an earlier process left, and never reopens a removed one', () => {
+    const dir = tempDir()
+    for (const suffix of ['', '-wal', '-shm'])
+      writeFileSync(join(dir, `${'a'.repeat(32)}.db${suffix}`), 'old')
+    writeFileSync(join(dir, 'notes.txt'), 'kept')
+    const sessions = new DemoSessions<OpenSandbox>({
+      template: template.file,
+      dir,
+      openSandbox: () => ({ close: () => {} }),
+    })
+    expect(readdirSync(dir)).toEqual(['notes.txt'])
+    const { session } = sessions.create()
+    sessions.remove(session)
+    expect(() => sessions.sandbox(session)).toThrow(/removed/)
+    expect(existsSync(session.file)).toBe(false)
   })
 
   it('sets each pool a daily cap that never carries over and never passes the total', () => {

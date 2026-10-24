@@ -21,7 +21,8 @@ import { buildTemplate, recordedPresetIds } from './template.ts'
 //   KALYTH_DEMO_HOST              public host name, checked against Host and Origin
 //   KALYTH_PORT                   port to listen on (default 8080)
 //   KALYTH_DEMO_DATA              persistent directory for the pool ledgers (default /data)
-//   KALYTH_DEMO_WORK              ephemeral directory for the template and sandboxes
+//   KALYTH_DEMO_WORK              directory for the template and sandboxes, emptied of sandboxes at
+//                                 start (default: the system's temporary directory)
 //   KALYTH_NEBIUS_API_KEY         the demo's own Nebius key; without it, recorded runs only
 //   KALYTH_DEMO_NEBIUS_CONSENT    the template project's id, set by the operator to consent
 //   KALYTH_DEMO_JUDGE_CODE        at least 16 characters; unlocks the judges' pool

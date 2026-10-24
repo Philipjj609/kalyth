@@ -9,8 +9,8 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { isApiRequest, registerApiRoutes, sendError, type Workspace } from '../http/app.ts'
 import { registerWebUi } from '../http/static.ts'
 import type { DemoAllowance, Pool } from './allowance.ts'
-import { DailyMeter, RateLimiter } from './limits.ts'
-import { type DemoSession, DemoSessions, type OpenSandbox } from './sessions.ts'
+import { addressKey, DailyBudgets, DailyMeter, RateLimiter } from './limits.ts'
+import { DemoFullError, type DemoSession, DemoSessions, type OpenSandbox } from './sessions.ts'
 import type { DemoTemplate } from './template.ts'
 
 /** Which gateway a run uses: a pool with live calls, or recordings only. */
@@ -37,7 +37,19 @@ export interface DemoOptions {
   judgeCode?: string | undefined
   webRoot?: string | undefined
   clientIp?: (req: FastifyRequest) => string
+  /** What the demo may send in a UTC day, to everyone together (3 GB). */
   dailySendLimitBytes?: number
+  /** The last part of the daily limit, kept for judges' sessions (a sixth: 500 MB of 3 GB). */
+  judgesReserveBytes?: number
+  /** What anyone may use of the judges' reserve to load the UI and enter a code (a fifth of it). */
+  judgesEntryBytes?: number
+  /** What one address, or one IPv6 /64, may be sent in a UTC day (150 MB). */
+  perAddressDailyBytes?: number
+  /** The largest request body (64 KB; the UI's largest is under 1 KB). */
+  bodyLimitBytes?: number
+  /** The most one sandbox's files may hold (24 MB), and all sandboxes together (640 MB). */
+  maxSandboxBytes?: number
+  maxSandboxesBytes?: number
   limits?: Partial<{
     requestsPerMinute: number
     sessionsPerHour: number
@@ -53,13 +65,31 @@ export interface DemoOptions {
 export const UI_HEADER = 'x-kalyth-ui'
 
 /**
+ * What a visitor without a judge's session needs to reach the judge-code button: the UI's files,
+ * the project's header and the demo's own routes. These may use part of the judges' reserve.
+ */
+const ENTRY_ROUTES = new Set([
+  'GET /',
+  'GET /*',
+  'GET /api/v1/projects',
+  'GET /api/v1/projects/:projectId',
+  'GET /api/v1/demo/session',
+  'POST /api/v1/demo/session',
+  'POST /api/v1/demo/judge',
+])
+
+/**
  * The hosted demo (ADR 0019). Every visitor gets an anonymous cookie session and a copy of the
  * template project, and acts as its owner. The API is the local one, served from that copy, except
  * for what would reach beyond it: no MCP, no agent tokens, no consent changes and no repository
  * registration. Navigator runs answer from recordings first; live runs are charged to the public
  * or judges' pool, within daily caps, a few per session and one at a time. Host and Origin are
- * checked, changes need the UI's header, requests are rate-limited per address, and the demo stops
- * serving once it has sent its daily traffic allowance.
+ * checked, changes need the UI's header, and requests are rate-limited per address (an IPv6 /64
+ * counts as one address).
+ *
+ * Traffic is bounded per address and in total: each address has its own daily share, and once the
+ * day's total is nearly used, only judges' sessions are served, until the whole limit is reached.
+ * Sandboxes are bounded in size, one by one and all together (DemoSessions).
  */
 export function buildDemoApp(options: DemoOptions): FastifyInstance {
   const clock = options.clock ?? (() => new Date())
@@ -69,6 +99,7 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
   const cookieName = options.secure ? '__Host-kalyth_demo' : 'kalyth_demo'
   const liveRunsPerDay = options.liveRunsPerDay ?? 3
   const clientIp = options.clientIp ?? ((req: FastifyRequest) => req.ip)
+  const addressOf = (req: FastifyRequest) => addressKey(clientIp(req))
   const limits = {
     requestsPerMinute: 600,
     sessionsPerHour: 20,
@@ -80,12 +111,20 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
   const newSessions = new RateLimiter(limits.sessionsPerHour, 3_600_000, now)
   const runs = new RateLimiter(limits.runsPerHour, 3_600_000, now)
   const judgeAttempts = new RateLimiter(limits.judgeAttemptsPerHour, 3_600_000, now)
-  const sent = new DailyMeter(options.dailySendLimitBytes ?? 3_000_000_000, clock)
+  const dailyLimit = options.dailySendLimitBytes ?? 3_000_000_000
+  const judgesReserve = options.judgesReserveBytes ?? Math.round(dailyLimit / 6)
+  const judgesEntry = options.judgesEntryBytes ?? Math.round(judgesReserve / 5)
+  const sent = new DailyMeter(dailyLimit, clock)
+  const sentTo = new DailyBudgets(options.perAddressDailyBytes ?? 150_000_000, clock)
 
   const sessions = new DemoSessions<DemoSandbox>({
     template: options.template.file,
     dir: options.sandboxDir,
     ...(options.maxSessions === undefined ? {} : { maxSessions: options.maxSessions }),
+    ...(options.maxSandboxBytes === undefined ? {} : { maxSandboxBytes: options.maxSandboxBytes }),
+    ...(options.maxSandboxesBytes === undefined
+      ? {}
+      : { maxTotalBytes: options.maxSandboxesBytes }),
     clock: now,
     openSandbox: (file) => {
       const store = new SqliteStore(file)
@@ -130,9 +169,29 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
     return sessions.sandbox(s).workspaces[modeOf(s)]
   }
 
-  const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 })
+  const app = Fastify({ logger: false, bodyLimit: options.bodyLimitBytes ?? 64 * 1024 })
   const deny = (reply: FastifyReply, status: number, error: KernelError) =>
     sendError(reply, status, error)
+  /** Refuses until the next UTC day: the API's error envelope, or plain text for the UI's files. */
+  const refuseToday = (
+    req: FastifyRequest,
+    reply: FastifyReply,
+    status: number,
+    message: string,
+  ) =>
+    isApiRequest(req)
+      ? deny(reply, status, {
+          code: 'retryable',
+          message,
+          issues: [],
+          retryAfterMs: 86_400_000 - (now() % 86_400_000),
+        })
+      : reply.code(status).type('text/plain; charset=utf-8').send(`${message}\n`)
+  /** A request that may write to the visitor's sandbox; the demo's own routes do not. */
+  const changes = (req: FastifyRequest) =>
+    req.method !== 'GET' &&
+    req.method !== 'HEAD' &&
+    !(req.routeOptions.url ?? '').startsWith('/api/v1/demo/')
 
   app.addHook('onRequest', async (req, reply) => {
     // The platform's health checker may not send the public host; the check reveals nothing.
@@ -144,15 +203,33 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
     if (req.headers.origin !== undefined && req.headers.origin !== origin) {
       return deny(reply, 403, { code: 'unauthorized', message: 'origin not allowed', issues: [] })
     }
-    if (sent.exceeded()) {
-      return reply
-        .code(503)
-        .type('text/plain; charset=utf-8')
-        .send(
-          'The Kalyth demo has used its traffic allowance for today. It resumes at 00:00 UTC.\n',
-        )
+    const address = addressOf(req)
+    if (sentTo.exceeded(address)) {
+      return refuseToday(
+        req,
+        reply,
+        429,
+        'This address has used its share of the Kalyth demo for today. It resumes at 00:00 UTC.',
+      )
     }
-    if (!requests.take(clientIp(req))) {
+    const found = sessions.find(cookieValue(req.headers.cookie, cookieName))
+    const judge = found !== undefined && poolOf(found) === 'judges'
+    const entering = ENTRY_ROUTES.has(`${req.method} ${req.routeOptions.url}`)
+    const entryOpen = sent.sentToday() < dailyLimit - judgesReserve + judgesEntry
+    const open = judge
+      ? !sent.exceeded()
+      : entering
+        ? entryOpen
+        : sent.sentToday() < dailyLimit - judgesReserve
+    if (!open) {
+      return refuseToday(
+        req,
+        reply,
+        503,
+        `The Kalyth demo has used its traffic allowance for today. It resumes at 00:00 UTC.${!judge && entryOpen ? ' Judges with a code can still use it.' : ''}`,
+      )
+    }
+    if (!requests.take(address)) {
       return deny(reply, 429, {
         code: 'retryable',
         message: 'too many requests from this address; try again in a minute',
@@ -168,8 +245,27 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
         issues: [],
       })
     }
-    const found = sessions.find(cookieValue(req.headers.cookie, cookieName))
     if (found) {
+      if (changes(req)) {
+        const room = sessions.roomForChange(found)
+        if (room === 'sandbox_full') {
+          return deny(reply, 507, {
+            code: 'budget_exceeded',
+            message:
+              'Your copy of the demo has reached its size limit, so it takes no more changes. You can still look around in it.',
+            issues: [],
+          })
+        }
+        if (room === 'no_room') {
+          return deny(reply, 507, {
+            code: 'retryable',
+            message:
+              'The Kalyth demo is short of space right now, so it takes no more changes. Please try again in a few minutes.',
+            issues: [],
+            retryAfterMs: 300_000,
+          })
+        }
+      }
       sessionOf.set(req, found)
       return
     }
@@ -181,7 +277,7 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
     })
   })
 
-  app.addHook('onSend', async (_req, reply, payload) => {
+  app.addHook('onSend', async (req, reply, payload) => {
     if (options.secure) reply.header('strict-transport-security', 'max-age=31536000')
     const length =
       typeof payload === 'string'
@@ -191,6 +287,7 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
           : Number(reply.getHeader('content-length') ?? 0)
     // Headers and framing are not counted exactly; 400 bytes a response is a fair allowance.
     sent.add(length + 400)
+    sentTo.add(addressOf(req), length + 400)
     return payload
   })
 
@@ -215,14 +312,25 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
   app.post('/api/v1/demo/session', async (req, reply) => {
     const existing = sessionOf.get(req)
     if (existing) return reply.send(view(existing))
-    if (!newSessions.take(clientIp(req))) {
+    if (!newSessions.take(addressOf(req))) {
       return deny(reply, 429, {
         code: 'retryable',
         message: 'too many new sessions from this address; try again later',
         issues: [],
       })
     }
-    const created = sessions.create()
+    let created: ReturnType<typeof sessions.create>
+    try {
+      created = sessions.create()
+    } catch (error) {
+      if (!(error instanceof DemoFullError)) throw error
+      return deny(reply, 503, {
+        code: 'retryable',
+        message: 'The Kalyth demo is full right now. Please try again in a few minutes.',
+        issues: [],
+        retryAfterMs: 300_000,
+      })
+    }
     reply.header(
       'set-cookie',
       [
@@ -242,7 +350,7 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
     if (!options.judgeCode) {
       return deny(reply, 404, { code: 'not_found', message: 'there is no judge code', issues: [] })
     }
-    if (!judgeAttempts.take(clientIp(req)) || !judgeAttempts.take(`session:${s.key}`)) {
+    if (!judgeAttempts.take(addressOf(req)) || !judgeAttempts.take(`session:${s.key}`)) {
       return deny(reply, 429, {
         code: 'retryable',
         message: 'too many attempts; try again later',
@@ -278,7 +386,7 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
             issues: [],
           }
         }
-        if (!runs.take(clientIp(req))) {
+        if (!runs.take(addressOf(req))) {
           return {
             code: 'retryable',
             message: 'too many runs from this address; try again later',

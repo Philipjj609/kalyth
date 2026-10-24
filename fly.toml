@@ -14,6 +14,12 @@ primary_region = "ams"
 [env]
   KALYTH_DEMO_HOST = "kalyth-demo.fly.dev"
   KALYTH_DEMO_DATA = "/data"
+  # The template and the visitors' sandboxes, on the 1 GB volume so their limit fits a known disk:
+  # ledgers (at most about 15 MB), the template (6 MB), sandboxes (at most 640 MB, enforced by the
+  # server) and room for writes in flight (about 60 MB) leave about 200 MB of the roughly 930 MB a
+  # non-root user can use. The server deletes leftover sandboxes at start, so a restart still
+  # starts every visitor afresh.
+  KALYTH_DEMO_WORK = "/data/work"
   KALYTH_DEMO_CLIENT_IP_HEADER = "fly-client-ip"
   KALYTH_PORT = "8080"
   # The Python string fallback of ADR 0017, for the hosted demo only (KAL-20261019-032); local
