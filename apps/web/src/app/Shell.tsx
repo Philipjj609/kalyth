@@ -476,25 +476,26 @@ function Frame({
   )
 }
 
-/** A drafting mark: a sheet with a K in ink and a cobalt signal point. */
+/**
+ * The evidence pin: a K inside drafting crop marks, its upper arm ending in a cobalt square, a
+ * claim pinned to its source.
+ */
 function Logo() {
   return (
     <svg viewBox="0 0 24 24" className="size-6" aria-hidden>
-      <rect
-        x="1.25"
-        y="1.25"
-        width="21.5"
-        height="21.5"
-        style={{ fill: 'none', stroke: 'var(--k-fg)' }}
+      <path
+        d="M1.75 6.5V1.75H6.5M17.5 1.75h4.75V6.5M22.25 17.5v4.75H17.5M6.5 22.25H1.75V17.5"
+        fill="none"
+        style={{ stroke: 'var(--k-fg)' }}
         strokeWidth="1.5"
       />
       <path
-        d="M8 6v12M8 12.5l7-6.5M10.8 10.4l5.2 7.6"
+        d="M8 5.5v13M8 13.2l6.9-6.4M10.6 10.8l5.6 7.7"
         fill="none"
         style={{ stroke: 'var(--k-fg)' }}
-        strokeWidth="1.6"
+        strokeWidth="2"
       />
-      <circle cx="17.5" cy="6.5" r="1.4" style={{ fill: 'var(--k-accent)' }} />
+      <rect x="14.6" y="3.6" width="3.6" height="3.6" style={{ fill: 'var(--k-accent)' }} />
     </svg>
   )
 }
