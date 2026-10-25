@@ -1,6 +1,6 @@
 import type { NavigatorRun } from '@kalyth/contracts'
 import { Play } from 'lucide-react'
-import { liveRunState, presetBody } from '../api/demo.ts'
+import { liveRunState, modelName, presetBody } from '../api/demo.ts'
 import { useDemoSession, useStartNavigatorRun } from '../api/queries.ts'
 import { useAppLocation } from '../app/location.ts'
 import { useWorkbench } from '../app/workbench.ts'
@@ -32,8 +32,9 @@ export function DemoPresets({ runs }: { runs: readonly NavigatorRun[] | undefine
     >
       <div className="space-y-3 p-4">
         <p className="text-fg-muted text-xs">
-          Recorded runs replay a real Nemotron answer recorded on this same project, so they cost
-          nothing and never wait for the allowance. A live run asks Nemotron on Nebius now.
+          Recorded runs replay a real Nemotron 3 Ultra answer recorded on this same project, so they
+          cost nothing and never wait for the allowance. A live run asks{' '}
+          {modelName(view.live.model)} on Nebius now.
         </p>
         <ul className="space-y-2">
           {view.presets.map((preset) => (

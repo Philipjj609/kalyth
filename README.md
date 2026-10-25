@@ -16,9 +16,9 @@ at tag 0.12.0. Nothing you change there reaches other visitors. You can:
 
 - read the Situation page, the canvas and its lenses, and each element's evidence, pinned to lines
   of the template's source;
-- start one of four change requests in the Navigator, and watch its recorded Nemotron run play
-  back, free and at once; the banner says whether you can also start live runs, and how many are
-  left today;
+- start one of four change requests in the Navigator, and watch its recorded Nemotron 3 Ultra run
+  play back, free and at once, or write your own request, which runs live on Nemotron 3 Super; the
+  banner says whether a live run can start, and how many you have left today;
 - compare the alternatives, accept one, and commit the proposals, which makes new revisions of
   your copy;
 - build the context package that a coding agent would get for the accepted decision.
@@ -32,10 +32,12 @@ The hosted demo is deliberately narrower than Kalyth run locally
   hand-off to Claude Code is shown in the demo video and works locally
   ([Connect a coding agent over MCP](#connect-a-coding-agent-over-mcp)).
 - **Live runs are capped.** Recorded runs are always free. A live run sends excerpts of the public
-  template, and nothing else, to Nemotron on Nebius Token Factory. Each copy has at most three live
-  runs a day, and all visitors share a small daily allowance (0.07 USD a day for the public and
-  0.03 USD for judges until 1 December, more during judging). When it is used up, live runs stop
-  until the next UTC day and the recorded runs still work.
+  template, and nothing else, to Nemotron 3 Super on Nebius Token Factory. Each copy has at most
+  three live runs a day, and all visitors share a small daily allowance (0.07 USD a day for the
+  public and 0.03 USD for judges until 1 December, more during judging). A live run is offered only
+  while the allowance left today covers its worst-case cost, so before December that is about
+  seven public runs and one judges' run a day. After that, live runs stop until the next UTC day,
+  and the recorded runs still work.
 - **Copies are temporary.** A copy is deleted after a day without use, or sooner, oldest idle copy
   first, when new visitors need the space. Every copy starts again from the template when the
   server restarts or is redeployed.
@@ -47,7 +49,7 @@ your copy the judges' own allowance.
 
 ## Status
 
-Phase 1. What exists and is tested today, in CI on Linux and Windows: 517 unit and integration
+Phase 1. What exists and is tested today, in CI on Linux and Windows: 527 unit and integration
 tests, and 63 browser tests of the main flows by keyboard (57 of the local workbench, 6 of the
 hosted demo), with automated accessibility checks:
 

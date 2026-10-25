@@ -1,5 +1,6 @@
 import type { ObjectVersion } from '@kalyth/contracts'
 import { Compass, Sparkles } from 'lucide-react'
+import { liveRunState } from '../api/demo.ts'
 import {
   useDemoSession,
   useNavigatorRun,
@@ -27,11 +28,16 @@ function DemoIndicator() {
   const wb = useWorkbench()
   const view = useDemoSession().data
   if (!view) return null
-  const text = view.live.available
+  const live = liveRunState(view)
+  const text = live.ok
     ? `${view.live.runsLeftToday} live ${view.live.runsLeftToday === 1 ? 'run' : 'runs'} left`
     : 'recorded runs'
   const summary = `Navigator: recorded runs are free; ${
-    view.live.available ? `${text} today` : 'live runs are off'
+    live.ok
+      ? `${text} today`
+      : view.live.available
+        ? 'no live run can start now'
+        : 'live runs are off'
   }`
   return (
     <Tip label={`${summary}. Open the Navigator (6)`}>

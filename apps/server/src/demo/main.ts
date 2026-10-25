@@ -12,6 +12,7 @@ import {
 } from '@kalyth/gateway'
 import { DemoAllowance } from './allowance.ts'
 import { buildDemoApp } from './app.ts'
+import { demoLiveModels, LIVE_ALTERNATIVES_MODEL, liveRunReserveMicroUsd } from './reserve.ts'
 import { buildTemplate, recordedPresetIds } from './template.ts'
 
 // The hosted demo server (ADR 0019): `pnpm demo:serve`. It never reads a .env file; everything comes
@@ -67,14 +68,17 @@ if (consented) {
   }
 }
 const roleModels = DEFAULT_ROLE_MODELS.nebius ?? {}
+const liveModels = demoLiveModels(roleModels)
 const gateway = (ledger: BudgetLedger, withLive: boolean) =>
   new ProviderGateway({
     provider: new RecordedFirstProvider('nebius', recordings, withLive ? live : null),
     ledger,
     roleModels,
+    ...(withLive ? { liveModels } : {}),
   })
 const allowance = new DemoAllowance({ ledgers })
 allowance.refresh()
+const liveRunReserve = liveRunReserveMicroUsd(template, gateway(new Ledger(':memory:'), true), work)
 
 const ipHeader = env.KALYTH_DEMO_CLIENT_IP_HEADER?.toLowerCase()
 const app = buildDemoApp({
@@ -89,6 +93,8 @@ const app = buildDemoApp({
   },
   allowance,
   live: live !== null && consented,
+  liveRunReserveMicroUsd: liveRunReserve,
+  liveModel: LIVE_ALTERNATIVES_MODEL,
   judgeCode,
   webRoot: resolve(env.KALYTH_WEB_DIST ?? join(repo, 'apps/web/dist')),
   ...(ipHeader
@@ -108,7 +114,7 @@ process.stderr.write(
     `kalyth demo: ${secure ? 'https' : 'http'}://${host}/ (listening on port ${port})`,
     `  template ${template.projectId}, ${template.presets.filter((p) => p.recorded).length} of ${template.presets.length} presets recorded, ${recordings.length} recorded calls`,
     `  live runs ${live === null ? 'off (no key)' : consented ? 'on' : 'off (no consent)'}; judge code ${judgeCode ? 'set' : 'not set'}; Python string fallback ${env.KALYTH_GROUNDING_PYTHON_STRINGS === '1' ? 'on' : 'off'}`,
-    `  today: public ${allowance.remainingToday('public')} and judges ${allowance.remainingToday('judges')} micro-USD`,
+    `  today: public ${allowance.remainingToday('public')} and judges ${allowance.remainingToday('judges')} micro-USD; a live run needs ${liveRunReserve} free (${LIVE_ALTERNATIVES_MODEL})`,
     '',
   ].join('\n'),
 )

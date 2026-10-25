@@ -106,6 +106,30 @@ Remaining financial risk:
   second is not under our control, but the audit and the weekly invoice check would show it within
   days.
 
+### Live runs on Super (25 October 2026)
+
+Staging found that no live change request could start before 1 December
+(KAL-20261025-055). Before each call, the gateway reserves the most it could cost: one token per
+prompt byte, plus the 12,000 output tokens an alternatives call may use. On Nemotron Ultra, that
+came to 0.0715 USD on the template, above both daily pools (0.07 and 0.03 USD). Every live run was
+refused before any call. Philip chose option (a) on 25 October (KAL-20261025-056):
+
+- **Live runs use Nemotron Super; the recordings stay Ultra.** The gateway first looks for a
+  recording made with the configured model, Nemotron Ultra, so the four presets replay unchanged
+  and free. A request with no recording goes to Nemotron Super (0.30 and 0.90 USD per million
+  tokens, against 1 and 3 for Ultra). The gateway's `liveModels` option does this. The live model
+  passes the same catalogue, consent and reservation checks as any other call, and the ledger
+  records it by name. There is no second path to a model.
+- **A live run is offered only when its worst case fits.** At start, the server computes the
+  gateway's reservation for the first call of a live alternatives run on the template. It uses the
+  longest request the API accepts, and adds 10% for what a visitor's copy may add: 27,496
+  micro-USD. The UI offers a live run only while the visitor's pool has that much left today. The
+  daily caps already stop at each pool's total, so this check covers both limits. The gateway
+  still checks every call against the ledger.
+- **What this allows.** A typical live run costs about 0.007 USD. Before 1 December, that is about
+  seven public runs and one judges' run a day; each copy still has at most three. From 1 December,
+  judges have far more than they need. The daily amounts, totals and other limits are unchanged.
+
 ## Context
 
 The hackathon's official rules ask for:

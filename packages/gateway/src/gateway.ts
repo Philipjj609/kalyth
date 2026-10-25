@@ -33,6 +33,12 @@ export interface GatewayOptions {
   ledger: BudgetLedger
   /** Model id per Navigator role for this provider. */
   roleModels: Readonly<Record<string, string>>
+  /**
+   * The model that answers live in place of a configured one when no recording answers (ADR 0019,
+   * live runs on Super): the hosted demo replays its Nemotron Ultra recordings and calls Nemotron
+   * Super live. A live model passes the same catalogue, consent and budget checks as any other.
+   */
+  liveModels?: Readonly<Record<string, string>>
   catalog?: readonly ModelSpec[]
   timeoutMs?: number
   /** Corrective retries after output that fails the schema (ADR 0010: at most two). */
@@ -49,6 +55,7 @@ export class ProviderGateway {
   readonly provider: Provider
   readonly ledger: BudgetLedger
   readonly roleModels: Readonly<Record<string, string>>
+  readonly #liveModels: Readonly<Record<string, string>>
   readonly #catalog: readonly ModelSpec[] | undefined
   readonly #timeoutMs: number
   readonly #maxCorrections: number
@@ -57,6 +64,7 @@ export class ProviderGateway {
     this.provider = options.provider
     this.ledger = options.ledger
     this.roleModels = options.roleModels
+    this.#liveModels = options.liveModels ?? {}
     this.#catalog = options.catalog
     this.#timeoutMs = options.timeoutMs ?? 180_000
     this.#maxCorrections = Math.min(options.maxCorrections ?? 2, 2)
@@ -66,6 +74,24 @@ export class ProviderGateway {
     const model = this.roleModels[role]
     if (!model) throw new Error(`no model configured for role ${role}`)
     return model
+  }
+
+  /** The model a live call for `role` goes to: its configured model, or that model's live one. */
+  liveModelFor(role: string): string {
+    const model = this.modelFor(role)
+    return this.#liveModels[model] ?? model
+  }
+
+  /**
+   * The most the first live call for `req` would reserve, computed as `generate` computes it but
+   * without calling or reserving anything; null if the model is not in the catalogue.
+   */
+  liveReservationMicroUsd(req: GenerateRequest<unknown>): number | null {
+    const spec = findModel(req.model, this.#catalog)
+    if (!spec || spec.provider !== this.#providerFamily()) return null
+    const live = this.#liveSpec(spec)
+    if (!live) return null
+    return reservationMicroUsd(live, this.#messages(req), req.maxOutputTokens)
   }
 
   status(projectId: string): NavigatorStatus {
@@ -99,18 +125,19 @@ export class ProviderGateway {
         `model ${req.model} is not in the catalogue for ${this.provider.id}`,
       )
     }
+    const live = this.#liveSpec(spec)
+    if (!live) {
+      return failWith(
+        'invalid',
+        `the live model for ${req.model} is not in the catalogue for ${this.provider.id}`,
+      )
+    }
     // Consent guards content leaving the machine, so a recorded answer does not need it.
     const consented = () =>
       !this.provider.external || this.ledger.consent(req.projectId, this.provider.id).granted
 
     const schema = jsonSchemaOf(req.schema)
-    const messages: ChatMessage[] = [
-      {
-        role: 'system',
-        content: `${req.system}\n\nOutput JSON Schema:\n${JSON.stringify(schema)}`,
-      },
-      { role: 'user', content: req.user },
-    ]
+    const messages = this.#messages(req)
 
     for (let attempt = 1; attempt <= this.#maxCorrections + 1; attempt++) {
       const request: ChatRequest = {
@@ -152,17 +179,19 @@ export class ProviderGateway {
         )
       }
 
-      const reserved = reservationMicroUsd(spec, request.messages, req.maxOutputTokens)
+      // A recording answers for the configured model; a live call goes to its live model.
+      const liveRequest: ChatRequest = { ...request, model: live.id }
+      const reserved = reservationMicroUsd(live, liveRequest.messages, req.maxOutputTokens)
       const base = {
         purpose: req.purpose,
         provider: this.provider.id,
-        model: spec.id,
+        model: live.id,
         attempt,
         reservedMicroUsd: reserved,
       }
       const reservation = this.ledger.reserve({
         provider: this.provider.id,
-        model: spec.id,
+        model: live.id,
         projectId: req.projectId,
         purpose: req.purpose,
         microUsd: reserved,
@@ -185,7 +214,7 @@ export class ProviderGateway {
       const started = Date.now()
       let response: Awaited<ReturnType<Provider['complete']>>
       try {
-        response = await this.provider.complete(request, AbortSignal.timeout(this.#timeoutMs))
+        response = await this.provider.complete(liveRequest, AbortSignal.timeout(this.#timeoutMs))
       } catch (error) {
         const latencyMs = Date.now() - started
         const status = error instanceof ProviderError ? error.status : undefined
@@ -209,7 +238,7 @@ export class ProviderGateway {
       const latencyMs = Date.now() - started
       const cost =
         response.inputTokens !== null && response.outputTokens !== null
-          ? costMicroUsd(spec, response.inputTokens, response.outputTokens)
+          ? costMicroUsd(live, response.inputTokens, response.outputTokens)
           : reserved
       this.ledger.settle(reservation.id, {
         costMicroUsd: cost,
@@ -265,6 +294,26 @@ export class ProviderGateway {
       },
     )
     return undefined
+  }
+
+  /** The first attempt's messages: the system prompt with the output schema, then the user's. */
+  #messages(req: GenerateRequest<unknown>): ChatMessage[] {
+    const schema = jsonSchemaOf(req.schema)
+    return [
+      {
+        role: 'system',
+        content: `${req.system}\n\nOutput JSON Schema:\n${JSON.stringify(schema)}`,
+      },
+      { role: 'user', content: req.user },
+    ]
+  }
+
+  /** The model that answers live for `spec`: itself, or its live model if that is catalogued. */
+  #liveSpec(spec: ModelSpec): ModelSpec | undefined {
+    const id = this.#liveModels[spec.id]
+    if (id === undefined) return spec
+    const live = findModel(id, this.#catalog)
+    return live && live.provider === spec.provider ? live : undefined
   }
 
   /** "replay:nebius" replays recordings priced as Nebius models. */

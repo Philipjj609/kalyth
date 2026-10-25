@@ -1,5 +1,6 @@
 import { FlaskConical, KeyRound } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
+import { liveRunState, modelName } from '../api/demo.ts'
 import { useDemoSession, useEnterJudgeCode } from '../api/queries.ts'
 import { Button, Spinner } from '../components/ui.tsx'
 import { plural } from '../model/format.ts'
@@ -27,9 +28,11 @@ export function DemoBanner() {
         FastAPI template; nothing you change reaches anyone else, and it is kept while you use it.
         {session.demoRestarted() && ' Your earlier copy had expired, so this is a fresh one.'}{' '}
         {view &&
-          (view.live.available
-            ? `Recorded Nemotron runs are free; you have ${plural(view.live.runsLeftToday, 'live run')} left today.`
-            : 'Recorded Nemotron runs are free; live runs are off.')}{' '}
+          (liveRunState(view).ok
+            ? `Recorded Nemotron runs are free; you have ${plural(view.live.runsLeftToday, 'live run')} left today, on ${modelName(view.live.model)}.`
+            : view.live.available
+              ? 'Recorded Nemotron runs are free; no live run can start now.'
+              : 'Recorded Nemotron runs are free; live runs are off.')}{' '}
         Agent access over MCP is off here.
       </p>
       {view?.judge ? (

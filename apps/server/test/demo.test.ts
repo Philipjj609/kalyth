@@ -27,9 +27,14 @@ import {
 import { Navigator, navigatorMockResponder } from '@kalyth/navigator'
 import type { FastifyInstance } from 'fastify'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { type AllowanceSchedule, DemoAllowance } from '../src/demo/allowance.ts'
+import { type AllowanceSchedule, DEMO_ALLOWANCE, DemoAllowance } from '../src/demo/allowance.ts'
 import { buildDemoApp, type DemoOptions, UI_HEADER } from '../src/demo/app.ts'
 import { addressKey } from '../src/demo/limits.ts'
+import {
+  demoLiveModels,
+  LIVE_ALTERNATIVES_MODEL,
+  liveRunReserveMicroUsd,
+} from '../src/demo/reserve.ts'
 import { DemoFullError, DemoSessions, type OpenSandbox } from '../src/demo/sessions.ts'
 import { buildTemplate, type DemoTemplate } from '../src/demo/template.ts'
 
@@ -43,11 +48,13 @@ class FakeNebius implements Provider {
   readonly external = true
   readonly paid = true
   calls = 0
+  models: string[] = []
   /** How long each answer takes, to hold a run open. */
   delayMs = 0
   readonly #mock = new MockProvider(navigatorMockResponder)
   async complete(request: ChatRequest): Promise<ChatResponse> {
     this.calls++
+    this.models.push(request.model)
     if (this.delayMs > 0) await new Promise((r) => setTimeout(r, this.delayMs))
     return this.#mock.complete(request)
   }
@@ -137,6 +144,7 @@ function demo(
       provider: new RecordedFirstProvider('nebius', recordings, withLive ? live : null),
       ledger,
       roleModels: DEFAULT_ROLE_MODELS.nebius ?? {},
+      ...(withLive ? { liveModels: demoLiveModels(DEFAULT_ROLE_MODELS.nebius ?? {}) } : {}),
     })
   const app = buildDemoApp({
     host: HOST,
@@ -343,7 +351,7 @@ describe('hosted demo (ADR 0019)', () => {
 
   it('charges live runs to the public pool, and keeps the judges a pool of their own', async () => {
     // The public allowance is below one alternatives reservation; the judges' is not.
-    const d = demo({ schedule: schedule(20_000, 400_000), judgeCode: JUDGE_CODE })
+    const d = demo({ schedule: schedule(10_000, 400_000), judgeCode: JUDGE_CODE })
     const visitor = await d.visitor()
     const refused = await d.run(visitor.cookie, freeText())
     expect(refused.run?.error?.code).toBe('budget_exceeded')
@@ -371,8 +379,35 @@ describe('hosted demo (ADR 0019)', () => {
     const capBefore = d.ledgers.public.status().capMicroUsd
     d.clock.now = new Date('2026-12-03T00:00:01Z')
     const next = await d.request('GET', '/api/v1/demo/session', { cookie: visitor.cookie })
-    expect(next.json().live.poolRemainingTodayMicroUsd).toBe(20_000)
+    expect(next.json().live.poolRemainingTodayMicroUsd).toBe(10_000)
     expect(d.ledgers.public.status().capMicroUsd).toBe(capBefore)
+  })
+
+  it('replays the presets from their Ultra recordings, and runs anything else live on Super', async () => {
+    const d = demo()
+    const { cookie } = await d.visitor()
+    const recorded = await d.run(cookie, preset('multi-tenancy'))
+    const ultra = DEFAULT_ROLE_MODELS.nebius?.alternatives
+    expect(recorded.run?.calls).toMatchObject([{ model: ultra, recorded: true, costMicroUsd: 0 }])
+    const live = await d.run(cookie, freeText())
+    expect(live.run?.status).toBe('completed')
+    expect(live.run?.calls.every((c) => c.model === LIVE_ALTERNATIVES_MODEL)).toBe(true)
+    expect(d.live.models.every((m) => m === LIVE_ALTERNATIVES_MODEL)).toBe(true)
+    expect(d.live.calls).toBeGreaterThan(0)
+  })
+
+  it('tells the UI what one live run needs left in the pool, and on which model', async () => {
+    const d = demo({
+      schedule: schedule(20_000, 400_000),
+      more: { liveRunReserveMicroUsd: 27_000, liveModel: LIVE_ALTERNATIVES_MODEL },
+    })
+    const { view } = await d.visitor()
+    expect(view.live).toMatchObject({
+      available: true,
+      poolRemainingTodayMicroUsd: 20_000,
+      runReserveMicroUsd: 27_000,
+      model: LIVE_ALTERNATIVES_MODEL,
+    })
   })
 
   it('limits live runs per session a day, and allows one run at a time', async () => {
@@ -586,6 +621,28 @@ describe('hosted demo (ADR 0019)', () => {
     expect(res.json().error.message).toBe(
       'The Kalyth demo is full right now. Please try again in a few minutes.',
     )
+  })
+})
+
+describe('the worst case of a live run (ADR 0019, live runs on Super)', () => {
+  it('fits each pool’s daily allowance before judging, and leaves the template untouched', () => {
+    const roleModels = DEFAULT_ROLE_MODELS.nebius ?? {}
+    const gateway = (liveModels: Record<string, string>) =>
+      new ProviderGateway({
+        provider: new RecordedFirstProvider('nebius', [], new FakeNebius()),
+        ledger: new BudgetLedger(':memory:'),
+        roleModels,
+        liveModels,
+      })
+    const before = statSync(template.file).mtimeMs
+    const onSuper = liveRunReserveMicroUsd(template, gateway(demoLiveModels(roleModels)), tempDir())
+    const onUltra = liveRunReserveMicroUsd(template, gateway({}), tempDir())
+    const first = DEMO_ALLOWANCE.periods[0]?.daily ?? { public: 0, judges: 0 }
+    expect(onSuper).toBeLessThanOrEqual(first.judges)
+    expect(onSuper).toBeLessThanOrEqual(first.public)
+    // Ultra's worst case did not fit even the public pool: why live runs moved to Super.
+    expect(onUltra).toBeGreaterThan(first.public)
+    expect(statSync(template.file).mtimeMs).toBe(before)
   })
 })
 

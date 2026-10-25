@@ -22,6 +22,10 @@ export interface DemoView {
     runsLeftToday: number
     runsPerDay: number
     poolRemainingTodayMicroUsd: number
+    /** What the pool must have left for one live run's worst case; less, and none is offered. */
+    runReserveMicroUsd: number
+    /** The model live runs use, e.g. nvidia/nemotron-3-super-120b-a12b. */
+    model: string | null
   }
   presets: DemoPreset[]
   mcp: false
@@ -38,7 +42,10 @@ export function liveRunState(view: DemoView): { ok: boolean; reason: string } {
       reason: `You have used today’s ${view.live.runsPerDay} live runs; recorded runs still work.`,
     }
   }
-  if (view.live.poolRemainingTodayMicroUsd <= 0) {
+  // A run is offered only if its worst case fits what the pool has left today, as the gateway
+  // will check before calling the model.
+  const reserve = Math.max(1, view.live.runReserveMicroUsd)
+  if (view.live.poolRemainingTodayMicroUsd < reserve) {
     return {
       ok: false,
       reason:
@@ -48,6 +55,13 @@ export function liveRunState(view: DemoView): { ok: boolean; reason: string } {
     }
   }
   return { ok: true, reason: '' }
+}
+
+/** A model id as people say it: nvidia/nemotron-3-super-120b-a12b is "Nemotron 3 Super". */
+export function modelName(id: string | null): string {
+  const size = /nemotron-3-(ultra|super|nano)/i.exec(id ?? '')?.[1]
+  if (!size) return id ?? 'Nemotron'
+  return `Nemotron 3 ${size[0]?.toUpperCase()}${size.slice(1).toLowerCase()}`
 }
 
 /** The input to send for a preset: the project id travels in the path. */

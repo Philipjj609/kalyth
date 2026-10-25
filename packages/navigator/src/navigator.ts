@@ -13,7 +13,7 @@ import {
   StartNavigatorRunInput,
 } from '@kalyth/contracts'
 import { Authorizer, ensurePrincipal, type KalythServices, uuidv7Hex } from '@kalyth/core'
-import type { ProviderGateway } from '@kalyth/gateway'
+import type { GenerateRequest, ProviderGateway } from '@kalyth/gateway'
 import type { z } from 'zod'
 import {
   alternativesContext,
@@ -172,6 +172,26 @@ export class Navigator {
     return ok({ run, done: this.#execute(run) })
   }
 
+  /**
+   * The most the first live call of an alternatives run on `request` would reserve at the
+   * project's head, without calling a model: what the hosted demo needs left in a pool before it
+   * offers a live run (ADR 0019, live runs on Super). Null without a catalogued model or a readable project.
+   */
+  liveAlternativesReservationMicroUsd(input: {
+    projectId: string
+    request: string
+    focus?: readonly string[]
+    requestedBy: string
+  }): number | null {
+    const caller = { principalId: this.principal.id, origin: 'model' as const }
+    const read = this.#services.getProjectOverview(caller, { projectId: input.projectId })
+    if (!read.ok) return null
+    const revision = read.value.project.headRevision
+    const reader = new ProjectReader(this.#services, caller, input.projectId, revision)
+    const call = alternativesCall(reader, this.#gateway, { ...input, focus: input.focus ?? [] })
+    return this.#gateway.liveReservationMicroUsd(call.generate)
+  }
+
   getRun(caller: unknown, input: unknown): Result<NavigatorRun> {
     const parsed = NavigatorRunQuery.safeParse(input)
     if (!parsed.success) return fail('invalid', 'input does not match the contract')
@@ -276,24 +296,14 @@ export class Navigator {
         map = (value, model) =>
           mapAlternatives(value as RefineOutput, context, model, decision.existing, this.#grounding)
       } else {
-        // The request is what the person said; the model may cite it as S1 (ADR 0022).
-        context = withStatements(alternativesContext(reader, input.focus ?? []), [
-          { text: input.request, statedBy: run.requestedBy },
-        ])
-        const focus = (input.focus ?? [])
-          .map((id) => context.elements.find((e) => e.id === id)?.handle)
-          .filter((h): h is string => h !== undefined)
-        generated = await this.#gateway.generate({
+        const call = alternativesCall(reader, this.#gateway, {
           projectId: run.projectId,
-          purpose: 'navigator.alternatives',
-          model: this.#gateway.modelFor('alternatives'),
-          system: ALTERNATIVES_SYSTEM,
-          user: alternativesUser(input.request, renderContext(context, 700), focus),
-          schema: AlternativesOutput as z.ZodType<unknown>,
-          schemaName: 'kalyth_alternatives',
-          maxOutputTokens: 12_000,
-          reasoning: true,
+          request: input.request,
+          focus: input.focus ?? [],
+          requestedBy: run.requestedBy,
         })
+        context = call.context
+        generated = await this.#gateway.generate(call.generate)
         map = (value, model) =>
           mapAlternatives(value as AlternativesOutput, context, model, undefined, this.#grounding)
       }
@@ -341,5 +351,36 @@ export class Navigator {
         issues: [],
       })
     }
+  }
+}
+
+/**
+ * The alternatives call for a request (not a refinement): the whole model with the focus first,
+ * and the request as statement S1, which the model may cite (ADR 0022).
+ */
+function alternativesCall(
+  reader: ProjectReader,
+  gateway: ProviderGateway,
+  input: { projectId: string; request: string; focus: readonly string[]; requestedBy: string },
+): { context: ModelContext; generate: GenerateRequest<unknown> } {
+  const context = withStatements(alternativesContext(reader, input.focus), [
+    { text: input.request, statedBy: input.requestedBy },
+  ])
+  const focus = input.focus
+    .map((id) => context.elements.find((e) => e.id === id)?.handle)
+    .filter((h): h is string => h !== undefined)
+  return {
+    context,
+    generate: {
+      projectId: input.projectId,
+      purpose: 'navigator.alternatives',
+      model: gateway.modelFor('alternatives'),
+      system: ALTERNATIVES_SYSTEM,
+      user: alternativesUser(input.request, renderContext(context, 700), focus),
+      schema: AlternativesOutput as z.ZodType<unknown>,
+      schemaName: 'kalyth_alternatives',
+      maxOutputTokens: 12_000,
+      reasoning: true,
+    },
   }
 }

@@ -2,7 +2,7 @@ import type { NavigatorRun, NavigatorStatus } from '@kalyth/contracts'
 import { Compass, OctagonAlert, Sparkles, TriangleAlert } from 'lucide-react'
 import { type ReactNode, useId, useState } from 'react'
 import { ApiError, toApiErrorBody } from '../api/client.ts'
-import { liveRunState } from '../api/demo.ts'
+import { liveRunState, modelName } from '../api/demo.ts'
 import {
   useDemoSession,
   useNavigatorRun,
@@ -345,7 +345,7 @@ function DemoProviderCell() {
       <p className="mt-1 text-fg-muted text-xs">
         Recorded runs replay here at no cost.{' '}
         {live
-          ? 'Live runs go to Nebius Token Factory, within today’s allowance.'
+          ? `Live runs go to ${modelName(demo.data?.live.model ?? null)} on Nebius Token Factory, within today’s allowance.`
           : 'Live runs are off in this demo.'}
       </p>
     </>

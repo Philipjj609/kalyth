@@ -33,6 +33,13 @@ export interface DemoOptions {
   /** Whether a live provider is configured at all. */
   live: boolean
   liveRunsPerDay?: number
+  /**
+   * What a pool must have left today before the UI offers a live run: the worst case of one live
+   * alternatives run (reserve.ts). The gateway still checks every call against the ledger.
+   */
+  liveRunReserveMicroUsd?: number
+  /** The model live runs use, named in the UI. */
+  liveModel?: string
   /** Unlocks the judges' pool. Without one, there is no judges' pool. */
   judgeCode?: string | undefined
   webRoot?: string | undefined
@@ -303,6 +310,8 @@ export function buildDemoApp(options: DemoOptions): FastifyInstance {
         runsLeftToday: Math.max(0, liveRunsPerDay - sessions.liveRunsToday(s)),
         runsPerDay: liveRunsPerDay,
         poolRemainingTodayMicroUsd: options.allowance.remainingToday(pool),
+        runReserveMicroUsd: options.liveRunReserveMicroUsd ?? 0,
+        model: options.liveModel ?? null,
       },
       presets: options.template.presets,
       mcp: false,
