@@ -11,6 +11,7 @@ export {
   type GenerateOutcome,
   type GenerateRequest,
   jsonSchemaOf,
+  type LiveModel,
   ProviderGateway,
   parseOutput,
 } from './gateway.ts'

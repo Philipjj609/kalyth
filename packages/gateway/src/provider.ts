@@ -13,6 +13,11 @@ export interface ChatRequest {
   responseSchema: { name: string; schema: Record<string, unknown> }
   /** Whether the model should reason before answering, where the model supports a switch. */
   reasoning: boolean
+  /**
+   * With reasoning on, the thinking tokens after which the model should answer, where the
+   * provider supports a budget. `maxOutputTokens` still bounds the whole output, and the cost.
+   */
+  reasoningBudget?: number
 }
 
 export interface ChatResponse {

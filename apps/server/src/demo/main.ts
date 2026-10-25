@@ -12,7 +12,11 @@ import {
 } from '@kalyth/gateway'
 import { DemoAllowance } from './allowance.ts'
 import { buildDemoApp } from './app.ts'
-import { demoLiveModels, LIVE_ALTERNATIVES_MODEL, liveRunReserveMicroUsd } from './reserve.ts'
+import {
+  demoLiveGatewayOptions,
+  LIVE_ALTERNATIVES_MODEL,
+  liveRunReserveMicroUsd,
+} from './reserve.ts'
 import { buildTemplate, recordedPresetIds } from './template.ts'
 
 // The hosted demo server (ADR 0019): `pnpm demo:serve`. It never reads a .env file; everything comes
@@ -68,13 +72,13 @@ if (consented) {
   }
 }
 const roleModels = DEFAULT_ROLE_MODELS.nebius ?? {}
-const liveModels = demoLiveModels(roleModels)
+const liveOptions = demoLiveGatewayOptions(roleModels)
 const gateway = (ledger: BudgetLedger, withLive: boolean) =>
   new ProviderGateway({
     provider: new RecordedFirstProvider('nebius', recordings, withLive ? live : null),
     ledger,
     roleModels,
-    ...(withLive ? { liveModels } : {}),
+    ...(withLive ? liveOptions : {}),
   })
 const allowance = new DemoAllowance({ ledgers })
 allowance.refresh()

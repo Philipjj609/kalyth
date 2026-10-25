@@ -122,19 +122,38 @@ refused before any call. Philip chose option (a) on 25 October (KAL-20261025-056
   records it by name. There is no second path to a model.
 - **A live run is offered only when its worst case fits.** At start, the server computes the
   gateway's reservation for the first call of a live alternatives run on the template. It uses the
-  longest request the API accepts, and adds 10% for what a visitor's copy may add: 27,496
-  micro-USD. The UI offers a live run only while the visitor's pool has that much left today. The
+  longest request the API accepts, and adds 10% for what a visitor's copy may add (29,476
+  micro-USD with the bounded settings below). The UI offers a live run only while the visitor's pool has that much left today. The
   daily caps already stop at each pool's total, so this check covers both limits. The gateway
   still checks every call against the ledger.
-- **What this allows, measured.** The one live check on the deployed demo (25 October,
-  KAL-20261025-056) took 96 seconds and cost 0.0246 USD. Super, reasoning, used all 12,000 output
-  tokens on its first answer, which was cut off and refused as invalid JSON (0.0136 USD). The
-  correction then succeeded (9.1k output tokens, 0.0110 USD), with 11 of 11 citations valid. So a
-  live run costs about 0.011 USD, or 0.025 with a correction. Before 1 December, that is about two
-  to four public runs a day, and one judges' run. In the judges' pool, a run whose first answer is
-  cut off fails, because the correction no longer fits the day's allowance. Each copy still has
-  at most three runs a day. From 1 December, the judges' pool covers many runs. The daily
-  amounts, totals and other limits are unchanged.
+- **First measurement: unbounded reasoning.** The first live check on the deployed demo
+  (KAL-20261025-056) took 96 seconds and cost 0.0246 USD. Super, reasoning freely, used all 12,000
+  output tokens on its first answer, which was cut off and refused as invalid JSON (0.0136 USD).
+  The correction then succeeded (9.1k output tokens, 0.0110 USD), with 11 of 11 citations valid.
+  The offer covered only the first attempt, so in the judges' pool such a run failed after
+  spending.
+- **Reasoning off was tried and rejected** (KAL-20261025-057). It took 22 seconds and cost
+  0.0051 USD, but its four alternatives changed the same elements, contradicted themselves and
+  missed the request's core. It was not deployed.
+- **Bounded reasoning, one attempt** (KAL-20261025-058). Live runs reason with a budget of 8,000
+  thinking tokens, sent as `reasoning_budget`. The output is capped at 14,000 tokens, and there
+  is no corrective retry: a retry resends the rejected answer, and its worst case would not fit a
+  day's allowance. The offer threshold is the worst case of the whole run, 29,476 micro-USD, which
+  fits the judges' 30,000. The code refuses to compute it for a gateway that would retry. An
+  answer that fails the schema still proposes nothing.
+
+  Nebius does not document `reasoning_budget`. It accepted the field. In the one live test the
+  model reasoned for 5,166 tokens, under the budget, so enforcement is unproven. The output cap
+  bounds the cost either way.
+
+  That test took 33 seconds and cost 0.0083 USD: a valid answer on the first attempt, with
+  4 of 4 citations exact. It gave two distinct designs (a time-checked restore, or a purge job),
+  both covering restore by the owner and the 30-day rule. They are thinner than the unbounded
+  answer: each records one direct change, the new column, and describes its endpoint changes in
+  text only.
+
+  Before 1 December, this allows about five public runs and one judges' run a day; each copy
+  still has at most three. The daily amounts, totals and other limits are unchanged.
 
 ## Context
 

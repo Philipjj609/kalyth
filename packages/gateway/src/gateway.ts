@@ -28,6 +28,18 @@ export type GenerateOutcome<T> =
   | { ok: true; value: T; calls: ModelCallRecord[] }
   | { ok: false; error: KernelError; calls: ModelCallRecord[] }
 
+/** What answers live in place of a configured model (ADR 0019, live runs on Super). */
+export interface LiveModel {
+  /** A catalogued model of the same provider. */
+  model: string
+  /** Overrides the caller's reasoning setting for live calls; recordings keep the caller's. */
+  reasoning?: boolean
+  /** With reasoning on, the thinking budget sent with live calls. */
+  reasoningBudget?: number
+  /** Overrides the caller's output cap for live calls; the reservation is priced on it. */
+  maxOutputTokens?: number
+}
+
 export interface GatewayOptions {
   provider: Provider
   ledger: BudgetLedger
@@ -36,9 +48,10 @@ export interface GatewayOptions {
   /**
    * The model that answers live in place of a configured one when no recording answers (ADR 0019,
    * live runs on Super): the hosted demo replays its Nemotron Ultra recordings and calls Nemotron
-   * Super live. A live model passes the same catalogue, consent and budget checks as any other.
+   * Super live, with a bounded reasoning budget. A live model passes the same catalogue, consent
+   * and budget checks as any other.
    */
-  liveModels?: Readonly<Record<string, string>>
+  liveModels?: Readonly<Record<string, LiveModel>>
   catalog?: readonly ModelSpec[]
   timeoutMs?: number
   /** Corrective retries after output that fails the schema (ADR 0010: at most two). */
@@ -55,7 +68,7 @@ export class ProviderGateway {
   readonly provider: Provider
   readonly ledger: BudgetLedger
   readonly roleModels: Readonly<Record<string, string>>
-  readonly #liveModels: Readonly<Record<string, string>>
+  readonly #liveModels: Readonly<Record<string, LiveModel>>
   readonly #catalog: readonly ModelSpec[] | undefined
   readonly #timeoutMs: number
   readonly #maxCorrections: number
@@ -79,7 +92,12 @@ export class ProviderGateway {
   /** The model a live call for `role` goes to: its configured model, or that model's live one. */
   liveModelFor(role: string): string {
     const model = this.modelFor(role)
-    return this.#liveModels[model] ?? model
+    return this.#liveModels[model]?.model ?? model
+  }
+
+  /** Corrective retries after output that fails the schema; each is a further reserved call. */
+  get maxCorrections(): number {
+    return this.#maxCorrections
   }
 
   /**
@@ -89,9 +107,13 @@ export class ProviderGateway {
   liveReservationMicroUsd(req: GenerateRequest<unknown>): number | null {
     const spec = findModel(req.model, this.#catalog)
     if (!spec || spec.provider !== this.#providerFamily()) return null
-    const live = this.#liveSpec(spec)
+    const live = this.#live(spec)
     if (!live) return null
-    return reservationMicroUsd(live, this.#messages(req), req.maxOutputTokens)
+    return reservationMicroUsd(
+      live.spec,
+      this.#messages(req),
+      live.maxOutputTokens ?? req.maxOutputTokens,
+    )
   }
 
   status(projectId: string): NavigatorStatus {
@@ -125,7 +147,7 @@ export class ProviderGateway {
         `model ${req.model} is not in the catalogue for ${this.provider.id}`,
       )
     }
-    const live = this.#liveSpec(spec)
+    const live = this.#live(spec)
     if (!live) {
       return failWith(
         'invalid',
@@ -180,18 +202,28 @@ export class ProviderGateway {
       }
 
       // A recording answers for the configured model; a live call goes to its live model.
-      const liveRequest: ChatRequest = { ...request, model: live.id }
-      const reserved = reservationMicroUsd(live, liveRequest.messages, req.maxOutputTokens)
+      const liveRequest: ChatRequest = {
+        ...request,
+        model: live.spec.id,
+        reasoning: live.reasoning ?? request.reasoning,
+        maxOutputTokens: live.maxOutputTokens ?? request.maxOutputTokens,
+        ...(live.reasoningBudget === undefined ? {} : { reasoningBudget: live.reasoningBudget }),
+      }
+      const reserved = reservationMicroUsd(
+        live.spec,
+        liveRequest.messages,
+        liveRequest.maxOutputTokens,
+      )
       const base = {
         purpose: req.purpose,
         provider: this.provider.id,
-        model: live.id,
+        model: live.spec.id,
         attempt,
         reservedMicroUsd: reserved,
       }
       const reservation = this.ledger.reserve({
         provider: this.provider.id,
-        model: live.id,
+        model: live.spec.id,
         projectId: req.projectId,
         purpose: req.purpose,
         microUsd: reserved,
@@ -238,7 +270,7 @@ export class ProviderGateway {
       const latencyMs = Date.now() - started
       const cost =
         response.inputTokens !== null && response.outputTokens !== null
-          ? costMicroUsd(live, response.inputTokens, response.outputTokens)
+          ? costMicroUsd(live.spec, response.inputTokens, response.outputTokens)
           : reserved
       this.ledger.settle(reservation.id, {
         costMicroUsd: cost,
@@ -256,7 +288,10 @@ export class ProviderGateway {
       const answered = this.#answer(record, response, req.schema, calls, messages)
       if (answered) return answered
     }
-    return failWith('invalid', 'the model output did not match the schema after corrections')
+    return failWith(
+      'invalid',
+      `the model output did not match the schema${this.#maxCorrections > 0 ? ' after corrections' : ''}`,
+    )
   }
 
   /**
@@ -308,12 +343,14 @@ export class ProviderGateway {
     ]
   }
 
-  /** The model that answers live for `spec`: itself, or its live model if that is catalogued. */
-  #liveSpec(spec: ModelSpec): ModelSpec | undefined {
-    const id = this.#liveModels[spec.id]
-    if (id === undefined) return spec
-    const live = findModel(id, this.#catalog)
-    return live && live.provider === spec.provider ? live : undefined
+  /** What answers live for `spec`: itself, or its live model if that is catalogued. */
+  #live(spec: ModelSpec): (Omit<LiveModel, 'model'> & { spec: ModelSpec }) | undefined {
+    const configured = this.#liveModels[spec.id]
+    if (configured === undefined) return { spec }
+    const live = findModel(configured.model, this.#catalog)
+    if (!live || live.provider !== spec.provider) return undefined
+    const { model: _model, ...settings } = configured
+    return { ...settings, spec: live }
   }
 
   /** "replay:nebius" replays recordings priced as Nebius models. */

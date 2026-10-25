@@ -34,10 +34,12 @@ The hosted demo is deliberately narrower than Kalyth run locally
 - **Live runs are capped.** Recorded runs are always free. A live run sends excerpts of the public
   template, and nothing else, to Nemotron 3 Super on Nebius Token Factory. Each copy has at most
   three live runs a day, and all visitors share a small daily allowance (0.07 USD a day for the
-  public and 0.03 USD for judges until 1 December, more during judging). A live run takes about a
-  minute or two and costs 0.01–0.03 USD. It is offered only while the allowance left today covers
-  its worst-case cost, so before December that is about two to four public runs and one judges'
-  run a day. After that, live runs stop until the next UTC day, and the recorded runs still work.
+  public and 0.03 USD for judges until 1 December, more during judging). A live run reasons
+  within a budget, makes one attempt, takes about half a minute and costs about 0.01 USD. Its
+  alternatives are briefer than the recorded Ultra runs. It is offered only while the allowance
+  left today covers its worst-case cost (0.03 USD), so before December that is about five public
+  runs and one judges' run a day. After that, live runs stop until the next UTC day, and the
+  recorded runs still work.
 - **Copies are temporary.** A copy is deleted after a day without use, or sooner, oldest idle copy
   first, when new visitors need the space. Every copy starts again from the template when the
   server restarts or is redeployed.
@@ -49,7 +51,7 @@ your copy the judges' own allowance.
 
 ## Status
 
-Phase 1. What exists and is tested today, in CI on Linux and Windows: 527 unit and integration
+Phase 1. What exists and is tested today, in CI on Linux and Windows: 532 unit and integration
 tests, and 63 browser tests of the main flows by keyboard (57 of the local workbench, 6 of the
 hosted demo), with automated accessibility checks:
 

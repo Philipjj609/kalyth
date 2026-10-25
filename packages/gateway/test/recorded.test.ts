@@ -26,9 +26,13 @@ class FakeNebius implements Provider {
   readonly paid = true
   calls = 0
   models: string[] = []
+  reasoning: boolean[] = []
+  requests: ChatRequest[] = []
   async complete(request: ChatRequest): Promise<ChatResponse> {
     this.calls++
     this.models.push(request.model)
+    this.reasoning.push(request.reasoning)
+    this.requests.push(request)
     return {
       content: '{"answer":"live"}',
       refusal: null,
@@ -44,7 +48,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
 })
 
-const request = (user: string, model = SUPER) => ({
+const request = (user: string, model = SUPER, reasoning = false) => ({
   projectId: PROJECT,
   purpose: 'test',
   model,
@@ -53,14 +57,14 @@ const request = (user: string, model = SUPER) => ({
   schema: Answer,
   schemaName: 'answer',
   maxOutputTokens: 1000,
-  reasoning: false,
+  reasoning,
 })
 
-const generate = (gateway: ProviderGateway, user: string, model = SUPER) =>
-  gateway.generate(request(user, model))
+const generate = (gateway: ProviderGateway, user: string, model = SUPER, reasoning = false) =>
+  gateway.generate(request(user, model, reasoning))
 
 /** Records one exchange for `user`, the way the demo's recording session does. */
-async function recordingsFor(user: string, model = SUPER) {
+async function recordingsFor(user: string, model = SUPER, reasoning = false) {
   const dir = mkdtempSync(join(tmpdir(), 'kalyth-recorded-'))
   dirs.push(dir)
   const ledger = new BudgetLedger(':memory:')
@@ -71,7 +75,7 @@ async function recordingsFor(user: string, model = SUPER) {
     ledger,
     roleModels: {},
   })
-  expect((await generate(recorder, user, model)).ok).toBe(true)
+  expect((await generate(recorder, user, model, reasoning)).ok).toBe(true)
   return RecordedFirstProvider.readRecordings(dir)
 }
 
@@ -155,34 +159,90 @@ describe('a live model in place of the recorded one (ADR 0019, live runs on Supe
       provider: new RecordedFirstProvider('nebius', recordings, live),
       ledger,
       roleModels: { alternatives: ULTRA },
-      liveModels: { [ULTRA]: SUPER },
+      liveModels: { [ULTRA]: { model: SUPER, reasoning: false } },
     })
     return { gateway, ledger }
   }
 
-  it('still answers an Ultra request from its Ultra recording, free', async () => {
-    const recordings = await recordingsFor('Say hello.', ULTRA)
+  it('still answers an Ultra request from its Ultra recording, made with reasoning, free', async () => {
+    const recordings = await recordingsFor('Say hello.', ULTRA, true)
     const live = new FakeNebius()
     const { gateway, ledger } = demoGateway(recordings, live)
-    const out = await generate(gateway, 'Say hello.', ULTRA)
+    const out = await generate(gateway, 'Say hello.', ULTRA, true)
     expect(out.calls).toMatchObject([{ model: ULTRA, recorded: true, costMicroUsd: 0 }])
     expect(live.calls).toBe(0)
     expect(ledger.status().calls).toBe(0)
   })
 
-  it('calls Super live when no recording answers, reserved and charged at Super prices', async () => {
+  it('calls Super live, reasoning off, reserved and charged at Super prices', async () => {
     const live = new FakeNebius()
     const { gateway, ledger } = demoGateway([], live)
     const expected = gateway.liveReservationMicroUsd(request('Say something new.', ULTRA))
-    const out = await generate(gateway, 'Say something new.', ULTRA)
+    const out = await generate(gateway, 'Say something new.', ULTRA, true)
     expect(out.ok).toBe(true)
+    // The live model's own setting wins over the caller's: Super answers with reasoning off.
     expect(live.models).toEqual([SUPER])
+    expect(live.reasoning).toEqual([false])
     // 1,000 input and 200 output tokens at 0.30 and 0.90 USD per million.
     expect(out.calls).toMatchObject([
       { model: SUPER, outcome: 'ok', reservedMicroUsd: expected, costMicroUsd: 480 },
     ])
     expect(ledger.status()).toMatchObject({ spentMicroUsd: 480, calls: 1 })
     expect(gateway.liveModelFor('alternatives')).toBe(SUPER)
+  })
+
+  it('sends the live budget and output cap, and prices the reservation on that cap', async () => {
+    const live = new FakeNebius()
+    const ledger = new BudgetLedger(':memory:')
+    ledger.setCap(100_000, 'test')
+    ledger.setConsent(PROJECT, 'nebius', true, OWNER)
+    const bounded = {
+      model: SUPER,
+      reasoning: true,
+      reasoningBudget: 8_000,
+      maxOutputTokens: 14_000,
+    }
+    const gateway = new ProviderGateway({
+      provider: new RecordedFirstProvider('nebius', [], live),
+      ledger,
+      roleModels: {},
+      liveModels: { [ULTRA]: bounded },
+      maxCorrections: 0,
+    })
+    const priced = gateway.liveReservationMicroUsd(request('Plan it.', ULTRA, true)) ?? 0
+    const out = await generate(gateway, 'Plan it.', ULTRA, true)
+    expect(out.ok).toBe(true)
+    expect(live.requests).toMatchObject([
+      { model: SUPER, reasoning: true, reasoningBudget: 8_000, maxOutputTokens: 14_000 },
+    ])
+    // The caller asked for 1,000 output tokens; the live cap of 14,000 is what is reserved.
+    expect(out.calls).toMatchObject([{ reservedMicroUsd: priced }])
+    const unbounded = new ProviderGateway({
+      provider: new RecordedFirstProvider('nebius', [], new FakeNebius()),
+      ledger: new BudgetLedger(':memory:'),
+      roleModels: {},
+      liveModels: { [ULTRA]: { model: SUPER } },
+    })
+    const onCallerCap = unbounded.liveReservationMicroUsd(request('Plan it.', ULTRA, true)) ?? 0
+    // 13,000 more output tokens at 0.90 USD per million.
+    expect(priced - onCallerCap).toBe(11_700)
+  })
+
+  it("keeps the caller's reasoning when the live model sets none", async () => {
+    const live = new FakeNebius()
+    const ledger = new BudgetLedger(':memory:')
+    ledger.setCap(100_000, 'test')
+    ledger.setConsent(PROJECT, 'nebius', true, OWNER)
+    const gateway = new ProviderGateway({
+      provider: new RecordedFirstProvider('nebius', [], live),
+      ledger,
+      roleModels: {},
+      liveModels: { [ULTRA]: { model: SUPER } },
+      maxCorrections: 0,
+    })
+    expect((await generate(gateway, 'Think first.', ULTRA, true)).ok).toBe(true)
+    expect(live.reasoning).toEqual([true])
+    expect(gateway.maxCorrections).toBe(0)
   })
 
   it('prices the worst case on the live model, without calling or reserving', () => {
@@ -203,7 +263,7 @@ describe('a live model in place of the recorded one (ADR 0019, live runs on Supe
       provider: new RecordedFirstProvider('nebius', [], live),
       ledger: new BudgetLedger(':memory:'),
       roleModels: {},
-      liveModels: { [ULTRA]: 'nvidia/not-a-model' },
+      liveModels: { [ULTRA]: { model: 'nvidia/not-a-model' } },
     })
     const out = await generate(gateway, 'Hello.', ULTRA)
     expect(out).toMatchObject({ ok: false, error: { code: 'invalid' } })

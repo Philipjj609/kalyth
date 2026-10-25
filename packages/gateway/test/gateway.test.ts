@@ -216,6 +216,26 @@ describe('Nebius provider (no network: fetch is injected)', () => {
     })
   })
 
+  it('sends a reasoning budget only with reasoning on', async () => {
+    const net = fakeFetch(() => completion('{"answer":"hi"}'))
+    const provider = new NebiusProvider({ apiKey: FAKE_KEY, fetch: net.fetch })
+    const request = {
+      model: SUPER,
+      messages: [{ role: 'user' as const, content: 'Say hello.' }],
+      maxOutputTokens: 14_000,
+      temperature: 0.2,
+      responseSchema: { name: 'answer', schema: { type: 'object' } },
+      reasoningBudget: 8_000,
+    }
+    await provider.complete({ ...request, reasoning: true }, AbortSignal.timeout(1000))
+    await provider.complete({ ...request, reasoning: false }, AbortSignal.timeout(1000))
+    const [on, off] = net.calls.map(([, init]) => JSON.parse(String(init.body)))
+    expect(on).toMatchObject({ max_tokens: 14_000, reasoning_budget: 8_000 })
+    expect(on).not.toHaveProperty('chat_template_kwargs')
+    expect(off).not.toHaveProperty('reasoning_budget')
+    expect(off).toMatchObject({ chat_template_kwargs: { enable_thinking: false } })
+  })
+
   it('never puts the key into error text', async () => {
     const leaky = setup(() => ({ status: 401, body: { error: `bad key ${FAKE_KEY}` } }), {
       capMicroUsd: 1_000_000,

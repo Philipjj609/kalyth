@@ -31,7 +31,9 @@ import { type AllowanceSchedule, DEMO_ALLOWANCE, DemoAllowance } from '../src/de
 import { buildDemoApp, type DemoOptions, UI_HEADER } from '../src/demo/app.ts'
 import { addressKey } from '../src/demo/limits.ts'
 import {
-  demoLiveModels,
+  DEMO_LIVE,
+  DEMO_LIVE_CORRECTIONS,
+  demoLiveGatewayOptions,
   LIVE_ALTERNATIVES_MODEL,
   liveRunReserveMicroUsd,
 } from '../src/demo/reserve.ts'
@@ -49,13 +51,31 @@ class FakeNebius implements Provider {
   readonly paid = true
   calls = 0
   models: string[] = []
+  reasoning: boolean[] = []
+  budgets: (number | undefined)[] = []
+  caps: number[] = []
+  /** Answers to give before the mock's, such as one that fails the schema. */
+  answers: string[] = []
   /** How long each answer takes, to hold a run open. */
   delayMs = 0
   readonly #mock = new MockProvider(navigatorMockResponder)
   async complete(request: ChatRequest): Promise<ChatResponse> {
     this.calls++
     this.models.push(request.model)
+    this.reasoning.push(request.reasoning)
+    this.budgets.push(request.reasoningBudget)
+    this.caps.push(request.maxOutputTokens)
     if (this.delayMs > 0) await new Promise((r) => setTimeout(r, this.delayMs))
+    const answer = this.answers.shift()
+    if (answer !== undefined) {
+      return {
+        content: answer,
+        refusal: null,
+        inputTokens: 1000,
+        outputTokens: 50,
+        finishReason: 'stop',
+      }
+    }
     return this.#mock.complete(request)
   }
 }
@@ -144,7 +164,7 @@ function demo(
       provider: new RecordedFirstProvider('nebius', recordings, withLive ? live : null),
       ledger,
       roleModels: DEFAULT_ROLE_MODELS.nebius ?? {},
-      ...(withLive ? { liveModels: demoLiveModels(DEFAULT_ROLE_MODELS.nebius ?? {}) } : {}),
+      ...(withLive ? demoLiveGatewayOptions(DEFAULT_ROLE_MODELS.nebius ?? {}) : {}),
     })
   const app = buildDemoApp({
     host: HOST,
@@ -393,7 +413,22 @@ describe('hosted demo (ADR 0019)', () => {
     expect(live.run?.status).toBe('completed')
     expect(live.run?.calls.every((c) => c.model === LIVE_ALTERNATIVES_MODEL)).toBe(true)
     expect(d.live.models.every((m) => m === LIVE_ALTERNATIVES_MODEL)).toBe(true)
+    expect(d.live.reasoning.every((r) => r === DEMO_LIVE.reasoning)).toBe(true)
+    expect(d.live.budgets.every((b) => b === DEMO_LIVE.reasoningBudget)).toBe(true)
+    expect(d.live.caps.every((c) => c === DEMO_LIVE.maxOutputTokens)).toBe(true)
     expect(d.live.calls).toBeGreaterThan(0)
+  })
+
+  it('makes one live attempt: an answer that fails the schema fails the run, with no retry', async () => {
+    const d = demo()
+    const { cookie } = await d.visitor()
+    d.live.answers.push('{"not":"the schema"}')
+    const failed = await d.run(cookie, freeText())
+    expect(DEMO_LIVE_CORRECTIONS).toBe(0)
+    expect(failed.run?.status).toBe('failed')
+    expect(failed.run?.calls).toMatchObject([{ outcome: 'schema_invalid' }])
+    expect(failed.run?.proposalId).toBeNull()
+    expect(d.live.calls).toBe(1)
   })
 
   it('tells the UI what one live run needs left in the pool, and on which model', async () => {
@@ -627,22 +662,36 @@ describe('hosted demo (ADR 0019)', () => {
 describe('the worst case of a live run (ADR 0019, live runs on Super)', () => {
   it('fits each pool’s daily allowance before judging, and leaves the template untouched', () => {
     const roleModels = DEFAULT_ROLE_MODELS.nebius ?? {}
-    const gateway = (liveModels: Record<string, string>) =>
+    const gateway = (options: Partial<ReturnType<typeof demoLiveGatewayOptions>>) =>
       new ProviderGateway({
         provider: new RecordedFirstProvider('nebius', [], new FakeNebius()),
         ledger: new BudgetLedger(':memory:'),
         roleModels,
-        liveModels,
+        ...options,
       })
     const before = statSync(template.file).mtimeMs
-    const onSuper = liveRunReserveMicroUsd(template, gateway(demoLiveModels(roleModels)), tempDir())
-    const onUltra = liveRunReserveMicroUsd(template, gateway({}), tempDir())
+    const onSuper = liveRunReserveMicroUsd(
+      template,
+      gateway(demoLiveGatewayOptions(roleModels)),
+      tempDir(),
+    )
+    const onUltra = liveRunReserveMicroUsd(template, gateway({ maxCorrections: 0 }), tempDir())
     const first = DEMO_ALLOWANCE.periods[0]?.daily ?? { public: 0, judges: 0 }
     expect(onSuper).toBeLessThanOrEqual(first.judges)
     expect(onSuper).toBeLessThanOrEqual(first.public)
     // Ultra's worst case did not fit even the public pool: why live runs moved to Super.
     expect(onUltra).toBeGreaterThan(first.public)
     expect(statSync(template.file).mtimeMs).toBe(before)
+  })
+
+  it('refuses to price a run for a gateway that would retry: the reserve covers one attempt', () => {
+    const retrying = new ProviderGateway({
+      provider: new RecordedFirstProvider('nebius', [], new FakeNebius()),
+      ledger: new BudgetLedger(':memory:'),
+      roleModels: DEFAULT_ROLE_MODELS.nebius ?? {},
+      liveModels: demoLiveGatewayOptions(DEFAULT_ROLE_MODELS.nebius ?? {}).liveModels,
+    })
+    expect(() => liveRunReserveMicroUsd(template, retrying, tempDir())).toThrow(/must not retry/)
   })
 })
 

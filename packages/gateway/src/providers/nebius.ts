@@ -68,6 +68,10 @@ export class NebiusProvider implements Provider {
         },
       },
       ...(request.reasoning ? {} : (findModel(request.model)?.reasoningOff ?? {})),
+      // Nemotron's thinking budget, as its serving stacks name it; Nebius does not document it.
+      ...(request.reasoning && request.reasoningBudget !== undefined
+        ? { reasoning_budget: request.reasoningBudget }
+        : {}),
     }
     let res: Response
     try {
