@@ -126,9 +126,15 @@ refused before any call. Philip chose option (a) on 25 October (KAL-20261025-056
   micro-USD. The UI offers a live run only while the visitor's pool has that much left today. The
   daily caps already stop at each pool's total, so this check covers both limits. The gateway
   still checks every call against the ledger.
-- **What this allows.** A typical live run costs about 0.007 USD. Before 1 December, that is about
-  seven public runs and one judges' run a day; each copy still has at most three. From 1 December,
-  judges have far more than they need. The daily amounts, totals and other limits are unchanged.
+- **What this allows, measured.** The one live check on the deployed demo (25 October,
+  KAL-20261025-056) took 96 seconds and cost 0.0246 USD. Super, reasoning, used all 12,000 output
+  tokens on its first answer, which was cut off and refused as invalid JSON (0.0136 USD). The
+  correction then succeeded (9.1k output tokens, 0.0110 USD), with 11 of 11 citations valid. So a
+  live run costs about 0.011 USD, or 0.025 with a correction. Before 1 December, that is about two
+  to four public runs a day, and one judges' run. In the judges' pool, a run whose first answer is
+  cut off fails, because the correction no longer fits the day's allowance. Each copy still has
+  at most three runs a day. From 1 December, the judges' pool covers many runs. The daily
+  amounts, totals and other limits are unchanged.
 
 ## Context
 
