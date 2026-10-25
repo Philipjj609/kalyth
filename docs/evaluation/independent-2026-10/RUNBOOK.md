@@ -15,8 +15,10 @@ mkdir -p $E/log $E/checks $E/envs $E/kalyth $E/pristine $E/runs
 sha256sum docs/evaluation/independent-2026-10/ground-truth.json
 ```
 
-The hash must be `f8328f6ef917896bc2581836a4a6d7a724124715096826a481196a2e2b382696`, or the hash
-of a version Philip approved. If it differs, stop.
+The hash must be `a7918daba624b8d84bf42be3a91e126953e01b13e3a1e609aafb43f778a3fe20` (version 2),
+or the hash of a later version Philip approved. If it differs, stop. Version 1
+(`f8328f6ef917896bc2581836a4a6d7a724124715096826a481196a2e2b382696`) is superseded and must not
+be used.
 
 Start `$E/log/run-log.md`. Record in it:
 
@@ -69,6 +71,10 @@ Each later clone must reinstall the package so that the editable install points 
 Run `uv pip install --python ... --no-deps -e <clone>/python/packages/autogen-studio` before each
 run of (a), and record it.
 
+Record `uv pip freeze --python $E/envs/autogen/Scripts/python.exe` and its SHA-256 in the log once
+the environment is built. Every arm and the scorer use this one environment. It must not change
+between arms; if it has to, every arm is run again on the new one.
+
 **(b) The template.** In each clone:
 
 ```bash
@@ -93,8 +99,9 @@ A preparing session writes the checks from `acceptanceChecks` in the truth.
 
 - **(a)** `$E/checks/a/test_hidden_scoping.py`. It uses `autogenstudio.web.app` with
   `AUTOGENSTUDIO_*` settings pointing at a temporary directory and SQLite database, and an auth
-  YAML of type `github` with a test `jwt_secret`. Tokens come from `AuthManager.create_token`.
-  The WebSocket checks use `TestClient.websocket_connect` with `?token=`.
+  YAML of type `github` with a test `jwt_secret`. Tokens come from `AuthManager.create_token`:
+  alice and bob with the default roles `["user"]`, carol with `roles=["admin"]`. The WebSocket
+  checks use `TestClient.websocket_connect` with `?token=`.
 - **(b)** `$E/checks/b/test_hidden_tenancy.py` plus `$E/checks/b/migration_check.sh`.
   - They create fixtures only through the HTTP API.
   - They read the database only through `information_schema` and `org_id` columns, never a guessed
@@ -104,11 +111,20 @@ A preparing session writes the checks from `acceptanceChecks` in the truth.
 
 Validate them on a fresh clone of the base commit:
 
-- every scoping, tenancy and migration check fails;
-- for (a), the owner happy paths (A-C11, A-C12) and A-C13 pass.
+- every scoping, tenancy and migration check fails, A-C16 (no admin bypass on HTTP) included;
+- for (a), the owner happy paths (A-C11, A-C12), A-C13 and the admin WebSocket exception (A-C15)
+  pass.
 
-Then record `sha256sum $E/checks/*/*` in the run log. From here on the checks change only to fix
-a bug shown on the base commit. Such a fix is applied to every arm and written in the log.
+**Baseline tests.** In the same clone and environment, run the base commit's own tests: for (a)
+`$E/envs/autogen/Scripts/python.exe -m pytest python/packages/autogen-studio/tests`; for (b) the
+backend tests on the scorer's PostgreSQL. Record which pass, fail or error. If they cannot be
+collected or run, fix the environment before any arm starts. Only tests that pass here count in
+M4.
+
+Then record `sha256sum $E/checks/*/*` in the run log. This happens before the first arm starts,
+so no arm's output has been seen by anyone when the checks are frozen. From here on the checks
+change only to fix a bug shown on the base commit. Such a fix is applied to every arm and written
+in the log.
 
 Usage: about 1 pp per scenario. On the full variant, the preparing session may also write a
 reference implementation in a throwaway clone, to show that the checks pass (about 2 pp). Delete
@@ -203,6 +219,8 @@ replay provider is replay-only.
    `pnpm demo:recording connect` writes this format, and reads the token hidden.
 5. Copy the task's `agentPrompt` from `GET /api/v1/tasks/:id`.
 6. Check that the package id equals the seed's.
+7. Record Philip's minutes for steps 3 and 4 and for step 3 of section 6 (verify and reconcile).
+   Together with the setup minutes of 4a or 4b, they are arm K's person-time.
 
 ## 5. Prompts
 
@@ -341,6 +359,9 @@ lexical order (KPR, KRP, PKR, PRK, RKP, RPK), and record the draw.
 
 ### Automatic (M1a, M1c paths, M4, M6)
 
+The file numbers below (M1a, M1c) are diagnostic only. They show where the arm changed code and
+are not a correctness score. For (a), the truth marks the file sets diagnostic (`files.role`).
+
 ```bash
 B=<base sha>; F=<final sha>; R=$E/runs/<run>
 git -C $R/repo diff --name-only --no-renames $B $F > $R/changed.txt
@@ -395,7 +416,15 @@ console.log(JSON.stringify({ recall: req.recall, missed: req.missed, precision: 
    - lines starting `Kalyth-Task:`;
    - branch names.
 3. **The sheet.** The reviewer gets the truth and a sheet per run. For each element unit, the
-   sheet marks it correct, partial or wrong, or untouched. It also lists the report's claims as
+   sheet marks it correct, partial or wrong, or untouched, by the unit's behaviour in the diff,
+   wherever the change sits. A check made once in shared code counts for every endpoint it
+   covers, and a different set of files is not an error. On (a):
+   - A-E21 is correct only if the admin-role exception is kept as it is and widened to nothing;
+     an arm that removes it scores the unit partial or wrong;
+   - an HTTP endpoint that gives the admin role, or any role, access to another user's rows is
+     wrong.
+
+   The sheet also lists the report's claims as
    supported, wrong or unsupported, and each out-of-truth change as harmful, unnecessary or
    justified extra. It records the unknowables raised, the honesty of the stated checks against
    `commands.txt`, the minutes spent, and the 1 to 5 merge rating.
@@ -409,7 +438,9 @@ console.log(JSON.stringify({ recall: req.recall, missed: req.missed, precision: 
   - the verdict for (a) and for (b) under PROTOCOL section 10;
   - the pauses and any runs not made;
   - the threats that applied;
-  - the usage per run and in total.
+  - the usage per run and in total, and arm K's person-time;
+  - which findings are static (read from source) and which a check showed at run time;
+  - "anecdotal" on every result that rests on a single run.
 - **What is kept:** transcripts, diffs, sheets and the log.
 - **What is cleaned up:** revoke every agent token, stop the servers, and remove the PostgreSQL
   container (`docker rm -f kalyth-eval-pg`).

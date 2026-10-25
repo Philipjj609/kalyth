@@ -1,12 +1,25 @@
 {
   "format": "kalyth-independent-eval/1",
-  "version": 1,
+  "version": 2,
   "status": "frozen",
-  "frozenAt": "2026-10-24",
+  "frozenAt": "2026-10-25",
   "writtenBy": "Claude Opus 5.5 in the evaluation-design session (not the session that implements Kalyth), acting as independent reviewer",
   "countersignedBy": null,
   "independence": "Written from the source of each repository at its pinned commit, read with git and grep, before any evaluation run exists. Kalyth's analyzer, impact traversal, context compiler and agents were not run on either scenario while writing it, and no context package for either scenario was read. For scenario template-tenancy-complete the writer read the recorded Navigator alternatives (deploy/demo/recordings/recordings.json, alternative A1), because the protocol takes that scenario's decision from them, and the demo walkthrough's account of earlier agent runs. Any later change is a new version with a new SHA-256, published with its evidence and applied to every arm; nothing is ever changed toward Kalyth's output.",
-  "unit": "Files are repository-relative paths of files that exist at the pinned commit. 'required' files are changed by every correct, complete implementation; 'acceptable' files may or may not change depending on design and are not penalised; any other changed existing file is out of scope. New files are listed for context and not scored at file level. Elements are scored from the diff by the blind reviewer; acceptance checks are run by the scorer.",
+  "unit": "Files are repository-relative paths of files that exist at the pinned commit. 'required' files are changed by every correct, complete implementation; 'acceptable' files may or may not change depending on design and are not penalised; any other changed existing file is out of scope. Where a scenario's files block has role 'diagnostic', its 'required' and 'acceptable' sets describe the expected per-route implementation and are not requirements: correctness rests on the acceptance checks and on element and endpoint completeness, and an implementation that changes fewer or different files is not penalised for it. New files are listed for context and not scored at file level. Elements are scored from the diff by the blind reviewer, by behaviour wherever the change sits; acceptance checks are run by the scorer.",
+  "changelog": [
+    {
+      "version": 1,
+      "date": "2026-10-24",
+      "change": "First frozen version."
+    },
+    {
+      "version": 2,
+      "date": "2026-10-25",
+      "reason": "ChatGPT's independent review of version 1 (Drive queue KAL-20261025-051) approved scenario autogen-studio-user-scoping in principle with two corrections. Both are applied; scenario template-tenancy-complete is unchanged. Revised by a Claude Opus 5.5 session that does not implement Kalyth, before any run and without any Kalyth output.",
+      "change": "(1) autogen-studio-user-scoping: the file-level 'required' and 'acceptable' sets are diagnostic (files.role), because authorisation may be centralised; correctness rests on the acceptance checks and element and endpoint completeness. (2) autogen-studio-user-scoping: the run WebSocket's existing admin-role exception (ws.py, run_websocket: 'admin' in the token's roles skips the owner check) is kept explicitly as a narrow WebSocket-only exception, and HTTP endpoints get no role exception; the request, notes, acceptance criteria, decision summary, A-E21, A-R7, the new A-R9, the check setup and the new checks A-C15 and A-C16 say the same thing."
+    }
+  ],
   "scenarios": [
     {
       "id": "autogen-studio-user-scoping",
@@ -16,19 +29,19 @@
       "commitDate": "2026-10-16",
       "subtree": "python/packages/autogen-studio",
       "license": "MIT (LICENSE-CODE)",
-      "request": "Make every AutoGen Studio API endpoint act as the authenticated user. Today most routes take a user_id query parameter or body field and trust it, so any client can read or change another user's teams, sessions, runs, messages, galleries and settings. Change the backend so that the user is always the one the existing authentication established (request.state.user, set by AuthMiddleware; with auth type \"none\" this is the default user), and a user_id sent by a client is ignored. Every read, list, create, update and delete of Team, Session, Run, Message, Gallery and Settings rows must be limited to rows owned by that user; a row owned by another user is reported as not found (404) and is never changed. Rows created through the API get the authenticated user's id. The run WebSocket (/api/ws/runs/{run_id}) must check ownership before it registers the connection, and must close a connection that does not own the run without affecting the owner's run. Keep paths, methods and response shapes as they are, so the existing frontend keeps working; do not change the frontend. Add or update backend tests for the new behaviour.",
+      "request": "Make every AutoGen Studio API endpoint act as the authenticated user. Today most routes take a user_id query parameter or body field and trust it, so any client can read or change another user's teams, sessions, runs, messages, galleries and settings. Change the backend so that the user is always the one the existing authentication established (request.state.user, set by AuthMiddleware; with auth type \"none\" this is the default user), and a user_id sent by a client is ignored. Every read, list, create, update and delete of Team, Session, Run, Message, Gallery and Settings rows must be limited to rows owned by that user; a row owned by another user is reported as not found (404) and is never changed. Rows created through the API get the authenticated user's id. The run WebSocket (/api/ws/runs/{run_id}) must check ownership before it registers the connection, and must close a connection that does not own the run without affecting the owner's run; its existing exception for the admin role stays, and is the only role exception (see the notes). Keep paths, methods and response shapes as they are, so the existing frontend keeps working; do not change the frontend. Add or update backend tests for the new behaviour.",
       "notes": [
         "Ignore a client-supplied user_id (query parameter or body field); do not reject the request. The frontend keeps sending it.",
         "Report another user's row as not found (404), not as forbidden.",
-        "No role gets extra access through these endpoints. The run WebSocket's existing exception for the admin role may stay as it is.",
+        "Keep the run WebSocket's existing exception for the admin role, and keep it as narrow as it is today: a connection whose token carries the role \"admin\" may open /api/ws/runs/{run_id} for a run it does not own. Check it together with ownership, before the connection is registered. It is the only role exception, and it applies to that WebSocket only: no HTTP endpoint gives the admin role, or any other role, access to another user's rows.",
         "Out of scope: the MCP endpoints (/api/mcp/...), the validation endpoints, the auth endpoints, authentication itself (providers, tokens, middleware), the database schema and the frontend.",
         "Do not add endpoints."
       ],
       "acceptanceCriteria": [
         "Every Team, Session, Run, Message, Gallery and Settings endpoint acts as the authenticated user; a user_id query parameter or body field sent by the client has no effect.",
-        "Listing returns only the caller's rows; reading, updating or deleting another user's row returns 404 and leaves the row unchanged.",
+        "Listing returns only the caller's rows; reading, updating or deleting another user's row returns 404 and leaves the row unchanged, whatever roles the caller has.",
         "Rows created through the API are owned by the caller, and a create or update request cannot overwrite another user's row by sending its id.",
-        "The run WebSocket closes a connection from a user who does not own the run before registering it, and the owner's connection and run continue.",
+        "The run WebSocket closes a connection from a user who neither owns the run nor has the admin role before registering it, and the owner's connection and run continue; a connection with the admin role is accepted for any run, as today.",
         "Paths, methods and response shapes are unchanged, and the frontend is not changed.",
         "Backend tests cover cross-user access for each resource and pass, and the existing tests still pass."
       ],
@@ -39,7 +52,7 @@
         "question": "How should the API decide whose data a request may read or change?",
         "acceptedAlternative": {
           "title": "Owner from authentication",
-          "summary": "Take the user from the existing authentication on every endpoint and ignore a client-supplied user_id. Read, list, create, update and delete only rows owned by that user; report other users' rows as not found. The run WebSocket checks ownership before registering a connection."
+          "summary": "Take the user from the existing authentication on every endpoint and ignore a client-supplied user_id. Read, list, create, update and delete only rows owned by that user; report other users' rows as not found. The run WebSocket checks ownership before registering a connection and keeps its existing admin-role exception, which no HTTP endpoint gets."
         },
         "directChanges": [
           {
@@ -69,6 +82,8 @@
         ]
       },
       "files": {
+        "role": "diagnostic",
+        "roleNote": "The sets describe where the obvious per-route implementation changes code. Authorisation may be centralised instead (a shared dependency, the database manager or the connection manager), so a correct implementation may change fewer or different files. File recall and precision are reported as diagnostics only and enter no verdict; correctness is scored by the acceptance checks and by element and endpoint completeness.",
         "required": [
           "python/packages/autogen-studio/autogenstudio/web/routes/teams.py",
           "python/packages/autogen-studio/autogenstudio/web/routes/sessions.py",
@@ -332,7 +347,7 @@
               "method": "WEBSOCKET",
               "path": "/api/ws/runs/{run_id}",
               "handler": "ws.run_websocket",
-              "change": "today ws_manager.connect registers the socket under run_id, replacing the owner's, before authentication, and on refusal the finally block calls disconnect(run_id), which stops the owner's run; authenticate and check ownership first, close the refused socket without touching the manager's state for that run"
+              "change": "today ws_manager.connect registers the socket under run_id, replacing the owner's, before authentication, and on refusal the finally block calls disconnect(run_id), which stops the owner's run; authenticate and check ownership first, close the refused socket without touching the manager's state for that run; keep the existing exception that lets a token whose roles include admin connect to any run, checked at the same point and widened to nothing else"
             }
           ],
           "unaffected": [
@@ -386,16 +401,42 @@
         {
           "id": "A-R7",
           "covers": ["A-E21"],
-          "change": "The run WebSocket authenticates and checks ownership before ws_manager.connect, and refusing a connection does not disconnect or stop the owner's run."
+          "change": "The run WebSocket authenticates and checks ownership before ws_manager.connect, keeping the existing admin-role exception as it is, and refusing a connection does not disconnect or stop the owner's run."
         },
         {
           "id": "A-R8",
           "covers": [],
           "change": "Backend tests for cross-user access to each resource, including the WebSocket."
+        },
+        {
+          "id": "A-R9",
+          "covers": [
+            "A-E1",
+            "A-E2",
+            "A-E3",
+            "A-E4",
+            "A-E5",
+            "A-E6",
+            "A-E7",
+            "A-E8",
+            "A-E9",
+            "A-E10",
+            "A-E11",
+            "A-E12",
+            "A-E13",
+            "A-E14",
+            "A-E15",
+            "A-E16",
+            "A-E17",
+            "A-E18",
+            "A-E19",
+            "A-E20"
+          ],
+          "change": "No HTTP endpoint gives the admin role, or any other role, access to another user's rows; the admin exception exists on the run WebSocket only."
         }
       ],
       "acceptanceChecks": {
-        "setup": "The real app (autogenstudio.web.app) with a temporary SQLite database and app directory, and an auth config of type github with a test jwt_secret, so AuthMiddleware sets request.state.user from a bearer token. Users alice and bob get tokens from AuthManager.create_token. Alice owns team TA, session SA (team TA), run RA (session SA, status active), message MA (run RA, stored with user_id None), gallery GA and settings STA; bob owns TB, SB, RB, GB and STB. Each check sends bob's token unless it says otherwise, and adds ?user_id=alice or a body user_id of alice wherever the route accepts one.",
+        "setup": "The real app (autogenstudio.web.app) with a temporary SQLite database and app directory, and an auth config of type github with a test jwt_secret, so AuthMiddleware sets request.state.user from a bearer token. Users alice and bob get tokens from AuthManager.create_token with the default roles [\"user\"]; carol, who owns no rows, gets one with roles [\"admin\"]. Alice owns team TA, session SA (team TA), run RA (session SA, status active), message MA (run RA, stored with user_id None), gallery GA and settings STA; bob owns TB, SB, RB, GB and STB. Each check sends bob's token unless it says otherwise, and adds ?user_id=alice or a body user_id of alice wherever the route accepts one.",
         "checks": [
           {
             "id": "A-C1",
@@ -466,6 +507,16 @@
             "id": "A-C14",
             "covers": ["A-R8"],
             "check": "The arm's own tests and the base commit's tests that pass at the base commit pass in the arm's tree; ruff check passes on the changed files."
+          },
+          {
+            "id": "A-C15",
+            "covers": ["A-R7"],
+            "check": "With no other socket connected to RA, carol connects to /api/ws/runs/{RA} with her admin token: the connection is accepted and receives the 'connected' system message. The owner is not connected at the same time, because the manager keeps one connection per run and the request does not change that."
+          },
+          {
+            "id": "A-C16",
+            "covers": ["A-R9"],
+            "check": "With carol's admin token: GET /api/teams/, /api/sessions/ and /api/gallery/ with ?user_id=alice return none of alice's rows; GET /api/teams/{TA}, /api/sessions/{SA}, /api/runs/{RA}, /api/runs/{RA}/messages and /api/gallery/{GA} return 404; DELETE /api/sessions/{SA} and PUT /api/gallery/{GA} leave the rows unchanged; GET /api/settings/?user_id=alice never returns STA."
           }
         ]
       },
