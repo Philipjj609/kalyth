@@ -94,25 +94,28 @@ Run after step 8, before the demo is announced. All of these are free.
 - [ ] No dedicated IPv4: `fly ips list -a kalyth-demo` shows a shared IPv4 and IPv6 only.
 - [ ] The demo answers: `curl -s https://kalyth-demo.fly.dev/api/v1/health` gives
   `{"status":"ok",…,"mode":"demo"}`, and the page opens in a browser.
-- [ ] **The volume is writable by the server.** The server runs as the `node` user, and Fly.io's
-  documentation does not say who owns a mounted volume. If the server fails at startup with
-  `EACCES` on `/data`, the volume's root is owned by root; it needs a one-time `chown`, or an
-  entrypoint that changes ownership before dropping to `node`.
-  `fly ssh console -a kalyth-demo -C "ls -la /data /data/work"` shows the owner.
+- [ ] **The volume is writable by the server.** The server runs as the `node` user.
+  `fly ssh console -a kalyth-demo -C "ls -la /data /data/work"` shows the owner. At staging on
+  25 October, Fly.io mounted the volume as the image's user ("Mounting /dev/vdc at /data w/ uid:
+  1000"), so no `chown` was needed. If a later deployment fails at startup with `EACCES` on
+  `/data`, the volume's root is owned by root and needs a one-time `chown`.
 - [ ] **Disk space.** `fly ssh console -a kalyth-demo -C "df -h /data"`. The sandbox limit assumes
-  that at least about 930 MB of the 1 GB volume is usable.
+  that at least about 720 MB of the 1 GB volume is usable (640 MB of sandboxes, the template, the
+  ledgers and writes in flight). At staging the volume showed 974 MB, of which about 909 MB usable.
 - [ ] **A client cannot choose its own address.** The per-address limits trust `Fly-Client-IP`, and
   Fly.io's documentation does not say whether its proxy replaces a value the client sends. Start
   21 sessions, each with a different forged value; the server allows 20 new sessions an hour per
   address:
 
   ```bash
-  for i in $(seq 1 21); do curl -s -o /dev/null -w "%{http_code} " -X POST -H "x-kalyth-ui: 1" -H "Fly-Client-IP: 192.0.2.$i" https://kalyth-demo.fly.dev/api/v1/demo/session; done; echo
+  for i in $(seq 1 21); do curl -s -o /dev/null -w "%{http_code} " -X POST -H "x-kalyth-ui: 1" -H "content-type: application/json" -d '{}' -H "Fly-Client-IP: 192.0.2.$i" https://kalyth-demo.fly.dev/api/v1/demo/session; done; echo
   ```
 
   A `429` by the 21st means the proxy replaced the forged values, so they all counted against the
   real address: safe. Twenty-one `201` mean a client can choose its own key, which must be fixed
-  before public testing. The sessions this creates expire after a day without use.
+  before public testing. The sessions this creates expire after a day without use. At staging on
+  25 October the proxy replaced them: after six earlier sessions from the same address, the 15th
+  forged request was refused with `429`.
 - [ ] **Idle suspension.** Leave the demo without visitors for 15 minutes, then
   `fly machine list -a kalyth-demo`. `suspended` means the health checks do not keep the machine
   awake, so it is billed mostly while in use. `started` means something keeps it running: the cost

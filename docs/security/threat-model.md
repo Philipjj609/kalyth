@@ -198,8 +198,9 @@ internet. It is built and tested, and not deployed. It adds these controls:
 - **Requests.** Host and Origin must be the public host. Every change needs the UI's
   `x-kalyth-ui` header, which a cross-site form cannot send. Requests, new sessions, runs, judge
   code attempts and traffic are limited per address (`Fly-Client-IP` behind Fly.io's proxy). An
-  IPv6 /64 counts as one address. Whether Fly.io's proxy replaces a `Fly-Client-IP` that a client
-  sends is checked at staging (`deploy/README.md`).
+  IPv6 /64 counts as one address. Fly.io's proxy replaces a `Fly-Client-IP` that a client sends:
+  at staging on 25 October 2026, 21 new sessions with 21 forged values were all counted against
+  the real address and refused past its limit (`deploy/README.md`).
 - **Spend.**
   - Recorded runs are answered from recordings, with no consent, reservation or charge.
   - Live runs need the operator's consent and the demo's own key.
