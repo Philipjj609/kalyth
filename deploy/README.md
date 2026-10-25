@@ -120,10 +120,16 @@ Run after step 8, before the demo is announced. All of these are free.
   `fly machine list -a kalyth-demo`. `suspended` means the health checks do not keep the machine
   awake, so it is billed mostly while in use. `started` means something keeps it running: the cost
   is then the full 6.70 USD a month, which the budget already assumes. The next request should
-  wake a suspended machine within a second.
+  wake a suspended machine within a second. At staging on 25 October the machine was `suspended`
+  after 15 idle minutes, and the next health check answered in 0.82 seconds.
 - [ ] The secrets are set, by name only: `fly secrets list -a kalyth-demo`.
 
 ## A deploy token, only if automation needs one
+
+Releases are manual: Philip, or Claude at his request, runs `fly deploy` from a checked-out
+commit. A push to GitHub deploys nothing. CI only builds the image, and no workflow uses a secret
+or `flyctl`. At staging on 25 October, the app had no tokens (`fly tokens list -a kalyth-demo`),
+and every release was made by Philip's own login (`fly releases -a kalyth-demo`).
 
 Nothing needs a token today. If a script ever has to deploy, Philip creates a token scoped to this
 one app, with a short expiry (Fly.io's default is 20 years):

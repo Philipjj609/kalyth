@@ -8,9 +8,46 @@ decide.
 
 It is built for the Nebius x NVIDIA Global AI Hackathon (October 2026) and meant to outlive it.
 
+## Try the hosted demo
+
+**[kalyth-demo.fly.dev](https://kalyth-demo.fly.dev/)** opens your own copy of Kalyth's model of
+the [FastAPI full-stack template](https://github.com/fastapi/full-stack-fastapi-template), analysed
+at tag 0.12.0. Nothing you change there reaches other visitors. You can:
+
+- read the Situation page, the canvas and its lenses, and each element's evidence, pinned to lines
+  of the template's source;
+- start one of four change requests in the Navigator, and watch its recorded Nemotron run play
+  back, free and at once; the banner says whether you can also start live runs, and how many are
+  left today;
+- compare the alternatives, accept one, and commit the proposals, which makes new revisions of
+  your copy;
+- build the context package that a coding agent would get for the accepted decision.
+
+The hosted demo is deliberately narrower than Kalyth run locally
+([ADR 0019](docs/adr/0019-hosted-demo.md)):
+
+- **One project, no imports.** It holds the analysed template only and cannot analyse your
+  repository. Run Kalyth locally for that ([Analyse a repository](#analyse-a-repository)).
+- **No agent access.** MCP and agent tokens are off, so no coding agent can connect to it. The
+  hand-off to Claude Code is shown in the demo video and works locally
+  ([Connect a coding agent over MCP](#connect-a-coding-agent-over-mcp)).
+- **Live runs are capped.** Recorded runs are always free. A live run sends excerpts of the public
+  template, and nothing else, to Nemotron on Nebius Token Factory. Each copy has at most three live
+  runs a day, and all visitors share a small daily allowance (0.07 USD a day for the public and
+  0.03 USD for judges until 1 December, more during judging). When it is used up, live runs stop
+  until the next UTC day and the recorded runs still work.
+- **Copies are temporary.** A copy is deleted after a day without use, or sooner, oldest idle copy
+  first, when new visitors need the space. Every copy starts again from the template when the
+  server restarts or is redeployed.
+- **One small machine.** It sleeps while nobody uses it; the first request after a pause takes
+  about a second. Each address has a daily traffic limit.
+
+Judges: the Devpost testing instructions give a code. **I have a judge code**, in the banner, gives
+your copy the judges' own allowance.
+
 ## Status
 
-Phase 1. What exists and is tested today, in CI on Linux and Windows: 510 unit and integration
+Phase 1. What exists and is tested today, in CI on Linux and Windows: 517 unit and integration
 tests, and 63 browser tests of the main flows by keyboard (57 of the local workbench, 6 of the
 hosted demo), with automated accessibility checks:
 
@@ -73,17 +110,13 @@ differed only in quote style or layout. See
 [docs/feedback/nebius-nvidia.md](docs/feedback/nebius-nvidia.md) and
 [ADR 0017](docs/adr/0017-bounded-citation-normalisation.md).
 
-The hosted demo mode is built and tested (`pnpm demo:serve`,
-[ADR 0019](docs/adr/0019-hosted-demo.md)). It gives each visitor their own copy of the analysed
-FastAPI template, recorded Nemotron runs and a capped allowance of live ones. It is not deployed
-yet.
+The hosted demo runs on Fly.io at [kalyth-demo.fly.dev](https://kalyth-demo.fly.dev/) (above). It
+is the same server in demo mode (`pnpm demo:serve` runs it locally). It is deployed by hand, never
+automatically on a push ([deploy/README.md](deploy/README.md)).
 
-Not done yet:
-
-- the evaluation run against frozen ground truth ([docs/evaluation](docs/evaluation/README.md));
-- the hosted demo's deployment ([deploy/README.md](deploy/README.md)).
-
-This README will say when each one works.
+Not done yet: the evaluation run against frozen ground truth
+([docs/evaluation](docs/evaluation/README.md)). The ground truth is frozen; the run is planned for
+after 30 October. This README will say when it has run, and what it found.
 
 ## Limitations
 
@@ -100,7 +133,8 @@ This README will say when each one works.
   (`User.org_id`); reconciliation then finds no element of that name, though it shows the field
   added to the entity.
 - **Local first.** One person per server, on one machine. The hosted demo gives each visitor a
-  copy of one analysed project and does not import repositories.
+  copy of one analysed project, with no imports and no agent access
+  ([Try the hosted demo](#try-the-hosted-demo)).
 
 ## Requirements
 
@@ -130,11 +164,19 @@ PowerShell: `$env:KALYTH_DB = ".kalyth/demo.db"; pnpm dev:server`.
 
 ## Analyse a repository
 
-Kalyth clones the repository bare, over HTTPS, into `.kalyth/repos`. It never executes it.
+Kalyth reads a repository from its git objects at one ref, and never executes it. A remote one is
+cloned bare, over HTTPS only, into `.kalyth/repos`:
 
 ```bash
 pnpm ingest --repo https://github.com/fastapi/full-stack-fastapi-template --ref 0.12.0
 pnpm ingest --repo https://github.com/fastapi/full-stack-fastapi-template --ref b1125d8839482cb7bbae603ddc6d0081bf87532e
+```
+
+A repository on your machine is read in place, without a copy. Only committed work at the ref is
+read, so commit what you want analysed:
+
+```bash
+pnpm ingest --repo /absolute/path/to/your/repo --ref main --project "your project"
 ```
 
 The second run advances the project's source snapshot. Claims whose evidence changed are refreshed
@@ -147,9 +189,16 @@ change request through a person's decision and a coding agent's work over MCP to
 learns from that work. It runs on the committed demo template (`deploy/demo/template.json`, the
 pinned FastAPI template analysed at tag 0.12.0) and replays a Nemotron run recorded against it, at
 no cost. `pnpm demo:setup` builds the same analysis from scratch, with new ids that no recording
-matches. [docs/demo/recording.md](docs/demo/recording.md) is how the video is recorded:
-`pnpm demo:recording setup` makes a disposable project, repository and agent worktree for a real,
-interactive Claude Code hand-off. `pnpm demo:agent` is a scripted stand-in for rehearsals only.
+matches.
+
+The hand-off in the video is real. Claude Code connects to Kalyth over HTTP MCP with a token for
+that one project, and is given the task prompt Kalyth wrote. It claims the task, reads the context
+package, makes the change in its own worktree, commits it with the task's trailer and submits an
+execution report. Kalyth then checks the report against git and reconciles the commit with the
+decision. Nobody types while Claude Code works; the browser steps are scripted, and the video says
+so. [docs/demo/recording.md](docs/demo/recording.md) is how it is recorded:
+`pnpm demo:recording setup` makes a disposable project, repository and agent worktree for the
+hand-off. `pnpm demo:agent` is a scripted stand-in for rehearsals only.
 
 ## Navigator and model providers
 
