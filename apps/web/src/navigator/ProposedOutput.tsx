@@ -72,6 +72,20 @@ const citations = (n: number) => (
   </span>
 )
 
+/**
+ * An alternative's own claim rarely cites anything; it is grounded through its changes, each of
+ * which carries its citations. Saying "no citations" there would read as "ungrounded".
+ */
+const alternativeCitations = (alt: { citations: number; changes: { citations: number }[] }) => {
+  const inChanges = alt.changes.reduce((n, c) => n + c.citations, 0)
+  if (alt.citations > 0 || inChanges === 0) return citations(alt.citations)
+  return (
+    <span className="text-2xs text-fg-muted tabular-nums">
+      {plural(inChanges, 'citation')} in its changes
+    </span>
+  )
+}
+
 function AlternativeCard({
   alternative: alt,
   index,
@@ -111,7 +125,7 @@ function AlternativeCard({
           {alt.mock && <MockBadge size="sm" />}
           <BasisBadge basis={alt.claim.basis} size="sm" />
           {confidence && <ConfidenceBadge level={confidence.level} size="sm" />}
-          {citations(alt.citations)}
+          {alternativeCitations(alt)}
         </div>
         <h4 id={titleId} className="break-words font-semibold text-[14px] text-fg leading-snug">
           {alt.title || 'Untitled alternative'}

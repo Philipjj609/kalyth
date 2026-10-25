@@ -580,7 +580,7 @@ function GraphCanvas({ model }: { model: RevisionModel }) {
           />
           <Controls showInteractive={false} position="bottom-left" />
         </ReactFlow>
-        <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2">
+        <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2 max-md:hidden">
           {prefs.legend && wide && (
             <Legend
               lens={lens}

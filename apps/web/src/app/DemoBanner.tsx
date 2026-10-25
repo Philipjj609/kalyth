@@ -24,16 +24,21 @@ export function DemoBanner() {
     >
       <FlaskConical aria-hidden className="size-4 shrink-0" />
       <p className="min-w-0 flex-1">
-        <span className="font-semibold">Hosted demo.</span> This is your own copy of the analysed
-        FastAPI template; nothing you change reaches anyone else, and it is kept while you use it.
+        <span className="font-semibold">Hosted demo.</span>{' '}
+        {/* A phone gets the short version; the rest is said where it matters. */}
+        <span className="max-md:hidden">
+          This is your own copy of the analysed FastAPI template; nothing you change reaches anyone
+          else, and it is kept while you use it.
+        </span>
+        <span className="md:hidden">Your own copy of the analysed FastAPI template.</span>
         {session.demoRestarted() && ' Your earlier copy had expired, so this is a fresh one.'}{' '}
         {view &&
           (liveRunState(view).ok
             ? `Recorded Nemotron runs are free; you have ${plural(view.live.runsLeftToday, 'live run')} left today, on ${modelName(view.live.model)}.`
             : view.live.available
               ? 'Recorded Nemotron runs are free; no live run can start now.'
-              : 'Recorded Nemotron runs are free; live runs are off.')}{' '}
-        Agent access over MCP is off here.
+              : 'Recorded Nemotron runs are free; live runs are off.')}
+        <span className="max-md:hidden"> Agent access over MCP is off here.</span>
       </p>
       {view?.judge ? (
         <span className="inline-flex items-center gap-1 font-medium">

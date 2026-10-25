@@ -45,12 +45,12 @@ function DemoIndicator() {
         type="button"
         aria-label={`${summary}. Open the Navigator`}
         onClick={() => wb.setView('navigator')}
-        className="tone-neutral inline-flex h-7 items-center gap-1.5 rounded-md border border-tone-bd bg-tone-bg px-2 text-tone-fg text-xs transition-colors hover:brightness-[0.97]"
+        className="tone-neutral inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-tone-bd bg-tone-bg px-2 text-tone-fg text-xs transition-colors hover:brightness-[0.97]"
       >
         <Compass aria-hidden className="size-3.5" />
-        <span>Nemotron</span>
-        <span aria-hidden className="h-3 w-px bg-tone-bd" />
-        <span className="tabular-nums">{text}</span>
+        <span className="max-md:hidden">Nemotron</span>
+        <span aria-hidden className="h-3 w-px bg-tone-bd max-md:hidden" />
+        <span className="tabular-nums max-sm:hidden">{text}</span>
       </button>
     </Tip>
   )

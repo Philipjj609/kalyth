@@ -125,7 +125,7 @@ function StatusStrip({ status }: { status: NavigatorStatus }) {
       aria-label="Provider, budget and consent"
       className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel"
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.6fr)] divide-x divide-border">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.6fr)] divide-x divide-border max-md:grid-cols-1 max-md:divide-x-0 max-md:divide-y">
         <Cell label="Provider">
           {demo ? (
             <DemoProviderCell />
@@ -154,7 +154,9 @@ function StatusStrip({ status }: { status: NavigatorStatus }) {
           )}
         </Cell>
         <Cell label="Models">
-          {modelEntries.length === 0 ? (
+          {demo ? (
+            <DemoModelsCell models={models} />
+          ) : modelEntries.length === 0 ? (
             <p className="text-fg-subtle text-xs">None configured.</p>
           ) : (
             <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
@@ -174,7 +176,7 @@ function StatusStrip({ status }: { status: NavigatorStatus }) {
             <DemoAllowanceCell />
           ) : (
             <>
-              <dl className="grid grid-cols-4 gap-x-3 text-xs">
+              <dl className="grid grid-cols-4 gap-x-3 text-xs max-md:grid-cols-2">
                 {(
                   [
                     ['Cap', budget.capMicroUsd],
@@ -349,6 +351,32 @@ function DemoProviderCell() {
           : 'Live runs are off in this demo.'}
       </p>
     </>
+  )
+}
+
+/**
+ * In the hosted demo, which model answers what: the recorded change requests were made with the
+ * configured model (Nemotron Ultra), and a request the visitor writes runs live on the demo's
+ * live model (Nemotron Super), as the run record of each run also shows.
+ */
+function DemoModelsCell({ models }: { models: Readonly<Record<string, string>> }) {
+  const live = useDemoSession().data?.live.model ?? null
+  const rows: [string, string | null][] = [
+    ['Recorded change requests', models.alternatives ?? null],
+    ['Your own change requests', live],
+    ['Summaries', models.summarize ?? null],
+  ]
+  return (
+    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
+      {rows.map(([role, model]) => (
+        <div key={role} className="contents">
+          <dt className="text-fg-muted">{role}</dt>
+          <dd className="truncate" title={model ?? undefined}>
+            {modelName(model)}
+          </dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 

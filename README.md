@@ -52,8 +52,8 @@ your copy the judges' own allowance.
 ## Status
 
 Phase 1. What exists and is tested today, in CI on Linux and Windows: 532 unit and integration
-tests, and 63 browser tests of the main flows by keyboard (57 of the local workbench, 6 of the
-hosted demo), with automated accessibility checks:
+tests, and 64 browser tests of the main flows by keyboard (57 of the local workbench, 7 of the
+hosted demo, one at phone width), with automated accessibility checks:
 
 - **Semantic kernel.**
   - Typed objects and relations, with a registry of allowed endpoints and impact rules.

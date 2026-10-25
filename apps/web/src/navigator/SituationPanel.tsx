@@ -90,7 +90,7 @@ export function SituationView({
   const staleCount = STALE_STATUSES.reduce((n, k) => n + (s.freshness[k] ?? 0), 0)
   const counted = FRESHNESS_STATUSES.filter((k) => (s.freshness[k] ?? 0) > 0)
   return (
-    <div className="grid grid-cols-4 divide-x divide-border">
+    <div className="grid grid-cols-4 divide-x divide-border max-md:grid-cols-2 max-md:divide-x-0">
       <Column title="Open decisions" count={s.openDecisions.length}>
         {s.openDecisions.length === 0 ? (
           <p className="text-fg-subtle text-xs">None open.</p>

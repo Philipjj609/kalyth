@@ -226,8 +226,8 @@ export function CreateTaskForm({
           ) : decisionList.length === 0 ? (
             <div className="rounded-md border border-border border-dashed">
               <EmptyState icon={<Gavel />} title="No accepted decisions yet" className="py-6">
-                A task implements an accepted decision. Accept an alternative in the Navigator
-                first.
+                A task implements an accepted decision. Accept an alternative in its change, under
+                Changes, first.
               </EmptyState>
             </div>
           ) : (

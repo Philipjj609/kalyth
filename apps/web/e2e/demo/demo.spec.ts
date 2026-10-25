@@ -44,19 +44,18 @@ test('runs a recorded preset and accepts an alternative, by keyboard', async ({ 
   const recorded = presets.getByRole('button', { name: 'Add multi-tenancy' })
   await recorded.focus()
   await press(page, 'Enter')
-  await expect(page.getByRole('main')).toContainText('Run status: Completed', { timeout: 15_000 })
-  await expect(page.getByRole('main')).toContainText('Recorded Nemotron run')
+  // A recorded preset opens its change thread, as a request typed by hand does.
+  await expect(page).toHaveURL(/view=change&run=nav_/)
+  const next = page.getByRole('main').getByRole('region', { name: 'Next step' })
+  await expect(next).toContainText('Review the proposed alternatives', { timeout: 15_000 })
+  await expect(page.getByRole('main')).toContainText('recorded, replayed free')
   expect(await axeViolations(page)).toEqual([])
 
   // Commit the run's proposal, then accept one of its alternatives, all in this visitor's copy.
-  const review = page.getByRole('link', { name: 'Commit the proposal to decide' }).first()
-  await review.focus()
-  await press(page, 'Enter')
-  await expect(page).toHaveURL(/view=proposals/)
-  const commit = page.getByRole('button', { name: 'Commit', exact: true }).first()
+  const commit = next.getByRole('button', { name: 'Commit the alternatives' })
   await commit.focus()
   await press(page, 'Enter')
-  await expect(page.getByRole('button', { name: 'Commit', exact: true })).toHaveCount(0)
+  await expect(page).toHaveURL(/decision=/)
 
   await page.locator('body').focus()
   // 3: Changes.
@@ -80,6 +79,35 @@ test('runs a recorded preset and accepts an alternative, by keyboard', async ({ 
   await press(page, 'Enter')
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('main')).toContainText('Decision status: Accepted')
+})
+
+test('a first visit says what Kalyth does, and the workspace works at phone width', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } })
+  const page = await context.newPage()
+  await open(page)
+  const start = page.getByRole('main').getByText('Start here').locator('..')
+  await expect(start).toContainText('evidence-backed engineering model')
+  const overflow = () =>
+    page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(await overflow()).toBe(0)
+  expect(await axeViolations(page)).toEqual([])
+
+  // The rail starts folded, and every place stays one tap away.
+  const rail = page.getByRole('navigation', { name: 'Workspace' })
+  for (const place of ['Canvas', 'Changes', 'Records', 'Agents and packages', 'History']) {
+    await rail.getByRole('link', { name: place, exact: true }).click()
+    await expect(page.getByRole('main')).toBeVisible()
+    expect(await overflow()).toBe(0)
+  }
+  await rail.getByRole('link', { name: 'Situation', exact: true }).click()
+  await page.getByRole('link', { name: 'Try a recorded change request' }).click()
+  await expect(panel(page, 'Try a change request')).toBeVisible()
+  // Which model answers what: the recordings, and a visitor's own requests.
+  const models = page.getByRole('region', { name: 'Provider, budget and consent' })
+  await expect(models).toContainText('Recorded change requestsNemotron 3 Ultra')
+  await context.close()
 })
 
 test('says why live runs are paused, and recorded runs keep working', async ({ page }) => {

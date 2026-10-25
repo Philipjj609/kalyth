@@ -47,7 +47,8 @@ export function DecisionsToPlan({
         </p>
       ) : decisions.length === 0 ? (
         <EmptyState icon={<Gavel />} title="No accepted decisions yet" className="py-8">
-          Tasks carry out accepted decisions. Accept an alternative in the Navigator first.
+          Tasks carry out accepted decisions. Accept an alternative in its change, under Changes,
+          first.
         </EmptyState>
       ) : (
         <ul className="divide-y divide-border">

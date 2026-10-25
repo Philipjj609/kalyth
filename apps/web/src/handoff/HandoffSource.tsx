@@ -201,7 +201,7 @@ export function HandoffSource({
             ) : (decisions.data?.decisions.length ?? 0) === 0 ? (
               <div className="rounded-md border border-border border-dashed">
                 <EmptyState icon={<Gavel />} title="No accepted decisions yet" className="py-6">
-                  Accept an alternative in the Navigator, or pick elements instead.
+                  Accept an alternative in its change, under Changes, or pick elements instead.
                 </EmptyState>
               </div>
             ) : (

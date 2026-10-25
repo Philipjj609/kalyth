@@ -46,10 +46,21 @@ export function DemoPresets({ runs }: { runs: readonly NavigatorRun[] | undefine
                 onClick={() =>
                   start.mutate(presetBody(preset), {
                     onSuccess: (run) => {
-                      navigate({ run: run.id })
+                      // As with a request typed by hand: alternatives open their change thread,
+                      // which follows the run; a summary, or a run that failed at once, stays here.
+                      navigate(
+                        run.input.kind === 'alternatives' && run.status !== 'failed'
+                          ? { view: 'change', run: run.id, decision: undefined }
+                          : { run: run.id },
+                      )
                       notify({
-                        tone: 'neutral',
-                        title: 'Navigator run started',
+                        tone: run.status === 'failed' ? 'danger' : 'neutral',
+                        title:
+                          run.status === 'failed'
+                            ? 'The run did not start'
+                            : preset.recorded
+                              ? 'Replaying the recorded run'
+                              : 'Live run started',
                         body: preset.label,
                       })
                     },

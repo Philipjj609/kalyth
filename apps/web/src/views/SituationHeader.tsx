@@ -2,6 +2,7 @@ import { ArrowRight } from 'lucide-react'
 import { useMemo } from 'react'
 import { useDecisions, useNavigatorRuns, useProposals } from '../api/queries.ts'
 import type { AppLocation } from '../app/location.ts'
+import { useSessionMode } from '../app/session.ts'
 import { useWorkbench } from '../app/workbench.ts'
 import { changeItems, nextStep, openQuestions } from '../change/model.ts'
 import { cn } from '../lib/cn.ts'
@@ -28,6 +29,7 @@ export function SituationHeader() {
   const decisions = useDecisions(wb.projectId)
   const runs = useNavigatorRuns(wb.projectId)
   const proposals = useProposals(wb.projectId)
+  const demo = useSessionMode() === 'demo'
 
   const needs = useMemo((): Need[] => {
     const list: Need[] = []
@@ -152,6 +154,29 @@ export function SituationHeader() {
               Sketch from the idea
               <ArrowRight aria-hidden className="ml-1.5 inline size-4" />
             </ButtonLink>
+          </div>
+        ) : needs.length === 0 && demo ? (
+          // A first visit to the hosted demo: what Kalyth does, and the quickest way to see it.
+          <div className="flex flex-wrap items-center gap-4 border border-accent bg-accent-soft px-5 py-3.5">
+            <div className="min-w-0 flex-[1_1_360px] space-y-1">
+              <p className="text-fg-muted text-sm">Start here</p>
+              <p className="font-semibold text-[17px] leading-snug">
+                Kalyth keeps an evidence-backed engineering model of a codebase
+              </p>
+              <p className="text-fg-muted text-sm">
+                Everything below was read from the FastAPI template’s source, each fact pinned to
+                the lines it came from. Ask for a change: Kalyth proposes alternatives with what
+                each one affects and the questions that decide between them. You compare and decide,
+                and it compiles what a coding agent needs. Recorded runs are free and instant.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <ButtonLink to={{ view: 'navigator' }} primary>
+                Try a recorded change request
+                <ArrowRight aria-hidden className="ml-1.5 inline size-4" />
+              </ButtonLink>
+              <ButtonLink to={{ view: 'graph' }}>Explore the canvas</ButtonLink>
+            </div>
           </div>
         ) : needs.length === 0 ? (
           <div className="flex flex-wrap items-center gap-4 border border-border bg-surface px-5 py-4">

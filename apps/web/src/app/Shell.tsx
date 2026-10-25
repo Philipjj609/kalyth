@@ -73,6 +73,8 @@ const TasksView = lazy(() =>
 
 const INSPECTOR_WIDTH_KEY = 'kalyth.inspector.width'
 const RAIL_KEY = 'kalyth.rail'
+/** Below the md breakpoint (768 px): a phone, or a narrow window. */
+const NARROW_SCREEN = '(max-width: 767px)'
 const INSPECTOR_MIN = 300
 const INSPECTOR_MAX = 680
 
@@ -159,7 +161,11 @@ function ProjectWorkbench({
     setInspectorWidth(w)
     store(INSPECTOR_WIDTH_KEY, String(w))
   }, [])
-  const [railFolded, setRailFolded] = useState(() => stored(RAIL_KEY) === 'folded')
+  // Folded by default on a narrow screen, so the view keeps the width; a person's choice wins.
+  const [railFolded, setRailFolded] = useState(() => {
+    const choice = stored(RAIL_KEY)
+    return choice ? choice === 'folded' : window.matchMedia(NARROW_SCREEN).matches
+  })
   const toggleRail = useCallback(() => {
     setRailFolded((prev) => {
       store(RAIL_KEY, prev ? 'open' : 'folded')
@@ -273,7 +279,9 @@ function ProjectWorkbench({
         search={<PaletteButton onOpen={() => setPaletteOpen(true)} />}
         actions={
           <>
-            <FreshnessSummary />
+            <span className="contents max-md:hidden">
+              <FreshnessSummary />
+            </span>
             <NavigatorIndicator />
           </>
         }
@@ -318,7 +326,7 @@ function ProjectWorkbench({
               <aside
                 aria-label="Inspector"
                 style={{ width: inspectorWidth }}
-                className="flex shrink-0 flex-col bg-surface max-[1100px]:absolute max-[1100px]:inset-y-0 max-[1100px]:right-0 max-[1100px]:z-30 max-[1100px]:shadow-pop"
+                className="flex max-w-full shrink-0 flex-col bg-surface max-[1100px]:absolute max-[1100px]:inset-y-0 max-[1100px]:right-0 max-[1100px]:z-30 max-[1100px]:shadow-pop"
               >
                 <Inspector onClose={() => select(undefined)} />
               </aside>
@@ -396,11 +404,12 @@ function PaletteButton({ onOpen }: { onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      className="ml-2 flex h-8 min-w-0 max-w-[420px] flex-[1_1_240px] items-center gap-2 rounded-md border border-border-strong bg-bg px-2.5 text-left text-fg-muted text-sm hover:border-fg-muted"
+      aria-label="Search elements, changes or actions"
+      className="ml-2 flex h-8 min-w-0 max-w-[420px] flex-[1_1_240px] items-center gap-2 rounded-md border border-border-strong bg-bg px-2.5 text-left text-fg-muted text-sm hover:border-fg-muted max-md:ml-0 max-md:w-8 max-md:flex-none max-md:justify-center max-md:px-0"
     >
       <Search aria-hidden className="size-4 shrink-0" />
-      <span className="truncate">Search elements, changes or actions…</span>
-      <span className="ml-auto shrink-0">
+      <span className="truncate max-md:hidden">Search elements, changes or actions…</span>
+      <span className="ml-auto shrink-0 max-md:hidden">
         <Kbd>Ctrl K</Kbd>
       </span>
     </button>
@@ -435,14 +444,15 @@ function Frame({
 }) {
   const [, navigate] = useAppLocation()
   return (
-    <div className="flex h-full min-w-[1024px] flex-col bg-bg text-fg">
+    <div className="flex h-full flex-col bg-bg text-fg">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-surface focus:px-3 focus:py-1.5"
       >
         Skip to content
       </a>
-      <header className="flex h-12 shrink-0 items-center gap-3 border-border border-b bg-surface px-3">
+      {/* On a narrow screen the bar keeps what fits and scrolls sideways for the rest. */}
+      <header className="flex h-12 shrink-0 items-center gap-3 overflow-x-auto border-border border-b bg-surface px-3 scrollbar-thin max-md:gap-2 max-md:px-2">
         <button
           type="button"
           onClick={() =>
@@ -457,14 +467,16 @@ function Frame({
           aria-label="Kalyth: all projects"
         >
           <Logo />
-          <span className="text-[15px]">Kalyth</span>
+          <span className="text-[15px] max-md:hidden">Kalyth</span>
         </button>
-        <span aria-hidden className="h-5 w-px bg-border" />
+        <span aria-hidden className="h-5 w-px bg-border max-md:hidden" />
         <ProjectSwitcher projects={projects} currentId={currentId} />
         {revisionControl}
         {search}
-        <div className="ml-auto flex items-center gap-1">
-          <ShortcutsHelp />
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <span className="contents max-md:hidden">
+            <ShortcutsHelp />
+          </span>
           <ThemeToggle />
           {actions}
         </div>
@@ -516,7 +528,11 @@ function ProjectSwitcher({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <Button variant="ghost" className="max-w-[320px] px-2 text-fg" aria-label="Switch project">
+        <Button
+          variant="ghost"
+          className="max-w-[320px] shrink px-2 text-fg max-md:max-w-[150px]"
+          aria-label="Switch project"
+        >
           <FolderGit2 aria-hidden />
           <span className="truncate font-semibold">{current?.name ?? 'Project'}</span>
           <ChevronDown aria-hidden className="text-fg-subtle" />
@@ -595,8 +611,8 @@ function RevisionSelect() {
     return list
   }, [history.data, wb.headRevision])
   return (
-    <label className="flex items-center gap-2 text-fg-muted text-xs">
-      <span>Revision</span>
+    <label className="flex shrink-0 items-center gap-2 text-fg-muted text-xs max-sm:hidden">
+      <span className="max-md:sr-only">Revision</span>
       <select
         className={cn(
           'select-control h-7 rounded-md border bg-surface pl-2 font-mono text-xs',
