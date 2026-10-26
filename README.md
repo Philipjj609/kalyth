@@ -108,19 +108,47 @@ hosted demo, one at phone width), with automated accessibility checks:
   header.
 - **Export and import.** A project's whole history, as one file that rebuilds the same state.
 
-Real NVIDIA Nemotron inference through Nebius Token Factory has been tested in a keyed spike under
-a 0.25 USD cap. After a prompt fix, 37 of 52 citations matched their source exactly; the rest
-differed only in quote style or layout. See
-[docs/feedback/nebius-nvidia.md](docs/feedback/nebius-nvidia.md) and
-[ADR 0017](docs/adr/0017-bounded-citation-normalisation.md).
+### NVIDIA Nemotron on Nebius Token Factory
+
+Every model call goes through Nebius Token Factory's OpenAI-compatible API, through one gateway
+([ADR 0010](docs/adr/0010-provider-gateway-grounding-and-navigator.md)):
+
+- **Change requests** use Nemotron 3 Ultra (`nvidia/Nemotron-3-Ultra-550b-a55b`). The hosted
+  demo's four presets replay Ultra answers recorded on Nebius against the same project.
+- **Element summaries, the evaluation harness, and the hosted demo's live change requests** use
+  Nemotron 3 Super (`nvidia/nemotron-3-super-120b-a12b`). In the hosted demo, Super reasons
+  within a budget of 8,000 thinking tokens and 14,000 output tokens, with one attempt per run
+  ([ADR 0019](docs/adr/0019-hosted-demo.md)).
+- **Every call** asks for structured output against a strict JSON schema. Every citation is
+  checked against the pinned source. The call needs the project's consent, and its worst-case
+  cost is reserved in a spend ledger before it is made.
+
+### Evidence so far
+
+- **Grounding.** In the keyed spike (0.25 USD cap), after a prompt fix, 37 of 52 citations matched
+  their source exactly; the rest differed only in quote style or layout
+  ([ADR 0017](docs/adr/0017-bounded-citation-normalisation.md)). In the recorded multi-tenancy run
+  the demo replays, 25 of 39 citations are exact and 4 more match after that bounded
+  normalisation. The 9 items that failed a check, 7 of them for a quote not found in the cited
+  source, were dropped, not repaired.
+- **Live runs in the hosted demo.** Three configurations of Nemotron Super were measured on the
+  same request (ADR 0019). Unbounded reasoning ran out of output tokens once and cost 0.025 USD.
+  Reasoning off was fast but gave inconsistent alternatives. Bounded reasoning, the one deployed,
+  answered on its first attempt in 33 seconds for 0.008 USD, with 4 of 4 citations exact.
+- **Agent hand-off.** Claude Code, connected over MCP, claimed a task, made the change in its own
+  worktree, committed it with the task's trailer and reported. Kalyth verified the report against
+  git and reconciled the commit with the decision (the demo video, and
+  [docs/releases/v0.1.0-rc.1.md](docs/releases/v0.1.0-rc.1.md)).
+- **Not done yet: the independent evaluation.** It is a blinded comparison of the same coding
+  agent given a plain prompt, retrieved repository files, or Kalyth's context package and MCP
+  tools, on a demanding change to a pinned open-source repository. Its
+  ground truth was reviewed by someone other than the implementer and frozen (version 2, on the
+  branch `eval/independent-2026-10`). The run is planned for after the hackathon submission, and
+  this README will say what it found ([docs/evaluation](docs/evaluation/README.md)).
 
 The hosted demo runs on Fly.io at [kalyth-demo.fly.dev](https://kalyth-demo.fly.dev/) (above). It
-is the same server in demo mode (`pnpm demo:serve` runs it locally). It is deployed by hand, never
-automatically on a push ([deploy/README.md](deploy/README.md)).
-
-Not done yet: the evaluation run against frozen ground truth
-([docs/evaluation](docs/evaluation/README.md)). The ground truth is frozen; the run is planned for
-after 30 October. This README will say when it has run, and what it found.
+is the same server in demo mode (`pnpm demo:serve` runs it locally), deployed by hand from the
+release tag, never automatically on a push ([deploy/README.md](deploy/README.md)).
 
 ## Limitations
 
@@ -336,8 +364,13 @@ repository root at startup. A variable set in the environment wins over `.env`, 
 - [docs/security/threat-model.md](docs/security/threat-model.md): the threat model for local mode.
   [SECURITY.md](SECURITY.md) explains how to report a vulnerability.
 - [docs/evaluation](docs/evaluation/README.md): the evaluation and its ground truth.
-- [docs/demo/walkthrough.md](docs/demo/walkthrough.md): the demo script.
-- [docs/releases](docs/releases/v0.1.0-rc.1.md): release notes, starting with 0.1.0-rc.1.
+- [docs/demo/walkthrough.md](docs/demo/walkthrough.md): the demo script, and
+  [docs/demo/recording.md](docs/demo/recording.md): how the video was made.
+- [docs/releases/v0.1.0.md](docs/releases/v0.1.0.md): the competition release, what was checked
+  and what is known not to work.
+- [docs/hackathon/submission.md](docs/hackathon/submission.md): the hackathon submission text.
+- [docs/feedback/nebius-nvidia.md](docs/feedback/nebius-nvidia.md): what we hit with Nebius Token
+  Factory and the Nemotron models.
 
 ## Repository layout
 
@@ -354,6 +387,13 @@ apps/server          HTTP API, MCP server and command-line tools over the servic
 apps/web             workbench UI (React, React Flow)
 docs/adr             architecture decision records
 ```
+
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) describes the workflow and
+the checks every change passes (`pnpm check`, and `pnpm build && pnpm test:e2e` for the UI), and
+[AGENTS.md](AGENTS.md) the conventions for coding agents working in this repository. Report
+vulnerabilities as [SECURITY.md](SECURITY.md) describes, not in a public issue.
 
 ## License
 

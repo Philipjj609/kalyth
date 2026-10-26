@@ -1,5 +1,13 @@
 # Evaluation ground truth (gate G6)
 
+> **Status, 26 October 2026.** This page describes gate G6's harness and its draft truth, which was
+> never frozen. The evaluation that replaces it is independent of the implementer and lives on the
+> branch [`eval/independent-2026-10`](https://github.com/Philipjj609/kalyth/tree/eval/independent-2026-10/docs/evaluation/independent-2026-10):
+> a protocol, a runbook and a frozen truth (version 2, SHA-256
+> `a7918daba624b8d84bf42be3a91e126953e01b13e3a1e609aafb43f778a3fe20`). It has not been run; the run
+> is planned for after the hackathon submission, and its results will be reported whatever they
+> are.
+
 The evaluation asks whether a coding agent finds the right files to change more reliably with a
 Kalyth context package than with plain retrieval. It uses the same NVIDIA Nemotron model and token
 budget in both conditions, on the pinned holdout repository. The ground truth is the set of

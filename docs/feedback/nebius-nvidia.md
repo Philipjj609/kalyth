@@ -61,3 +61,24 @@ separate 0.30 USD cap: 0.058 USD in all. Each preset needed one call, with no co
 - **Super, summary.** All seven rejected citations swapped Python's double quotes for single
   quotes, the pattern seen in the spike, even with the prompt asking for exact copies. ADR 0017's
   opt-in Python fallback accepts all seven.
+
+## 2026-10-25: live runs in the hosted demo (KAL-20261025-055 to 058)
+
+- **Worst-case reservations and small budgets.** Kalyth reserves a call's worst case before making
+  it: prompt bytes as input tokens, plus the full output limit. For an alternatives call on
+  Nemotron 3 Ultra that was 0.0715 USD, above the demo's daily pools (0.07 and 0.03 USD), so no
+  live run could start. The actual cost of the recorded Ultra runs was 0.020 to 0.030 USD. A
+  token-counting endpoint, or a per-call price ceiling on the platform, would let small capped
+  deployments reserve less. We moved live runs to Nemotron 3 Super instead.
+- **Super with reasoning on can use its whole output budget thinking.** One answer used all
+  12,000 output tokens and ended before its JSON was complete; the correction succeeded with
+  9,094 tokens. With reasoning off, answers came in 22 seconds but the alternatives were much
+  weaker.
+- **Reasoning budget.** Token Factory accepted a `reasoning_budget` field for
+  `nvidia/nemotron-3-super-120b-a12b` (as Nemotron's serving stacks name it), but we found it in
+  no Nebius documentation. In our one test the model reasoned for 5,166 tokens, under the budget
+  of 8,000, so we could not see whether it is enforced. Documenting it, and whether it is
+  enforced, would let callers bound latency and cost with confidence.
+- **Reasoning returned separately.** With reasoning on, the response carried the reasoning in
+  `message.reasoning_content` and the answer alone in `content`, and `usage` reported
+  `completion_tokens_details.reasoning_tokens`. That made measuring the thinking easy.
