@@ -1,15 +1,15 @@
 # Feedback log: Nebius Token Factory and NVIDIA models
 
-The hackathon submission asks for feedback on these tools. This log records what we hit while
-building Kalyth, with dates. It records only what we checked; it is not a review.
+The hackathon submission asks for feedback on these tools. This log records what I hit while
+building Kalyth, with dates. It records only what I checked; it is not a review.
 
 ## 2026-10-16
 
-- **Spend control.** Token Factory documents prepaid billing, but we found no documented hard spend
+- **Spend control.** Token Factory documents prepaid billing, but I found no documented hard spend
   cap. Kalyth therefore enforces its own cap in a local ledger before every call
   (ADR 0010). A per-key or per-project spend limit on the platform would remove the need.
 - **Reasoning switch.** The documentation index has no page on turning reasoning on or off for
-  reasoning models such as Nemotron 3. We assume `chat_template_kwargs.enable_thinking` and will
+  reasoning models such as Nemotron 3. I assume `chat_template_kwargs.enable_thinking` and will
   confirm it in the keyed spike.
 - **Structured output docs.** The JSON mode page explains `response_format` with `json_schema`
   clearly, and recommends also putting the schema in the prompt. Its `json_schema` cURL example
@@ -69,15 +69,15 @@ separate 0.30 USD cap: 0.058 USD in all. Each preset needed one call, with no co
   Nemotron 3 Ultra that was 0.0715 USD, above the demo's daily pools (0.07 and 0.03 USD), so no
   live run could start. The actual cost of the recorded Ultra runs was 0.020 to 0.030 USD. A
   token-counting endpoint, or a per-call price ceiling on the platform, would let small capped
-  deployments reserve less. We moved live runs to Nemotron 3 Super instead.
+  deployments reserve less. I moved live runs to Nemotron 3 Super instead.
 - **Super with reasoning on can use its whole output budget thinking.** One answer used all
   12,000 output tokens and ended before its JSON was complete; the correction succeeded with
   9,094 tokens. With reasoning off, answers came in 22 seconds but the alternatives were much
   weaker.
 - **Reasoning budget.** Token Factory accepted a `reasoning_budget` field for
-  `nvidia/nemotron-3-super-120b-a12b` (as Nemotron's serving stacks name it), but we found it in
-  no Nebius documentation. In our one test the model reasoned for 5,166 tokens, under the budget
-  of 8,000, so we could not see whether it is enforced. Documenting it, and whether it is
+  `nvidia/nemotron-3-super-120b-a12b` (as Nemotron's serving stacks name it), but I found it in
+  no Nebius documentation. In my one test the model reasoned for 5,166 tokens, under the budget
+  of 8,000, so I could not see whether it is enforced. Documenting it, and whether it is
   enforced, would let callers bound latency and cost with confidence.
 - **Reasoning returned separately.** With reasoning on, the response carried the reasoning in
   `message.reasoning_content` and the answer alone in `content`, and `usage` reported

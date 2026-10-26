@@ -8,6 +8,11 @@ decide.
 
 It is built for the Nebius x NVIDIA Global AI Hackathon (October 2026) and meant to outlive it.
 
+I, Philip Ciuca, develop Kalyth as an individual developer, with extensive AI assistance: Claude
+Code for most of the implementation, and other AI tools, ChatGPT among them, for research,
+architecture, testing and review. I set the direction and make the product, spending and release
+decisions.
+
 ## Try the hosted demo
 
 **[kalyth-demo.fly.dev](https://kalyth-demo.fly.dev/)** opens your own copy of Kalyth's model of
@@ -142,9 +147,10 @@ Every model call goes through Nebius Token Factory's OpenAI-compatible API, thro
 - **Not done yet: the independent evaluation.** It is a blinded comparison of the same coding
   agent given a plain prompt, retrieved repository files, or Kalyth's context package and MCP
   tools, on a demanding change to a pinned open-source repository. Its
-  ground truth was reviewed by someone other than the implementer and frozen (version 2, on the
-  branch `eval/independent-2026-10`). The run is planned for after the hackathon submission, and
-  this README will say what it found ([docs/evaluation](docs/evaluation/README.md)).
+  ground truth was drafted by an AI session separate from Kalyth's implementation, reviewed by
+  ChatGPT, approved by me and frozen (version 2, on the branch `eval/independent-2026-10`). The
+  run is planned for after the hackathon submission, and this README will say what it found
+  ([docs/evaluation](docs/evaluation/README.md)).
 
 The hosted demo runs on Fly.io at [kalyth-demo.fly.dev](https://kalyth-demo.fly.dev/) (above). It
 is the same server in demo mode (`pnpm demo:serve` runs it locally), deployed by hand from the
@@ -369,7 +375,7 @@ repository root at startup. A variable set in the environment wins over `.env`, 
 - [docs/releases/v0.1.0.md](docs/releases/v0.1.0.md): the competition release, what was checked
   and what is known not to work.
 - [docs/hackathon/submission.md](docs/hackathon/submission.md): the hackathon submission text.
-- [docs/feedback/nebius-nvidia.md](docs/feedback/nebius-nvidia.md): what we hit with Nebius Token
+- [docs/feedback/nebius-nvidia.md](docs/feedback/nebius-nvidia.md): what I hit with Nebius Token
   Factory and the Nemotron models.
 
 ## Repository layout

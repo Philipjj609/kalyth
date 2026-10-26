@@ -21,7 +21,7 @@ kept with the code so it describes the release it submits, [v0.1.0](../releases/
 
 Coding agents are good at writing code and poor at knowing what a change touches, which design was
 chosen and why, or whether what they did matches the decision. That knowledge lives in people's
-heads and scattered documents, and it goes stale. We wanted one model of the system that people
+heads and scattered documents, and it goes stale. I wanted one model of the system that people
 and agents read and change together, where every claim says where it came from.
 
 ### What it does
@@ -36,7 +36,11 @@ coding agent over MCP. Claude Code claims the task, makes the change, commits it
 verifies the report against git, and reconciles the commit with the decision, so the model learns
 what changed.
 
-### How we built it
+### How I built it
+
+I built Kalyth as an individual developer, with extensive AI assistance: Claude Code wrote most of
+the implementation, and other AI tools, ChatGPT among them, helped with research, architecture,
+testing and review. I set the direction and made the product, spending and release decisions.
 
 A TypeScript monorepo: a semantic kernel with immutable revisions and a replayable event log on
 SQLite; a tree-sitter analyser; a provider gateway; the Navigator; a context compiler; task leases
@@ -53,17 +57,17 @@ The hosted demo runs on Fly.io: each visitor gets a private copy of the analysed
 full-stack template. Four change requests replay Nemotron Ultra answers recorded on Nebius, free
 and instant, and a small daily allowance pays for live runs on Super.
 
-### Challenges we ran into
+### Challenges I ran into
 
 - **Grounding.** Models swapped quote styles and joined lines when citing code. A prompt fix and a
   bounded, audited normalisation brought exact matches up without accepting invented quotes.
 - **Spend under tiny budgets.** Reserving the worst case before each call keeps spend bounded, but
-  Ultra's worst case did not fit the demo's daily allowance. We measured three configurations of
+  Ultra's worst case did not fit the demo's daily allowance. I measured three configurations of
   Super and chose bounded reasoning with one attempt: about 30 seconds and 0.01 USD a run.
 - **A real agent hand-off on camera.** Recording Claude Code unattended meant tightening its
   permissions, and two runs stopped at the commit before the final take.
 
-### Accomplishments that we're proud of
+### Accomplishments that I'm proud of
 
 - A kernel where nothing changes without a revision, and the event log reproduces the state.
 - A real, verified hand-off from a person's decision to Claude Code and back into the model.
@@ -71,7 +75,7 @@ and instant, and a small daily allowance pays for live runs on Super.
 - A hosted demo that is safe to leave open: private copies, capped spend, no agent access, and
   accessibility checks on every main flow.
 
-### What we learned
+### What I learned
 
 Grounding and spend control belong in the platform, not in the prompt. Agents become far more
 useful when they get a decision with its constraints and open questions, rather than a pile of
@@ -103,14 +107,14 @@ connect Claude Code or Codex; the video shows a real hand-off.
 
 From the project's [feedback log](../feedback/nebius-nvidia.md):
 
-- The OpenAI-compatible API and structured outputs worked without an SDK; we found two typos in
+- The OpenAI-compatible API and structured outputs worked without an SDK; I found two typos in
   the JSON-mode example.
 - Nemotron citations often swapped Python's quote styles or joined lines; asking for exact copies
   helped but did not remove it.
-- There is no documented spend cap per key or project, so we built our own ledger. A token-counting
+- There is no documented spend cap per key or project, so Kalyth keeps its own spend ledger. A token-counting
   endpoint or a per-call price ceiling would let small deployments reserve less.
 - Super with reasoning on sometimes spent its whole output budget thinking. Token Factory accepted
-  `reasoning_budget`, which we found in no Nebius documentation; documenting it, and whether it is
+  `reasoning_budget`, which I found in no Nebius documentation; documenting it, and whether it is
   enforced, would help.
 - Reasoning returned separately in `reasoning_content`, with reasoning tokens counted in `usage`,
   which made it easy to measure.
