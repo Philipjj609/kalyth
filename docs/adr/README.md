@@ -31,3 +31,7 @@ cite those entries where a decision came from review.
 | [0023](0023-decision-facets-and-package-revalidation.md) | Decision facets and package revalidation | Accepted (D4, KAL-20261019-034) |
 | [0024](0024-reconciliation.md) | Reconciliation after an agent's work: task prompt, person-filed reports, recorded findings and `realizes` links | Proposed (technical lead review); amended 2026-10-20 |
 | [0025](0025-larger-repositories.md) | Larger repositories: ingest in parts, scoped keys for repeated names, routes only from routers, and a first canvas view that opens one big box | Accepted |
+| [0026](0026-knowledge-libraries-and-pack.md) | Knowledge libraries, the knowledge pack and curation: Principle and Pattern, maturity and hypotheses, matching versus support, sources and licences | Proposed, for review (future branch) |
+| [0027](0027-knowledge-identity-storage-and-pins.md) | Knowledge identity, storage, pins and composition across libraries: one logical kernel, resolvers, correspondences, conflicts as decisions, export format 2 | Proposed, for review (future branch) |
+| [0028](0028-scenarios-parameters-and-applicability.md) | Scenarios, parameters and deterministic applicability: dimensions and units, provenance, uncertainty, contradictions, three-valued verdicts with explanations | Proposed, for review (future branch) |
+| [0029](0029-assessments-freshness-and-methods.md) | Assessments, their freshness, and methods that use knowledge: dependency sets, checks, hypotheses, the explorer and agent access | Proposed, for review (future branch) |

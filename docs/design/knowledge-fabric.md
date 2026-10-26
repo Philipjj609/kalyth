@@ -3,8 +3,10 @@
 Status: proposed specification, not implemented. Written on 26 October 2026 on the branch
 `future/engineering-intelligence`, after the submission of v0.1.0, which it does not change. It
 details part 1 of [the roadmap](../roadmap/engineering-intelligence.md) and the parts of 2, 3 and 6
-that knowledge needs. Every decision below becomes an ADR, reviewed by ChatGPT and approved by
-Philip, before code.
+that knowledge needs. ChatGPT reviewed it and Philip approved it as the basis for K0 on 26 October.
+The contracts are now ADRs 0026 to 0029, which refine and take precedence over this document where
+they differ (for example the relations `exceptWhen` and `realizesPrinciple`, the verdicts
+`excepted`, `conflicting` and `notAssessed`, and `core.LibraryUse` and `core.Correspondence`).
 
 ## 1. The problem, stated narrowly
 
