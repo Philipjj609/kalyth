@@ -33,8 +33,30 @@ export function checkScenarioRecords(
     if (o.lifecycle !== 'active') continue
     if (o.type === 'core.Scenario') checkScenario(overlay, o, add)
     if (o.type === 'core.Parameter') checkParameter(overlay, o, pinContent, add)
+    if (o.type === 'core.Correspondence') checkCorrespondence(overlay, o, add)
   }
   return issues
+}
+
+/**
+ * A correspondence relates two of the project's pins, of objects in different libraries (ADR 0027
+ * §5). Two items of one library are related inside that library, never here.
+ */
+function checkCorrespondence(
+  state: StateView,
+  c: ObjectVersion,
+  add: (c: string, m: string) => void,
+) {
+  const [a, b] = [c.attributes.a, c.attributes.b].map((id) => state.getEvidence(String(id))?.source)
+  if (
+    a?.kind !== 'knowledge' ||
+    b?.kind !== 'knowledge' ||
+    a.target !== 'object' ||
+    b.target !== 'object'
+  )
+    return add('correspondence.not_pins', 'a correspondence relates two pins of knowledge objects')
+  if (a.library === b.library)
+    add('correspondence.same_library', 'a correspondence relates items of two different libraries')
 }
 
 function checkScenario(state: StateView, s: ObjectVersion, add: (c: string, m: string) => void) {

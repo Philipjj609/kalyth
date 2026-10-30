@@ -164,6 +164,7 @@ describe('multi-game platform: RTS and shooter, launch and expansion (K3 example
       unwrap(
         services.assess(owner, {
           projectId: ctx.project.id,
+          nature: 'expected',
           item: P[item],
           scenario: P[scenario],
           element: P[el],
@@ -188,12 +189,18 @@ describe('multi-game platform: RTS and shooter, launch and expansion (K3 example
       conceptName: 'Predictable entity motion',
       nature: 'expected',
     })
-    // A pattern with no declared conditions meets them all, and the explanation says what that
-    // means: nothing about whether to use it. The seed is still proposed, and says so.
+    // The library declares nothing that must hold for an authoritative server. The empty
+    // conjunction is true, but that establishes nothing, so the verdict is unknown and the
+    // item is underspecified (ADR 0028 A3). The seed is still proposed, and says so.
     const auth = assess('$authServer', '$expansion', '$shooter')
     expect(auth).toMatchObject({
-      verdict: 'conditionsMet',
-      explanation: { steps: [], knowledge: { maturity: 'proposed' } },
+      verdict: 'unknown',
+      explanation: {
+        steps: [],
+        evaluatedVerdict: 'conditionsMet',
+        specification: 'underspecified',
+        knowledge: { maturity: 'proposed' },
+      },
     })
     expect(auth.explanation.meaning).toMatch(/not a recommendation/)
     expect(auth.explanation.scenario).toMatchObject({
@@ -206,6 +213,7 @@ describe('multi-game platform: RTS and shooter, launch and expansion (K3 example
       const p = unwrap(
         services.proposeAssessment(owner, {
           projectId: ctx.project.id,
+          nature: 'expected',
           item: P[item],
           scenario: P[scenario],
           element: P[el],

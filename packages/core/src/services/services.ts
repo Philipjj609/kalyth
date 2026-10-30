@@ -453,6 +453,30 @@ export class KalythServices {
         },
       )
     })
+    // An item that declares nothing that must hold is not established as applicable (A3): ask
+    // which conditions the library should declare, once.
+    if (e.explanation.specification === 'underspecified') {
+      const text = `Which conditions must hold for "${e.explanation.item.name}"? Its library declares none, so whether it applies is not established.`
+      if (!open.some((x) => x.attributes.text === text))
+        ops.push(
+          {
+            op: 'createObject',
+            ref: '$underspecified',
+            type: 'core.Question',
+            stance: 'toBe',
+            attributes: { text, inquiryRole: 'decision-sensitive' },
+            claim: { basis: 'stated' },
+          },
+          {
+            op: 'createRelation',
+            type: 'concerns',
+            from: '$underspecified',
+            to: q.scenario,
+            stance: 'toBe',
+            claim: { basis: 'stated' },
+          },
+        )
+    }
     return this.proposeChange(caller, {
       projectId: project.id,
       baseRevision: revision,
@@ -497,15 +521,20 @@ export class KalythServices {
       if (!again.ok) reasons.push(`cannot evaluate again: ${again.message}`)
       else {
         const before = new Map(
-          [...inputs.parameters, ...inputs.scenarios, ...inputs.elements].map((x) => [
-            x.id,
-            x.revision,
-          ]),
+          [
+            ...inputs.parameters,
+            ...inputs.scenarios,
+            ...inputs.elements,
+            ...(inputs.correspondences ?? []),
+            ...(inputs.decisions ?? []),
+          ].map((x) => [x.id, x.revision]),
         )
         for (const x of [
           ...again.inputs.parameters,
           ...again.inputs.scenarios,
           ...again.inputs.elements,
+          ...(again.inputs.correspondences ?? []),
+          ...(again.inputs.decisions ?? []),
         ]) {
           const was = before.get(x.id)
           if (was === undefined) reasons.push(`${x.id} is now read`)

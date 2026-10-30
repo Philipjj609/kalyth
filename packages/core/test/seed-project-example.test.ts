@@ -39,7 +39,6 @@ describe('a project using the real-time networking seed library (K2 example)', (
     )
     const seeded = commit(lib.id, seed.ops, seed.rationale, agent)
     const lockstep = seeded.refs.$lockstep as string
-    const deterministic = seeded.refs.$isDeterministic as string
     const appliesWhen = unwrap(
       services.queryRelations(owner, { projectId: lib.id, types: ['appliesWhen'], from: lockstep }),
     ).relations[0]?.id as string

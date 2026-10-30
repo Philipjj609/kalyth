@@ -236,13 +236,32 @@ export const corePack: ObjectTypeDef[] = [
       item: z.string(),
       scenario: z.string(),
       element: z.string().optional(),
-      nature: z.enum(['current', 'expected', 'target', 'limit']),
+      // Records stored before nature was required were about expected values.
+      nature: z.enum(['current', 'expected', 'target', 'limit']).default('expected'),
       verdict: Verdict,
       explanation: z.json(),
       inputs: z.json(),
       producedBy: z.strictObject({ kind: z.literal('evaluator'), evaluatorVersion: z.string() }),
     }),
     references: [{ key: 'item', kind: 'evidence' }, 'scenario', 'element'],
+  },
+  {
+    type: 'core.Correspondence',
+    version: 1,
+    pack: 'core',
+    description:
+      'An explicit relation between items of two libraries, owned by the project (ADR 0027 §5). Without one, items of different libraries are never treated as one.',
+    attributes: z.strictObject({
+      /** Two of the project's pins, of different libraries. */
+      a: z.string(),
+      b: z.string(),
+      relation: z.enum(['sameAs', 'broader', 'narrower', 'related', 'conflictsWith']),
+      note: z.string().max(2000).default(''),
+    }),
+    references: [
+      { key: 'a', kind: 'evidence' },
+      { key: 'b', kind: 'evidence' },
+    ],
   },
   {
     type: 'core.LibraryUse',

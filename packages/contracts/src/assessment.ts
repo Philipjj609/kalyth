@@ -73,6 +73,9 @@ export const DependencySet = z.object({
   scenarios: z.array(RecordRead),
   elements: z.array(RecordRead),
   libraryUses: z.array(RecordRead),
+  /** Correspondences and decisions read across libraries (ADR 0027 §5); absent in older records. */
+  correspondences: z.array(RecordRead).optional(),
+  decisions: z.array(RecordRead).optional(),
   evaluatorVersion: z.string(),
 })
 export type DependencySet = z.infer<typeof DependencySet>
@@ -108,6 +111,10 @@ export const ExplanationStep = z.object({
   reason: UnknownReason.optional(),
   /** For `requires`: the required pattern's verdict. */
   requiredVerdict: Verdict.optional(),
+  /** The correspondence that let a parameter on another library's concept be used. */
+  correspondence: ObjectId.optional(),
+  /** Why the step reads as it does, when the reason alone does not say it. */
+  note: z.string().optional(),
 })
 export type ExplanationStep = z.infer<typeof ExplanationStep>
 
@@ -136,6 +143,30 @@ export const Explanation = z.object({
     disputed: z.boolean(),
   }),
   scenario: z.object({ id: ObjectId, status: z.string(), rationale: z.string() }),
+  /**
+   * What the three-valued logic computed, before presentation (ADR 0028 amendment A3). It differs
+   * from `verdict` when the item declares nothing that must hold, and when libraries disagree.
+   */
+  evaluatedVerdict: Verdict,
+  /**
+   * `underspecified` when the item declares no condition that must hold, so meeting its
+   * conditions would say nothing; its verdict is then `unknown`, never `conditionsMet` (A3).
+   */
+  specification: z.enum(['sufficient', 'underspecified']),
+  /** The same guidance in other libraries, assessed separately (ADR 0027 §5). */
+  alternatives: z
+    .array(
+      z.object({
+        item: z.object({ library: ProjectId, id: z.string(), revision: z.int(), name: z.string() }),
+        verdict: Verdict,
+        specification: z.enum(['sufficient', 'underspecified']),
+        correspondence: ObjectId,
+        relation: z.enum(['sameAs', 'conflictsWith']),
+      }),
+    )
+    .optional(),
+  /** The accepted decision that chose between conflicting guidance, when one did. */
+  settledBy: z.object({ decision: ObjectId, alternative: ObjectId, item: EvidenceId }).optional(),
   /** Always present: what the verdict means, and does not mean (ADR 0028 I8). */
   meaning: z.string(),
 })
@@ -149,8 +180,11 @@ export const AssessInput = z.object({
   scenario: ObjectId,
   /** Omitted for the whole system. */
   element: ObjectId.optional(),
-  /** Which values to assess; other natures are context only (ADR 0028 amendment A1). */
-  nature: ParameterNature.default('expected'),
+  /**
+   * Which values to assess; other natures are context only (ADR 0028 amendment A1). Required:
+   * a request always says which values it is about (A3).
+   */
+  nature: ParameterNature,
 })
 export type AssessInput = z.input<typeof AssessInput>
 

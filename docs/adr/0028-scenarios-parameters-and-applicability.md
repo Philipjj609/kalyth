@@ -282,3 +282,52 @@ limit of 256. So:
 `core.Parameter` keeps scope as two top-level attributes, `scenario` and `elements`, rather than a
 nested `scope` object, so that local refs in one proposal can name them (ADR 0030 A6). The meaning
 is unchanged: an empty `elements` is the whole system.
+
+## Amendment of 2026-10-30, K3 completion
+
+Philip accepted K3 at edff514 and decided the questions it left open. A3 refines contracts; A4
+records how K3 meets ADR 0027 §5 for several libraries, and where it departs from the letter of
+ADRs 0027 to 0029. The verdict set of §5 is unchanged, and no invariant changes.
+
+### A3. Explicit nature, any natures per scenario, and underspecified applicability
+
+- **Nature is required** in every new `assess` and `proposeAssessment` request. A stored
+  Assessment without one, from before this rule, is read as about `expected` values, so older
+  records stay readable and comparable.
+- **A scenario may hold parameters of every nature.** Nothing restricts a scenario to one; the
+  assessment chooses the nature it evaluates (A1).
+- **Declaring nothing that must hold establishes nothing.** The three-valued logic of §5 is kept
+  exactly: an item whose library declares no `appliesWhen` or `requires` still computes
+  `conditionsMet` when none of its exclusions hold, because an empty conjunction is true. That
+  computed value is recorded as `evaluatedVerdict`. The verdict presented, stored and acted on is
+  `unknown`, with `specification: "underspecified"`, and `proposeAssessment` asks one open
+  Question about which conditions should hold. An exclusion that does hold still gives
+  `conditionsNotMet`, since that is a declared, definite result. The same rule applies to an item
+  reached through `requires`.
+
+### A4. Several libraries
+
+- **Concepts across libraries** (ADR 0027 §5, I1): a parameter on a concept of library A is used
+  for a condition of library B only through a committed `core.Correspondence` with relation
+  `sameAs` between the project's pins of the two concepts, and only when their dimensions agree;
+  otherwise the condition is `unknown`, reason `incompatible`. Without a correspondence, a
+  parameter on a same-named concept of another library is never used; the condition is
+  `unknown`, reason `no-correspondence`, and the explanation names it. The name is used only to
+  explain, never to evaluate.
+- **The same guidance in several libraries** is named by a `sameAs` or `conflictsWith`
+  correspondence between the project's pins of the two items. Each item is assessed separately,
+  on its own library and revision; the explanation lists the others as `alternatives`.
+- **Opposing guidance** means definite verdicts that disagree (`conditionsMet` against
+  `conditionsNotMet` or `excepted`), or a `conflictsWith` correspondence. The verdict is then
+  `conflicting`. A definite verdict beside an unknown one is not a conflict; the primary item's
+  verdict is reported, with the others listed.
+- **Settling a conflict** is a person's decision (ADR 0027 §5): an accepted `core.Alternative`,
+  `alternativeOf` an accepted `core.Decision`, whose claim cites exactly one of the conflicting
+  pins. The verdict is then that item's, and the explanation names the decision as `settledBy`.
+  The decision and alternative are recorded dependencies, so reopening the decision makes the
+  assessment stale.
+- **Deviations to note:** `broader`, `narrower` and `related` correspondences are stored but not
+  used by the evaluator; ADR 0027 does not say how they would weigh. Settlement through an
+  alternative citing a pin is this amendment's reading of "a Decision may settle a conflict". The
+  evaluator's version moved to 2, so every assessment made before is stale with "evaluator
+  changed" until reassessed.

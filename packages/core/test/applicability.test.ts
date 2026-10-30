@@ -242,7 +242,7 @@ function assess(
       item: f.P[`$pin${item.slice(1)}`],
       scenario: f.P[scenario],
       ...(element ? { element: f.P[element] } : {}),
-      ...(nature ? { nature } : {}),
+      nature: nature ?? 'expected',
     }),
   )
 }
@@ -357,6 +357,7 @@ describe('conflicts, nature and missing values (ADR 0028 §3, amendment A1)', ()
     const p = unwrap(
       ctx.services.proposeAssessment(ctx.owner, {
         projectId: ctx.project.id,
+        nature: 'expected',
         item: f.P.$pinlockstep,
         scenario: f.P.$launch,
       }),
@@ -470,6 +471,7 @@ describe('assessment records (ADR 0029)', () => {
     const p = unwrap(
       ctx.services.proposeAssessment(ctx.owner, {
         projectId: ctx.project.id,
+        nature: 'expected',
         item: f.P.$pinlockstep,
         scenario: f.P.$launch,
         element: f.P.$rts,
@@ -511,6 +513,7 @@ describe('assessment records (ADR 0029)', () => {
     const honest = unwrap(
       ctx.services.assess(ctx.owner, {
         projectId: ctx.project.id,
+        nature: 'expected',
         item: f.P.$pinlockstep,
         scenario: f.P.$launch,
       }),
@@ -539,6 +542,7 @@ describe('assessment records (ADR 0029)', () => {
     const p = unwrap(
       ctx.services.proposeAssessment(ctx.owner, {
         projectId: ctx.project.id,
+        nature: 'expected',
         item: f.P.$pinlockstep,
         scenario: f.P.$launch,
       }),
@@ -564,6 +568,7 @@ describe('assessment records (ADR 0029)', () => {
     const p = unwrap(
       ctx.services.proposeAssessment(ctx.owner, {
         projectId: ctx.project.id,
+        nature: 'expected',
         item: f.P.$pinlockstep,
         scenario: f.P.$launch,
         element: f.P.$rts,
