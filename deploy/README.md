@@ -3,7 +3,8 @@
 The design and its limits are in [ADR 0019](../docs/adr/0019-hosted-demo.md). **Nothing here is
 done without Philip's go-ahead** (amendment 1), and every step that creates a paid resource is
 marked **paid: go-ahead needed**. Fly.io cannot cap spending, so the configuration and the audit
-below are what keep the cost to about 14 USD through 15 December.
+below are what keep the hosting cost to about 16 USD through 23 December (an estimate: the earlier
+plan was about 14 USD through 15 December).
 
 Philip runs these commands himself, with his own `flyctl` login, or asks Claude to run one named
 step. No Fly.io token is kept in the repository, in GitHub or in CI.
@@ -155,6 +156,7 @@ treat it as able to spend. Revoke it when the run is done: `fly tokens list -a k
 
 - To pause at once: `fly scale count 0 -a kalyth-demo`. The volume, and with it the spend ledgers,
   stays, at 0.15 USD a month.
-- After judging ends on 15 December 2026 at 12:00 PT: `fly apps destroy kalyth-demo`, which removes
+- After the Judging Period ends on 23 December 2026 at 12:00 PT (the rules require the project to
+  stay available until then): `fly apps destroy kalyth-demo`, which removes
   the machine and the volume. Then revoke the demo's Nebius key in the Nebius console, and any
   deploy token that still exists.

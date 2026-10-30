@@ -17,20 +17,24 @@ export interface AllowanceSchedule {
 }
 
 /**
- * The approved allowance (ADR 0019, amendment 4): 0.10 USD a day before judging and 0.40 USD a day
- * during it, split between the public and judges, and nothing after judging ends on 15 December
- * at 12:00 PT. The totals add up to 9.20 USD; with recordings and staging, 10 USD.
+ * The approved allowance (ADR 0019, amendment 4; judges' pool raised on 30 October 2026). The
+ * official Judging Period runs from 9 December 2026 at 09:00 PT to 23 December at 12:00 PT. The
+ * public gets 0.07 USD a day before it and 0.15 USD a day during it; judges share 0.30 USD a day
+ * from now until it ends, within 8.00 USD in total. Nothing is spent after it ends. The totals
+ * bound everything each pool's ledger has ever spent: 12.49 USD for both.
  */
 export const DEMO_ALLOWANCE: AllowanceSchedule = {
   periods: [
-    { from: '2026-10-01T00:00:00Z', daily: { public: 70_000, judges: 30_000 } },
-    { from: '2026-12-01T00:00:00Z', daily: { public: 150_000, judges: 250_000 } },
-    { from: '2026-12-15T20:00:00Z', daily: { public: 0, judges: 0 } },
+    { from: '2026-10-01T00:00:00Z', daily: { public: 70_000, judges: 300_000 } },
+    { from: '2026-12-09T17:00:00Z', daily: { public: 150_000, judges: 300_000 } },
+    { from: '2026-12-23T20:00:00Z', daily: { public: 0, judges: 0 } },
   ],
-  totals: { public: 4_490_000, judges: 4_710_000 },
+  totals: { public: 4_490_000, judges: 8_000_000 },
 }
 
-const NOTE = 'hosted demo daily allowance (ADR 0019)'
+// Part of each day's cap note: a new schedule sets new caps on its first refresh, even on a day
+// whose caps the previous schedule already set.
+const NOTE = 'hosted demo daily allowance (ADR 0019, schedule 2)'
 
 /**
  * Daily caps on top of the budget ledger, one ledger per pool. Once per UTC day (and when a new

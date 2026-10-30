@@ -808,15 +808,50 @@ describe('demo sessions and allowance', () => {
 
   it('sets each pool a daily cap that never carries over and never passes the total', () => {
     const ledgers = { public: new BudgetLedger(':memory:'), judges: new BudgetLedger(':memory:') }
-    const clock = { now: new Date('2026-11-30T23:00:00Z') }
+    const clock = { now: new Date('2026-12-09T16:59:59Z') }
     const allowance = new DemoAllowance({ ledgers, clock: () => clock.now })
     expect(allowance.remainingToday('public')).toBe(70_000)
-    expect(allowance.remainingToday('judges')).toBe(30_000)
-    clock.now = new Date('2026-12-01T00:00:00Z')
+    expect(allowance.remainingToday('judges')).toBe(300_000)
+    // The official Judging Period: 9 December 09:00 PT to 23 December 12:00 PT.
+    clock.now = new Date('2026-12-09T17:00:00Z')
     expect(allowance.remainingToday('public')).toBe(150_000)
-    expect(allowance.remainingToday('judges')).toBe(250_000)
-    clock.now = new Date('2026-12-15T20:00:00Z')
+    expect(allowance.remainingToday('judges')).toBe(300_000)
+    clock.now = new Date('2026-12-23T19:59:59Z')
+    expect(allowance.remainingToday('judges')).toBe(300_000)
+    clock.now = new Date('2026-12-23T20:00:00Z')
+    expect(allowance.remainingToday('public')).toBe(0)
     expect(allowance.remainingToday('judges')).toBe(0)
+
+    // The judges' total bounds what they have ever spent, not one day: after 7.90 USD, a day's
+    // 0.30 USD allowance leaves only the 0.10 USD the total has left.
+    const spent = { public: new BudgetLedger(':memory:'), judges: new BudgetLedger(':memory:') }
+    spent.judges.setCap(7_900_000, 'earlier spend')
+    const r = spent.judges.reserve({
+      provider: 'nebius',
+      model: 'm',
+      projectId: 'p',
+      purpose: 'alternatives',
+      microUsd: 7_900_000,
+    })
+    if (!r.ok) throw new Error('reservation refused')
+    spent.judges.settle(r.id, {
+      inputTokens: 0,
+      outputTokens: 0,
+      costMicroUsd: 7_900_000,
+      latencyMs: 1,
+    })
+    clock.now = new Date('2026-12-20T10:00:00Z')
+    const late = new DemoAllowance({ ledgers: spent, clock: () => clock.now })
+    expect(late.remainingToday('judges')).toBe(100_000)
+    clock.now = new Date('2026-12-21T10:00:00Z')
+    expect(late.remainingToday('judges')).toBe(100_000)
+
+    // A new schedule sets today's caps again, though the old one set them already today.
+    const day = { public: new BudgetLedger(':memory:'), judges: new BudgetLedger(':memory:') }
+    day.judges.setCap(30_000, 'hosted demo daily allowance (ADR 0019): 2026-12-20, period 0')
+    expect(
+      new DemoAllowance({ ledgers: day, clock: () => clock.now }).remainingToday('judges'),
+    ).toBe(300_000)
 
     const small = new DemoAllowance({
       ledgers: { public: new BudgetLedger(':memory:'), judges: new BudgetLedger(':memory:') },
