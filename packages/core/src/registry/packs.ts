@@ -2,11 +2,13 @@ import {
   AlternativeStatus,
   ContextPackageId,
   DecisionStatus,
+  ParameterValue,
   PrincipalId,
   TaskFinding,
   TaskLease,
   TaskStatus,
   TestRun,
+  Verdict,
 } from '@kalyth/contracts'
 import { z } from 'zod'
 import type { ObjectTypeDef, RelationTypeDef } from './types.ts'
@@ -169,6 +171,77 @@ export const corePack: ObjectTypeDef[] = [
         .strictObject({ commit: z.string().regex(/^[0-9a-f]{40}$/), parts: z.int().min(2) })
         .optional(),
     }),
+  },
+  {
+    type: 'core.Scenario',
+    version: 1,
+    pack: 'core',
+    description:
+      'A situation the system is assessed in, from small to large, with its own certainty (ADR 0028 §2).',
+    attributes: z.strictObject({
+      name: title,
+      order: z.int().min(0),
+      description: text,
+      base: z.string().optional(),
+      status: z.enum(['assumed', 'planned', 'committed']),
+      rationale: text,
+    }),
+    references: ['base'],
+  },
+  {
+    type: 'core.Parameter',
+    version: 1,
+    pack: 'core',
+    description:
+      'A value of a pinned concept in a scenario, for some elements or the whole system (ADR 0028 §3).',
+    attributes: z
+      .strictObject({
+        /** The project's pin of a quantity or property Concept. */
+        concept: z.string(),
+        scenario: z.string(),
+        /** Empty for the whole system. */
+        elements: z.array(z.string()).max(50).default([]),
+        nature: z.enum(['current', 'expected', 'target', 'limit']),
+        value: ParameterValue,
+        provenance: z.enum(['stated', 'sourceObserved', 'runtimeMeasured']),
+        note: z.string().max(2000).default(''),
+      })
+      .superRefine((p, ctx) => {
+        const v = p.value
+        if (v.kind === 'interval') {
+          if (v.min === undefined && v.max === undefined)
+            ctx.addIssue({
+              code: 'custom',
+              message: 'an interval has at least one end',
+              path: ['value'],
+            })
+          if (v.min !== undefined && v.max !== undefined && Number(v.min) > Number(v.max))
+            ctx.addIssue({
+              code: 'custom',
+              message: 'an interval needs min <= max',
+              path: ['value'],
+            })
+        }
+      }),
+    references: [{ key: 'concept', kind: 'evidence' }, 'scenario', 'elements'],
+  },
+  {
+    type: 'core.Assessment',
+    version: 1,
+    pack: 'core',
+    description:
+      'A computed verdict on declared conditions, with its explanation and what it read (ADR 0029 §1). Never edited; a newer one supersedes it.',
+    attributes: z.strictObject({
+      /** The project's pin of the pattern or principle assessed. */
+      item: z.string(),
+      scenario: z.string(),
+      element: z.string().optional(),
+      verdict: Verdict,
+      explanation: z.json(),
+      inputs: z.json(),
+      producedBy: z.strictObject({ kind: z.literal('evaluator'), evaluatorVersion: z.string() }),
+    }),
+    references: [{ key: 'item', kind: 'evidence' }, 'scenario', 'element'],
   },
   {
     type: 'core.LibraryUse',
@@ -487,8 +560,8 @@ export const relationTypes: RelationTypeDef[] = [
     type: 'supersedes',
     pack: 'core',
     description: 'The source decision or knowledge item replaces the target of the same type.',
-    from: ['core.Decision', ...KNOWLEDGE_ITEMS],
-    to: ['core.Decision', ...KNOWLEDGE_ITEMS],
+    from: ['core.Decision', 'core.Assessment', 'core.Parameter', ...KNOWLEDGE_ITEMS],
+    to: ['core.Decision', 'core.Assessment', 'core.Parameter', ...KNOWLEDGE_ITEMS],
     acyclic: true,
     temporal: true,
     impact: 'none',

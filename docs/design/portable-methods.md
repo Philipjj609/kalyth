@@ -1,6 +1,7 @@
 # Portable methods: skills and method packages for external agents
 
-Date: 2026-10-30. Status: design note, for review. Nothing here is built yet; no generator exists.
+Date: 2026-10-30. Status: design note; Philip decided its open questions on 30 October (below).
+Nothing here is built yet; no generator exists.
 
 ## Why
 
@@ -88,12 +89,16 @@ I looked at two projects for distribution and interoperability, not as architect
   machine-readable command output, and a registry entry per package with its version. Not taken:
   wrapping arbitrary software; Kalyth's executable surface is its own CLI and MCP tools.
 
-## Open questions
+## Decisions (Philip, 30 October 2026)
 
-1. Must every item a package relies on be `established`, or is "proposed, verified, labelled"
-   enough?
-2. Should packages be signed, and by whom, before anyone else installs them?
-3. Which CLI commands should exist first: knowledge queries, pin status and method selection?
+1. **What may be packaged.** Reviewed and verified knowledge may be packaged while still
+   `proposed`, as long as its maturity and limitations are explicit. A package never turns it into
+   authoritative instructions. Hypotheses and disputed claims carry clear warnings and are never
+   presented as verified recommendations.
+2. **Integrity.** Local exports have a reproducible manifest and content hashes. Public
+   distribution will later add publisher signing and trust verification.
+3. **CLI order.** Knowledge search and read, then pin status, then applicability assessment, then
+   method selection and package export.
 
 ## Not now
 

@@ -15,7 +15,7 @@ export interface ObjectTypeDef {
   /** The operation that changes the reserved attributes, named in refusals. */
   readonly reservedBy?: string
   /** Top-level attributes holding an object id, which a local ref may name when created. */
-  readonly references?: readonly string[]
+  readonly references?: readonly (string | { key: string; kind: 'object' | 'evidence' })[]
 }
 
 export type RelationTypeDef = RelationTypeDescriptor

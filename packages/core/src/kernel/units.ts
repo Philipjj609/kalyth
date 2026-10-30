@@ -128,3 +128,55 @@ export function jointlySatisfiable(
   }
   return true
 }
+
+/** The values of one interval: unbounded where an end is absent. */
+export interface Interval {
+  min?: Bound | undefined
+  max?: Bound | undefined
+}
+
+const lowerFits = (outer: Bound | undefined, inner: Bound | undefined) => {
+  if (!outer) return true
+  if (!inner) return false
+  const c = compare(outer.at, inner.at)
+  return c < 0 || (c === 0 && (outer.inclusive || !inner.inclusive))
+}
+const upperFits = (outer: Bound | undefined, inner: Bound | undefined) => {
+  if (!outer) return true
+  if (!inner) return false
+  const c = compare(outer.at, inner.at)
+  return c > 0 || (c === 0 && (outer.inclusive || !inner.inclusive))
+}
+
+export function containsPoint(i: Interval, x: Rational): boolean {
+  const above =
+    !i.min || compare(x, i.min.at) > 0 || (compare(x, i.min.at) === 0 && i.min.inclusive)
+  const below =
+    !i.max || compare(x, i.max.at) < 0 || (compare(x, i.max.at) === 0 && i.max.inclusive)
+  return above && below
+}
+
+/**
+ * How the values of `p` relate to the values a test accepts (ADR 0028 §4): `all` when every value
+ * of `p` passes, `none` when none does, `some` otherwise, which reads as unknown, `straddles`.
+ */
+export function relateToTest(
+  p: Interval,
+  test: ConditionTest,
+  base: (v: string) => Rational,
+): 'all' | 'none' | 'some' {
+  const set = intervalOf(test, base)
+  if (!set) return 'some'
+  const excludedInside = set.excluded.filter((x) => containsPoint(p, x))
+  const subset =
+    lowerFits(set.min, p.min) && upperFits(set.max, p.max) && excludedInside.length === 0
+  if (subset) return 'all'
+  const min = tighter(set.min, p.min, 'min')
+  const max = tighter(set.max, p.max, 'max')
+  if (min && max) {
+    const c = compare(min.at, max.at)
+    if (c > 0 || (c === 0 && !(min.inclusive && max.inclusive))) return 'none'
+    if (c === 0 && set.excluded.some((x) => compare(x, min.at) === 0)) return 'none'
+  }
+  return 'some'
+}

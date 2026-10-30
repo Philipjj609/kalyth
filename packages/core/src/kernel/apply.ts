@@ -21,6 +21,7 @@ import {
   establishedChanged,
   isKnowledgeType,
 } from './library.ts'
+import { checkScenarioRecords, type PinContent } from './scenarios.ts'
 import { OverlayState, type StateView } from './state.ts'
 import { carryCuration } from './support.ts'
 import { checkPinsAndUses, type PinRules } from './uses.ts'
@@ -38,6 +39,8 @@ export interface ApplyOutcome {
 }
 
 export interface ApplyOptions extends PinRules {
+  /** A pinned version's content, to check parameter values against their concept (ADR 0028). */
+  pinContent?: PinContent
   /** The kind of the project written to; a library gets the rules of ADRs 0026 and 0030. */
   kind?: ProjectKind
 }
@@ -417,6 +420,7 @@ export function applyOperations(
     }
   }
   issues.push(...checkPinsAndUses(overlay, state, written, options))
+  issues.push(...checkScenarioRecords(overlay, state, written, options.pinContent))
   const curation: ProposalCuration = { required: [], gaps: [] }
   if (library) {
     const checked = checkLibraryState(overlay, written, state)

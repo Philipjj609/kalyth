@@ -339,3 +339,7 @@ for a tool observation: an `observed` claim may not cite `knowledge` pins
 - `core.Correspondence`, cross-library evaluation and `conflicting` verdicts need conditions to be
   evaluated, so they come with K3. Freshness of assessments (ADR 0029) also waits for K3; K2 gives
   pin freshness.
+
+K2 was accepted by Philip on 30 October 2026 (KAL-20261030-069 review), including A13: observed
+claims may cite direct implementation evidence such as git commits, never knowledge pins or
+statements.

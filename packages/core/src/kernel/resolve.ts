@@ -21,11 +21,14 @@ export interface ContentSink {
 
 type RefKind = 'object' | 'relation' | 'evidence'
 
+/** A top-level attribute holding an id, or a list of ids, of an object or a piece of evidence. */
+export type AttributeReference = string | { key: string; kind: 'object' | 'evidence' }
+
 export interface ResolveContext {
   /** The proposer: the reviewer or verifier a curation operation records (ADR 0030 A4). */
   actor: string
   /** Attributes of a type that hold an object id, which a local ref may name. */
-  referenceAttributes?: (type: string) => readonly string[]
+  referenceAttributes?: (type: string) => readonly AttributeReference[]
 }
 
 /**
@@ -115,10 +118,15 @@ export function resolveOperations(
     index: number,
   ): Record<string, JsonValue> => {
     const out = { ...attributes }
-    for (const key of context.referenceAttributes?.(type) ?? []) {
+    for (const ref of context.referenceAttributes?.(type) ?? []) {
+      const key = typeof ref === 'string' ? ref : ref.key
+      const kind: RefKind = typeof ref === 'string' ? 'object' : ref.kind
       const value = out[key]
-      if (typeof value === 'string')
-        out[key] = resolve(value, ['object'], index, ['attributes', key])
+      if (typeof value === 'string') out[key] = resolve(value, [kind], index, ['attributes', key])
+      else if (Array.isArray(value))
+        out[key] = value.map((v, i) =>
+          typeof v === 'string' ? resolve(v, [kind], index, ['attributes', key, String(i)]) : v,
+        )
     }
     return out
   }
