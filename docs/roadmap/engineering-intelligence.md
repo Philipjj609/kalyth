@@ -172,3 +172,27 @@ an ADR.
   touches R4.
 - Who may approve a policy that commits on a person's behalf, and for which kinds of change?
 - How public should domain-knowledge packs be: shipped with Kalyth, per organisation, or both?
+
+## Status of the knowledge fabric, 30 October 2026
+
+K1 to K5 are accepted as development milestones on this branch (queue entries KAL-20261030-066 to
+-073). They are not released, and none of them is on `main`.
+
+### K5 explorer: known limitations, not yet addressed
+
+Philip asked for these to be recorded as open, before anything is built on the explorer:
+
+- **Phone width.** The explorer was laid out for desktop widths and checked by eye at 1440 × 900.
+  Its discovery list stacks above the item on narrow screens, but no review at phone width has been
+  done, and the browser tests run at desktop and 1024 px only.
+- **Screen readers.** Automated axe checks pass in both themes, and keyboard use is tested. No
+  review with a screen reader has been done; the neighbourhood graph is hidden from assistive
+  technology and relies on the list beside it.
+- **Empty states.** A project without a LibraryUse, an item with no relations, a library without
+  methods and a project without scenarios each get a short message. They have not been reviewed
+  for whether they tell a person what to do next.
+- **Discovery clarity.** Discovery is a flat, searchable list by type, capped at 200 items. The
+  library index of ADR 0029 §6 (subjects from `isA` roots, patterns by quality addressed), the
+  comparison view and history across revisions are not built.
+- **Read-only.** The explorer cannot propose anything: no pinning, no parameters, no recording or
+  reassessing of an assessment, no curation. Those still go through other views or the API.
