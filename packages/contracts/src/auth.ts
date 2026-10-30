@@ -25,11 +25,17 @@ export const Scope = z.enum([
   'task.work',
   /** The task coordinator's narrow commit right for task lifecycle records (ADR 0013). */
   'task.coordinate',
+  /** Set maturity, review support, verify sources and confirm licences in a library (ADR 0030). */
+  'knowledge.curate',
 ])
 export type Scope = z.infer<typeof Scope>
 
-/** Scopes that version 1 grants only to human principals (ADR 0006, decision D4). */
-export const HUMAN_ONLY_SCOPES: readonly Scope[] = ['decision.decide', 'grant.manage']
+/** Scopes that version 1 grants only to human principals (ADR 0006, decision D4; ADR 0030). */
+export const HUMAN_ONLY_SCOPES: readonly Scope[] = [
+  'decision.decide',
+  'grant.manage',
+  'knowledge.curate',
+]
 
 export const Principal = z.object({
   id: PrincipalId,

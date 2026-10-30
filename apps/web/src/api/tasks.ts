@@ -53,7 +53,7 @@ export type CreateTaskOutcome =
 /** The id the stored proposal gave the new task. */
 export function createdTaskId(ops: readonly ResolvedOperation[]): string | null {
   const created = ops.find((op) => op.op === 'createObject' && op.type === 'core.Task')
-  return created?.id ?? null
+  return created?.op === 'createObject' ? created.id : null
 }
 
 /**

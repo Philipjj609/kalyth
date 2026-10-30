@@ -148,9 +148,10 @@ function RunThread({ runId }: { runId: string }) {
   const pending = proposal.data?.status === 'pending'
   // In the hosted demo a request with no recording fails at once when live runs are used up.
   const paused = demo && run.status === 'failed' && run.error?.code === 'budget_exceeded'
-  const decisionId = proposal.data?.ops.find(
+  const decision = proposal.data?.ops.find(
     (op) => op.op === 'createObject' && op.type === 'core.Decision',
-  )?.id
+  )
+  const decisionId = decision?.op === 'createObject' ? decision.id : undefined
   return (
     <div className="mx-auto w-full max-w-5xl space-y-5 p-8">
       <header className="space-y-2">

@@ -1,4 +1,12 @@
-import type { Caller, KernelError, Principal, ResolvedOperation, Scope } from '@kalyth/contracts'
+import type {
+  Caller,
+  KernelError,
+  OperationParsed,
+  Principal,
+  Proposal,
+  ResolvedOperation,
+  Scope,
+} from '@kalyth/contracts'
 import type { SqliteStore } from '../store/sqlite-store.ts'
 import type { Clock } from '../util.ts'
 
@@ -48,17 +56,64 @@ export class Authorizer {
    *   holding decision.decide;
    * - a task becoming completed or cancelled needs a person acting directly (ADR 0013);
    * - recording a task's git finding needs the task coordinator (a tool with task.coordinate);
+   * - curation needs a person acting directly with knowledge.curate, who proposed it, and a
+   *   person doing the same to commit it (ADR 0030 A2);
    * - otherwise proposal.commit allows any operation;
    * - ingest.observed allows only evidence plus records whose claim basis is "observed";
    * - task.coordinate allows only task lifecycle records (ADR 0013).
    */
+  /**
+   * Curation, when proposed (ADR 0030 A2): setMaturity, reviewSupport, verifySource and a confirmed
+   * licence come only from a person acting directly with knowledge.curate. Checked again at commit.
+   */
+  authorizeProposal(
+    principal: Principal,
+    caller: Caller,
+    projectId: string,
+    ops: readonly OperationParsed[],
+  ): KernelError | undefined {
+    if (!needsCuration(ops) || this.#curates(principal, caller, projectId)) return undefined
+    return {
+      code: 'unauthorized',
+      message: 'curation is proposed by a person acting directly with knowledge.curate',
+      issues: [],
+      requiredScopes: ['knowledge.curate'],
+    }
+  }
+
+  #curates(principal: Principal, caller: Caller, projectId: string): boolean {
+    return (
+      principal.kind === 'human' &&
+      caller.origin === 'human' &&
+      this.scopes(principal.id, projectId).has('knowledge.curate')
+    )
+  }
+
   authorizeCommit(
     principal: Principal,
     caller: Caller,
     projectId: string,
     ops: readonly ResolvedOperation[],
+    proposal?: Pick<Proposal, 'proposedBy' | 'origin'>,
   ): KernelError | undefined {
     const held = this.scopes(principal.id, projectId)
+    if (needsCuration(ops)) {
+      // ADR 0030 A2: the committer curates, acting directly, and so must the proposer still.
+      const proposer = proposal && this.#store.getPrincipal(proposal.proposedBy)
+      const proposerCurates =
+        proposer?.kind === 'human' &&
+        proposal?.origin === 'human' &&
+        this.scopes(proposer.id, projectId).has('knowledge.curate')
+      if (!this.#curates(principal, caller, projectId) || !proposerCurates) {
+        return {
+          code: 'unauthorized',
+          message:
+            'curation is committed by a person acting directly with knowledge.curate, and proposed by one',
+          issues: [],
+          requiredScopes: ['knowledge.curate'],
+        }
+      }
+    }
     if (ops.some((op) => op.op === 'setDecisionStatus')) {
       const direct = principal.kind === 'human' && caller.origin === 'human'
       if (!direct || !held.has('decision.decide')) {
@@ -101,6 +156,20 @@ export class Authorizer {
       requiredScopes: ['proposal.commit'],
     }
   }
+}
+
+const CURATION = new Set(['setMaturity', 'reviewSupport', 'verifySource'])
+
+/** Operations that need knowledge.curate (ADR 0030 A2), submitted or resolved. */
+function needsCuration(ops: readonly (ResolvedOperation | OperationParsed)[]): boolean {
+  return ops.some((op) => {
+    if (CURATION.has(op.op)) return true
+    if (op.op !== 'recordEvidence') return false
+    const source = 'evidence' in op ? op.evidence.source : op.source
+    const licence =
+      source.kind === 'document' || source.kind === 'external' ? source.meta?.licence : undefined
+    return licence !== undefined && licence !== 'unknown'
+  })
 }
 
 function isObservedIngest(op: ResolvedOperation): boolean {

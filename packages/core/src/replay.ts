@@ -1,4 +1,8 @@
 import { EVENT_SCHEMA_VERSIONS, type KalythEvent } from '@kalyth/contracts'
+
+/** An event at the current schema version of its type. */
+export type CurrentEvent = Extract<KalythEvent, { schemaVersion: 2 }>
+
 import type { SqliteStore } from './store/sqlite-store.ts'
 
 /**
@@ -19,6 +23,7 @@ export function replayEvents(target: SqliteStore, events: readonly KalythEvent[]
             description: event.payload.description,
             createdAt: event.occurredAt,
             createdBy: event.actor,
+            kind: event.payload.kind,
           })
           break
         case 'changeSet.committed': {
@@ -45,11 +50,17 @@ export function replayEvents(target: SqliteStore, events: readonly KalythEvent[]
   })
 }
 
-function upcast(event: KalythEvent): KalythEvent {
+/**
+ * Brings an event to the current schema version of its type, as a pure function (ADR 0030 §5):
+ * a version 1 project was an ordinary project, and a version 1 change set has the same fields.
+ */
+export function upcast(event: KalythEvent): CurrentEvent {
   const known = EVENT_SCHEMA_VERSIONS[event.type]
   if (known === undefined || event.schemaVersion > known) {
     throw new Error(`cannot replay ${event.type} schema version ${event.schemaVersion}`)
   }
-  // Version 1 is current for every event type; future upcasters go here.
-  return event
+  if (event.schemaVersion === 2) return event
+  if (event.type === 'project.created')
+    return { ...event, schemaVersion: 2, payload: { ...event.payload, kind: 'project' } }
+  return { ...event, schemaVersion: 2 }
 }

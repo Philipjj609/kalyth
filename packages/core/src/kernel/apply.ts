@@ -3,6 +3,7 @@ import type {
   Issue,
   JsonValue,
   ObjectVersion,
+  ProjectKind,
   ResolvedOperation,
   ResolvedWrite,
   TaskStatus,
@@ -10,48 +11,86 @@ import type {
 import { AlternativeStatus, DecisionStatus, TASK_TRANSITIONS } from '@kalyth/contracts'
 import type { TypeRegistry } from '../registry/registry.ts'
 import { validateClaim } from './claims.ts'
+import {
+  applyCuration,
+  CURATION_OPS,
+  checkLibraryEvidence,
+  checkLibraryState,
+  isKnowledgeType,
+} from './library.ts'
 import { OverlayState, type StateView } from './state.ts'
+import { carryCuration } from './support.ts'
 
 export interface ApplyOutcome {
   writes: ResolvedWrite[]
   issues: Issue[]
+  /** Claims a `verifySource` without targets found, by operation index (ADR 0030 A1). */
+  expansions: { op: number; targets: string[] }[]
 }
+
+export interface ApplyOptions {
+  /** The kind of the project written to; a library gets the rules of ADRs 0026 and 0030. */
+  kind?: ProjectKind
+}
+
+/** Evidence first, then the other operations, then curation, each in the order given. */
+const phase = (op: ResolvedOperation) =>
+  op.op === 'recordEvidence' ? 0 : CURATION_OPS.has(op.op) ? 2 : 1
 
 /**
  * Applies resolved operations to a state view and returns the version writes they produce.
  *
  * The same function validates a proposal against its base revision and applies it against the
  * head at commit time, so the head is always re-checked (R1): cross-object invariants are
- * evaluated on the state the writes will actually land on. Evidence operations run first; all
- * other operations run in the order given.
+ * evaluated on the state the writes will actually land on. Evidence operations run first, then
+ * the others in the order given, then curation (ADR 0030). In a library, rules on the outcome of
+ * the whole proposal are checked last. A record written twice keeps only its last version.
  */
 export function applyOperations(
   state: StateView,
   ops: readonly ResolvedOperation[],
   registry: TypeRegistry,
   revision: number,
+  options: ApplyOptions = {},
 ): ApplyOutcome {
+  const library = options.kind === 'library'
   const overlay = new OverlayState(state, revision)
   const writes: ResolvedWrite[] = []
   const issues: Issue[] = []
+  const expansions: ApplyOutcome['expansions'] = []
+  const written = new Map<string, number>()
+  let currentOp = -1
   const write = (w: ResolvedWrite) => {
     overlay.apply(w)
     writes.push(w)
+    written.set(w.kind === 'evidence' ? w.record.id : w.version.id, currentOp)
   }
-  const ordered = ops
-    .map((op, index) => ({ op, index }))
-    .sort((a, b) => Number(b.op.op === 'recordEvidence') - Number(a.op.op === 'recordEvidence'))
+  const ordered = ops.map((op, index) => ({ op, index })).sort((a, b) => phase(a.op) - phase(b.op))
 
   for (const { op, index } of ordered) {
+    currentOp = index
     const add = (code: string, message: string, path?: (string | number)[]) =>
       issues.push(path ? { code, message, op: index, path } : { code, message, op: index })
 
     switch (op.op) {
+      case 'setMaturity':
+      case 'reviewSupport':
+      case 'verifySource': {
+        if (!library) {
+          add('knowledge.not_a_library', `${op.op} applies to knowledge in a library`)
+          break
+        }
+        const found = applyCuration(overlay, op, revision, write, add)
+        if (found) expansions.push({ op: index, targets: found })
+        break
+      }
+
       case 'recordEvidence': {
         if (overlay.getEvidence(op.id)) {
           add('id.exists', `evidence ${op.id} already exists`)
           break
         }
+        if (library) checkLibraryEvidence(op, add)
         write({
           kind: 'evidence',
           revision,
@@ -76,12 +115,22 @@ export function applyOperations(
           add('id.exists', `object ${op.id} already exists`)
           break
         }
+        if (isKnowledgeType(op.type) && !library) {
+          add('knowledge.library_only', `${op.type} belongs in a library`, ['type'])
+          break
+        }
         for (const [key, initial] of Object.entries(def.reserved ?? {})) {
           const given = op.attributes[key]
-          if (given !== undefined && JSON.stringify(given) !== JSON.stringify(initial)) {
+          const allowed = def.initial?.[key] ?? [initial]
+          if (
+            given !== undefined &&
+            !allowed.some((a) => JSON.stringify(a) === JSON.stringify(given))
+          ) {
             add(
               'attribute.reserved',
-              `${op.type}.${key} must start as ${JSON.stringify(initial)}`,
+              initial === null
+                ? `${op.type}.${key} is set only by ${def.reservedBy ?? 'its operation'}`
+                : `${op.type}.${key} must start as ${allowed.map((a) => JSON.stringify(a)).join(' or ')}`,
               ['attributes', key],
             )
           }
@@ -116,7 +165,8 @@ export function applyOperations(
         }
         const reserved = Object.keys(def.reserved ?? {}).filter((key) => key in op.set)
         if (reserved.length > 0) {
-          const via = current.type === 'core.Task' ? 'setTaskStatus' : 'setDecisionStatus'
+          const via =
+            def.reservedBy ?? (current.type === 'core.Task' ? 'setTaskStatus' : 'setDecisionStatus')
           add('attribute.reserved', `use ${via} to change ${reserved.join(', ')}`, ['set'])
           break
         }
@@ -127,7 +177,7 @@ export function applyOperations(
         }
         const attributes = parseAttributes(def.attributes, merged, add)
         if (!attributes) break
-        const claim: Claim = op.claim ?? current.claim
+        const claim: Claim = op.claim ? carryCuration(current.claim, op.claim) : current.claim
         if (op.claim) issues.push(...validateClaim(op.claim, current.stance, op.id, overlay, index))
         write({ kind: 'object', version: { ...current, attributes, claim, revision } })
         break
@@ -228,10 +278,8 @@ export function applyOperations(
           else properties[key] = value
         }
         if (op.claim) issues.push(...validateClaim(op.claim, current.stance, op.id, overlay, index))
-        write({
-          kind: 'relation',
-          version: { ...current, properties, claim: op.claim ?? current.claim, revision },
-        })
+        const claim = op.claim ? carryCuration(current.claim, op.claim) : current.claim
+        write({ kind: 'relation', version: { ...current, properties, claim, revision } })
         break
       }
 
@@ -355,7 +403,19 @@ export function applyOperations(
       }
     }
   }
-  return { writes, issues }
+  if (library) issues.push(...checkLibraryState(overlay, written))
+  return { writes: lastVersions(writes), issues, expansions }
+}
+
+/**
+ * One version per record and revision: the store closes a record's current version when it
+ * writes the next, so a record written twice in one proposal keeps its last version only.
+ */
+function lastVersions(writes: readonly ResolvedWrite[]): ResolvedWrite[] {
+  const idOf = (w: ResolvedWrite) =>
+    `${w.kind}:${w.kind === 'evidence' ? w.record.id : w.version.id}`
+  const last = new Map(writes.map((w, i) => [idOf(w), i]))
+  return writes.filter((w, i) => last.get(idOf(w)) === i)
 }
 
 function parseAttributes(

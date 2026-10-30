@@ -1,5 +1,6 @@
 import type { ObjectTypeDescriptor, RelationTypeDescriptor } from '@kalyth/contracts'
 import { z } from 'zod'
+import { knowledgePack, knowledgeRelations } from './knowledge.ts'
 import { corePack, relationTypes, softwarePack } from './packs.ts'
 import type { ObjectTypeDef, RelationTypeDef } from './types.ts'
 
@@ -54,4 +55,7 @@ export class TypeRegistry {
   }
 }
 
-export const defaultRegistry = new TypeRegistry([...corePack, ...softwarePack], relationTypes)
+export const defaultRegistry = new TypeRegistry(
+  [...corePack, ...softwarePack, ...knowledgePack],
+  [...relationTypes, ...knowledgeRelations],
+)

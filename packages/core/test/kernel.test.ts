@@ -22,7 +22,8 @@ describe('projects and revisions', () => {
     expect(events[0]).toMatchObject({
       type: 'project.created',
       revision: 0,
-      schemaVersion: 1,
+      schemaVersion: 2,
+      payload: { name: 'Fixture', description: 'test project', kind: 'project' },
       actor: ctx.ownerPrincipal.id,
     })
   })

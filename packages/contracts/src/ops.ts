@@ -1,8 +1,28 @@
 import { z } from 'zod'
 import { Claim, ClaimInput, Lifecycle, Stance } from './claims.ts'
 import { Collector, ContentRef, EvidenceInput, EvidenceRecord, EvidenceSource } from './evidence.ts'
-import { EvidenceId, LocalRef, ObjectId, ObjectTarget, PrincipalId, RelationId } from './ids.ts'
+import {
+  ClaimId,
+  ClaimTarget,
+  EvidenceId,
+  EvidenceTarget,
+  LocalRef,
+  ObjectId,
+  ObjectTarget,
+  PrincipalId,
+  RelationId,
+} from './ids.ts'
 import { JsonRecord } from './json.ts'
+import {
+  Licence,
+  Maturity,
+  ReviewVerdict,
+  SourceVerification,
+  SupportGroupKey,
+  SupportReview,
+  VerificationMethod,
+  VerificationStatus,
+} from './knowledge.ts'
 import { RelationTypeName, TypeName } from './registry.ts'
 
 export const DecisionStatus = z.enum(['open', 'accepted', 'rejected', 'deferred', 'superseded'])
@@ -142,6 +162,50 @@ export const SetTaskStatusOp = z.object({
   finding: TaskFinding.optional(),
 })
 
+// ---------- Curation of knowledge libraries (ADR 0030 §3, amendment A1 to A4) ----------
+
+/** The only way to change a knowledge item's maturity. A curator acting directly (A2). */
+export const SetMaturityOp = z.object({
+  op: z.literal('setMaturity'),
+  id: ObjectTarget,
+  maturity: Maturity,
+  reason,
+})
+
+/** A group named by its key, or by its evidence, which the kernel turns into the key (A1). */
+export const SupportGroupRef = z.union([
+  SupportGroupKey,
+  z.object({ allOf: z.array(EvidenceTarget).min(1).max(64) }),
+])
+
+/** A curator's review of one support group. `partly` needs a `scopeLimit`. */
+export const ReviewSupportOp = z.object({
+  op: z.literal('reviewSupport'),
+  target: ClaimTarget,
+  group: SupportGroupRef,
+  verdict: ReviewVerdict,
+  note: reason,
+  scopeLimit: z.string().min(1).max(500).optional(),
+})
+
+/**
+ * Records a source verification in every group citing the evidence, in the listed claims or, with
+ * no `targets`, in every claim of the library citing it (A3).
+ */
+export const VerifySourceOp = z.object({
+  op: z.literal('verifySource'),
+  evidence: EvidenceTarget,
+  status: VerificationStatus,
+  method: VerificationMethod,
+  retrievedSha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
+  licence: Licence.optional(),
+  note: reason,
+  targets: z.array(ClaimTarget).min(1).max(1000).optional(),
+})
+
 export const OperationInput = z.discriminatedUnion('op', [
   CreateObjectOp,
   UpdateObjectOp,
@@ -152,6 +216,9 @@ export const OperationInput = z.discriminatedUnion('op', [
   RecordEvidenceOp,
   SetDecisionStatusOp,
   SetTaskStatusOp,
+  SetMaturityOp,
+  ReviewSupportOp,
+  VerifySourceOp,
 ])
 export type OperationInput = z.input<typeof OperationInput>
 export type OperationParsed = z.output<typeof OperationInput>
@@ -219,6 +286,25 @@ export const ResolvedOperation = z.discriminatedUnion('op', [
     lease: TaskLease.nullable(),
     // Absent, not null, when nothing was found, so operations stored earlier are unchanged.
     finding: TaskFinding.optional(),
+  }),
+  z.object({ op: z.literal('setMaturity'), id: ObjectId, maturity: Maturity, reason }),
+  /** The review as it will be written: reviewer and time come from the proposal (A4). */
+  z.object({
+    op: z.literal('reviewSupport'),
+    target: ClaimId,
+    group: SupportGroupKey,
+    review: SupportReview,
+  }),
+  /**
+   * `targets` are the claims written. With `allCiting`, they were found at proposal time, and the
+   * citing set at the head must still be the same when committed (A1).
+   */
+  z.object({
+    op: z.literal('verifySource'),
+    evidence: EvidenceId,
+    verification: SourceVerification,
+    targets: z.array(ClaimId).max(1000),
+    allCiting: z.boolean(),
   }),
 ])
 export type ResolvedOperation = z.infer<typeof ResolvedOperation>

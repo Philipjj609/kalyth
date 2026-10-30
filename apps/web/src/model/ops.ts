@@ -116,6 +116,28 @@ export function describeOps(ops: readonly ResolvedOperation[], nameOf: NameOf): 
           detail: `→ ${op.status}: ${op.rationale}`,
           refs: [op.id],
         }
+      // Curation of a knowledge library (ADR 0030); libraries have no views of their own yet.
+      case 'setMaturity':
+        return {
+          verb: 'Set maturity',
+          subject: name(op.id),
+          detail: `→ ${op.maturity}: ${op.reason}`,
+          refs: [op.id],
+        }
+      case 'reviewSupport':
+        return {
+          verb: 'Review support',
+          subject: name(op.target),
+          detail: `${op.review.verdict}: ${op.review.note}`,
+          refs: [op.target],
+        }
+      case 'verifySource':
+        return {
+          verb: 'Verify source',
+          subject: shortId(op.evidence),
+          detail: `${op.verification.status} in ${op.targets.length} claim(s): ${op.verification.note}`,
+          refs: [...op.targets],
+        }
       default:
         return unknownOp(op)
     }

@@ -10,6 +10,7 @@ import {
   ProposalId,
   RelationId,
 } from './ids.ts'
+import { ProjectKind } from './knowledge.ts'
 import { ObjectVersion, RelationVersion } from './ops.ts'
 import { ProposalStatus } from './proposals.ts'
 import { RelationTypeName, TypeName } from './registry.ts'
@@ -20,6 +21,8 @@ const limit = z.int().min(1).max(1000).default(500)
 export const CreateProjectInput = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(4000).default(''),
+  /** A library holds reusable knowledge (ADR 0026). */
+  kind: ProjectKind.default('project'),
 })
 
 export const ProjectSummary = z.object({
@@ -29,6 +32,7 @@ export const ProjectSummary = z.object({
   createdAt: z.iso.datetime(),
   createdBy: PrincipalId,
   headRevision: z.int().min(0),
+  kind: ProjectKind.default('project'),
 })
 export type ProjectSummary = z.infer<typeof ProjectSummary>
 

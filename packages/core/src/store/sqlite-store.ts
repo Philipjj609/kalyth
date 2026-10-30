@@ -25,7 +25,7 @@ import {
   type RelationFilter,
   type StateView,
 } from '../kernel/state.ts'
-import { SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_VERSION } from './schema.ts'
+import { SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_VERSION } from './schema.ts'
 
 type Row = Record<string, unknown>
 const str = (v: unknown): string => v as string
@@ -70,6 +70,7 @@ export class SqliteStore {
         if (version < 1) this.db.exec(SCHEMA_V1)
         if (version < 2) this.db.exec(SCHEMA_V2)
         if (version < 3) this.db.exec(SCHEMA_V3)
+        if (version < 4) this.db.exec(SCHEMA_V4)
         this.setMeta('schema_version', String(SCHEMA_VERSION))
       })()
     }
@@ -199,8 +200,8 @@ export class SqliteStore {
 
   insertProject(p: Omit<ProjectSummary, 'headRevision'>): void {
     this.#stmt(
-      'INSERT INTO projects (id, name, description, created_at, created_by, head_revision) VALUES (?, ?, ?, ?, ?, 0)',
-    ).run(p.id, p.name, p.description, p.createdAt, p.createdBy)
+      'INSERT INTO projects (id, name, description, created_at, created_by, head_revision, kind) VALUES (?, ?, ?, ?, ?, 0, ?)',
+    ).run(p.id, p.name, p.description, p.createdAt, p.createdBy, p.kind)
   }
 
   getProject(id: string): ProjectSummary | undefined {
@@ -719,12 +720,15 @@ export class SqliteStore {
   /** Canonical dump of revisioned state, used to prove that event replay reproduces it (R3). */
   dumpRevisionedState(projectId: string): unknown {
     const q = (sql: string) => this.db.prepare(sql).all(projectId)
+    const project = this.db
+      .prepare(
+        'SELECT id, name, description, created_at, created_by, head_revision, kind FROM projects WHERE id = ?',
+      )
+      .get(projectId) as Row | undefined
+    // An ordinary project hashes as it did before kinds existed, so format 1 exports still import.
+    if (project?.kind === 'project') delete project.kind
     return {
-      project: this.db
-        .prepare(
-          'SELECT id, name, description, created_at, created_by, head_revision FROM projects WHERE id = ?',
-        )
-        .get(projectId),
+      project,
       objects: q('SELECT * FROM object_versions WHERE project_id = ? ORDER BY id, rev_from'),
       relations: q('SELECT * FROM relation_versions WHERE project_id = ? ORDER BY id, rev_from'),
       evidence: q('SELECT * FROM evidence WHERE project_id = ? ORDER BY id'),
@@ -784,6 +788,7 @@ function toProject(r: Row): ProjectSummary {
     createdAt: str(r.created_at),
     createdBy: str(r.created_by),
     headRevision: num(r.head_revision),
+    kind: r.kind === 'library' ? 'library' : 'project',
   }
 }
 

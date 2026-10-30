@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ContentId, EvidenceId, PrincipalId } from './ids.ts'
+import { SourceMeta } from './knowledge.ts'
 
 const gitSha = z.string().regex(/^[0-9a-f]{40}$/, 'expected a 40-hex git sha')
 
@@ -28,11 +29,14 @@ export const EvidenceSource = z.discriminatedUnion('kind', [
     uri: z.string().min(1).max(2000),
     version: z.string().max(200).optional(),
     locator: z.string().max(500).optional(),
+    /** Attribution, licence and quote policy; required in libraries (ADR 0026 §7). */
+    meta: SourceMeta.optional(),
   }),
   z.object({
     kind: z.literal('external'),
     uri: z.url(),
     retrievedAt: z.iso.datetime(),
+    meta: SourceMeta.optional(),
   }),
   z.object({
     kind: z.literal('statement'),

@@ -301,6 +301,14 @@ const SOFTWARE_ELEMENTS = [
 
 const base = { version: 1, acyclic: false, symmetric: false, temporal: false } as const
 
+const KNOWLEDGE_ITEMS = [
+  'knowledge.Concept',
+  'knowledge.Principle',
+  'knowledge.Pattern',
+  'knowledge.Condition',
+  'knowledge.Method',
+]
+
 export const relationTypes: RelationTypeDef[] = [
   {
     ...base,
@@ -438,11 +446,14 @@ export const relationTypes: RelationTypeDef[] = [
   },
   {
     ...base,
+    // Version 2 lets a pattern require another (ADR 0026 §5, ADR 0028 §5).
+    version: 2,
     type: 'requires',
     pack: 'core',
-    description: 'The task can start only when the target task is completed or decision accepted.',
-    from: ['core.Task'],
-    to: ['core.Task', 'core.Decision'],
+    description:
+      'The task can start only when the target task is completed or decision accepted; a pattern needs the target pattern.',
+    from: ['core.Task', 'knowledge.Pattern'],
+    to: ['core.Task', 'core.Decision', 'knowledge.Pattern'],
     acyclic: true,
     impact: 'none',
   },
@@ -458,11 +469,13 @@ export const relationTypes: RelationTypeDef[] = [
   },
   {
     ...base,
+    // Version 2 adds knowledge items, which a library replaces the same way (ADR 0026 §5).
+    version: 2,
     type: 'supersedes',
     pack: 'core',
-    description: 'The source decision replaces the target decision.',
-    from: ['core.Decision'],
-    to: ['core.Decision'],
+    description: 'The source decision or knowledge item replaces the target of the same type.',
+    from: ['core.Decision', ...KNOWLEDGE_ITEMS],
+    to: ['core.Decision', ...KNOWLEDGE_ITEMS],
     acyclic: true,
     temporal: true,
     impact: 'none',

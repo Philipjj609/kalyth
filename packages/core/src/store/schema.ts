@@ -4,7 +4,7 @@
  * Triggers make events, change sets and evidence append-only, and allow a version row only to be
  * closed (rev_to set once). Content rows may only lose their body (redaction).
  */
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 export const SCHEMA_V1 = `
 CREATE TABLE meta (
@@ -237,4 +237,17 @@ BEGIN SELECT RAISE(ABORT, 'an agent token can only be revoked, once'); END;
 /** Version 3: the context package a proposal answers, if any (ADR 0011). */
 export const SCHEMA_V3 = `
 ALTER TABLE proposals ADD COLUMN context_package_id TEXT;
+`
+
+/**
+ * Version 4: a project's kind (ADR 0030 C3). Existing projects are ordinary projects, and a kind
+ * never changes, so a project cannot become a library or stop being one.
+ */
+export const SCHEMA_V4 = `
+ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'project'
+  CHECK (kind IN ('project', 'library'));
+
+CREATE TRIGGER projects_kind_fixed BEFORE UPDATE OF kind ON projects
+WHEN NEW.kind IS NOT OLD.kind
+BEGIN SELECT RAISE(ABORT, 'a project kind never changes'); END;
 `

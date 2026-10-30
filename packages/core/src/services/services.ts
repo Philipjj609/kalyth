@@ -26,6 +26,8 @@ import {
   IssueAgentTokenInput,
   type IssuedAgentToken,
   type KernelError,
+  KnowledgeStatusQuery,
+  type KnowledgeStatusResult,
   ObjectQuery,
   type ObjectQueryResult,
   ok,
@@ -55,6 +57,7 @@ import { applyOperations } from '../kernel/apply.ts'
 import { decisionFacets } from '../kernel/facets.ts'
 import { assessFreshness } from '../kernel/freshness.ts'
 import { elementLabel, traceImpact } from '../kernel/impact.ts'
+import { isKnowledgeType, knowledgeStatus, libraryInputIssues } from '../kernel/library.ts'
 import { predicateFingerprint } from '../kernel/predicates.ts'
 import { localRefsOf, readSetOf, resolveOperations, writeSetOf } from '../kernel/resolve.ts'
 import { findSecretRule } from '../kernel/secrets.ts'
@@ -165,17 +168,22 @@ export class KalythServices {
         description: parsed.value.description,
         createdAt: now,
         createdBy: ctx.value.principal.id,
+        kind: parsed.value.kind,
       })
       this.store.insertEvent({
         id: this.#ids('event'),
         projectId: id,
         revision: 0,
         type: 'project.created',
-        schemaVersion: 1,
+        schemaVersion: 2,
         actor: ctx.value.principal.id,
         origin: ctx.value.caller.origin,
         occurredAt: now,
-        payload: { name: parsed.value.name, description: parsed.value.description },
+        payload: {
+          name: parsed.value.name,
+          description: parsed.value.description,
+          kind: parsed.value.kind,
+        },
       })
     })
     return ok(this.store.getProject(id) as ProjectSummary)
@@ -273,6 +281,23 @@ export class KalythServices {
       buildProjectExport(this.store, project.id, ctx.value.principal.id, this.#clock()),
     )
     return bundle ? ok(bundle) : fail('not_found', `project ${project.id} does not exist`)
+  }
+
+  /**
+   * Maturity, dispute and support of a library's knowledge items at a revision (ADR 0026): a read
+   * model, computed on read, so nothing it reports is ever stored.
+   */
+  getKnowledgeStatus(caller: unknown, input: unknown): Result<KnowledgeStatusResult> {
+    const r = this.#readable(caller, KnowledgeStatusQuery, input)
+    if (!r.ok) return r
+    const { project, revision, input: q } = r.value
+    if (project.kind !== 'library') return fail('invalid', `project ${project.id} is not a library`)
+    const view = this.store.view(project.id, revision)
+    const items = this.store
+      .objectsAt(project.id, revision, { ...(q.ids ? { ids: q.ids } : {}) })
+      .filter((o) => isKnowledgeType(o.type))
+      .map((o) => knowledgeStatus(view, o))
+    return ok({ projectId: project.id, revision, items })
   }
 
   /** Freshness of every active claim at a revision; a read model, nothing is written (ADR 0009). */
@@ -597,7 +622,9 @@ export class KalythServices {
     const req = parsed.value
     const project = this.store.getProject(req.projectId)
     if (!project) return fail('not_found', `project ${req.projectId} does not exist`)
-    const denied = this.#authz.require(ctx.value.principal, project.id, ['proposal.create'])
+    const denied =
+      this.#authz.require(ctx.value.principal, project.id, ['proposal.create']) ??
+      this.#authz.authorizeProposal(ctx.value.principal, ctx.value.caller, project.id, req.ops)
     if (denied) return { ok: false, error: denied }
     if (req.baseRevision > project.headRevision) {
       return fail(
@@ -635,10 +662,25 @@ export class KalythServices {
         this.#ids,
         { putExcerpt: (text) => this.#putExcerpt(project.id, text, now) },
         now,
+        {
+          actor: ctx.value.principal.id,
+          referenceAttributes: (type) => this.registry.objectType(type)?.references ?? [],
+        },
       )
       const base = this.store.view(project.id, req.baseRevision)
-      const applied = applyOperations(base, resolved.ops, this.registry, req.baseRevision + 1)
-      const issues: Issue[] = [...resolved.issues, ...applied.issues]
+      const applied = applyOperations(base, resolved.ops, this.registry, req.baseRevision + 1, {
+        kind: project.kind,
+      })
+      // A verifySource without targets records the claims it found (ADR 0030 A1).
+      for (const { op, targets } of applied.expansions) {
+        const found = resolved.ops[op]
+        if (found?.op === 'verifySource') resolved.ops[op] = { ...found, targets }
+      }
+      const issues: Issue[] = [
+        ...resolved.issues,
+        ...(project.kind === 'library' ? libraryInputIssues(req.ops) : []),
+        ...applied.issues,
+      ]
       const proposal: Proposal = {
         id: this.#ids('proposal'),
         projectId: project.id,
@@ -711,7 +753,13 @@ export class KalythServices {
           issues: [{ code: 'proposal.not_pending', message: proposal.status }],
         })
       }
-      const denied = this.#authz.authorizeCommit(principal, who, proposal.projectId, proposal.ops)
+      const denied = this.#authz.authorizeCommit(
+        principal,
+        who,
+        proposal.projectId,
+        proposal.ops,
+        proposal,
+      )
       if (denied) return { ok: false, error: denied }
 
       const project = this.store.getProject(proposal.projectId)
@@ -760,6 +808,7 @@ export class KalythServices {
         proposal.ops,
         this.registry,
         revision,
+        { kind: project.kind },
       )
       if (applied.issues.length > 0) {
         decide('conflicting', { issues: applied.issues })
@@ -791,7 +840,7 @@ export class KalythServices {
         projectId: project.id,
         revision,
         type: 'changeSet.committed',
-        schemaVersion: 1,
+        schemaVersion: 2,
         actor: principal.id,
         origin: who.origin,
         occurredAt: now,

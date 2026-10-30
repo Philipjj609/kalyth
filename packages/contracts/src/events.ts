@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { InstructionOrigin } from './auth.ts'
 import { ChangeSetId, EventId, PrincipalId, ProjectId, ProposalId } from './ids.ts'
+import { ProjectKind } from './knowledge.ts'
 import { ResolvedWrite } from './ops.ts'
 
 /**
@@ -13,8 +14,8 @@ import { ResolvedWrite } from './ops.ts'
  * applying them and refuse versions they do not know. History is never rewritten.
  */
 export const EVENT_SCHEMA_VERSIONS = {
-  'project.created': 1,
-  'changeSet.committed': 1,
+  'project.created': 2,
+  'changeSet.committed': 2,
 } as const
 export type EventType = keyof typeof EVENT_SCHEMA_VERSIONS
 
@@ -22,6 +23,10 @@ export const ProjectCreatedV1 = z.object({
   name: z.string(),
   description: z.string(),
 })
+
+/** Version 2 adds the project's kind (ADR 0030 C3). Version 1 upcasts to `kind: "project"`. */
+export const ProjectCreatedV2 = ProjectCreatedV1.extend({ kind: ProjectKind })
+export type ProjectCreatedV2 = z.infer<typeof ProjectCreatedV2>
 
 export const ChangeSetCommittedV1 = z.object({
   changeSetId: ChangeSetId,
@@ -34,6 +39,14 @@ export const ChangeSetCommittedV1 = z.object({
 })
 export type ChangeSetCommittedV1 = z.infer<typeof ChangeSetCommittedV1>
 
+/**
+ * Version 2 has the same fields. Its claims and evidence may carry what ADR 0030 adds (reviews,
+ * verifications, SourceMeta), which a version 1 reader would drop, so the version tells an older
+ * build to refuse the event instead (C5). Version 1 upcasts unchanged.
+ */
+export const ChangeSetCommittedV2 = ChangeSetCommittedV1
+export type ChangeSetCommittedV2 = ChangeSetCommittedV1
+
 const envelope = {
   id: EventId,
   seq: z.int().min(1),
@@ -44,7 +57,7 @@ const envelope = {
   occurredAt: z.iso.datetime(),
 }
 
-export const KalythEvent = z.discriminatedUnion('type', [
+export const KalythEvent = z.union([
   z.object({
     ...envelope,
     type: z.literal('project.created'),
@@ -53,9 +66,21 @@ export const KalythEvent = z.discriminatedUnion('type', [
   }),
   z.object({
     ...envelope,
+    type: z.literal('project.created'),
+    schemaVersion: z.literal(2),
+    payload: ProjectCreatedV2,
+  }),
+  z.object({
+    ...envelope,
     type: z.literal('changeSet.committed'),
     schemaVersion: z.literal(1),
     payload: ChangeSetCommittedV1,
+  }),
+  z.object({
+    ...envelope,
+    type: z.literal('changeSet.committed'),
+    schemaVersion: z.literal(2),
+    payload: ChangeSetCommittedV2,
   }),
 ])
 export type KalythEvent = z.infer<typeof KalythEvent>

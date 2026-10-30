@@ -3,12 +3,14 @@ import type {
   ClaimInput,
   ContentRef,
   Issue,
+  JsonValue,
   OperationParsed,
   ResolvedOperation,
 } from '@kalyth/contracts'
 import { idKindOf, isLocalRef } from '@kalyth/contracts'
 import type { z } from 'zod'
 import type { IdGenerator } from '../util.ts'
+import { supportGroupKey } from './support.ts'
 
 type ParsedClaim = z.output<typeof ClaimInput>
 
@@ -18,6 +20,13 @@ export interface ContentSink {
 }
 
 type RefKind = 'object' | 'relation' | 'evidence'
+
+export interface ResolveContext {
+  /** The proposer: the reviewer or verifier a curation operation records (ADR 0030 A4). */
+  actor: string
+  /** Attributes of a type that hold an object id, which a local ref may name. */
+  referenceAttributes?: (type: string) => readonly string[]
+}
 
 /**
  * Turns submitted operations into resolved ones: assigns ids to created records, replaces local
@@ -30,6 +39,7 @@ export function resolveOperations(
   ids: IdGenerator,
   content: ContentSink,
   collectedAt: string,
+  context: ResolveContext,
 ): { ops: ResolvedOperation[]; issues: Issue[] } {
   const issues: Issue[] = []
   const refs = new Map<string, { id: string; kind: RefKind }>()
@@ -99,6 +109,20 @@ export function resolveOperations(
     }
   }
 
+  const resolveReferences = (
+    type: string,
+    attributes: Record<string, JsonValue>,
+    index: number,
+  ): Record<string, JsonValue> => {
+    const out = { ...attributes }
+    for (const key of context.referenceAttributes?.(type) ?? []) {
+      const value = out[key]
+      if (typeof value === 'string')
+        out[key] = resolve(value, ['object'], index, ['attributes', key])
+    }
+    return out
+  }
+
   const resolved = ops.map((op, index): ResolvedOperation => {
     const newId = (kind: RefKind) =>
       ('ref' in op && op.ref ? refs.get(op.ref)?.id : undefined) ?? ids(kind)
@@ -111,7 +135,7 @@ export function resolveOperations(
           ...keptRef,
           type: op.type,
           stance: op.stance,
-          attributes: op.attributes,
+          attributes: resolveReferences(op.type, op.attributes, index),
           claim: resolveClaim(op.claim, index),
         }
       case 'updateObject':
@@ -134,6 +158,50 @@ export function resolveOperations(
         return op
       case 'setTaskStatus':
         return { ...op, lease: op.lease ?? null }
+      case 'setMaturity':
+        return { ...op, id: resolve(op.id, ['object'], index, ['id']) }
+      case 'reviewSupport': {
+        const group =
+          typeof op.group === 'string'
+            ? op.group
+            : supportGroupKey(
+                op.group.allOf.map((e, ei) =>
+                  resolve(e, ['evidence'], index, ['group', 'allOf', String(ei)]),
+                ),
+              )
+        return {
+          op: 'reviewSupport',
+          target: resolve(op.target, ['object', 'relation'], index, ['target']),
+          group,
+          review: {
+            verdict: op.verdict,
+            reviewer: context.actor,
+            reviewedAt: collectedAt,
+            note: op.note,
+            ...(op.scopeLimit ? { scopeLimit: op.scopeLimit } : {}),
+          },
+        }
+      }
+      case 'verifySource':
+        return {
+          op: 'verifySource',
+          evidence: resolve(op.evidence, ['evidence'], index, ['evidence']),
+          verification: {
+            status: op.status,
+            method: op.method,
+            by: context.actor,
+            at: collectedAt,
+            ...(op.retrievedSha256 ? { retrievedSha256: op.retrievedSha256 } : {}),
+            ...(op.licence ? { licence: op.licence } : {}),
+            note: op.note,
+          },
+          // Without targets, the claims citing the evidence are found when the proposal is
+          // applied, and recorded in it (ADR 0030 A1).
+          targets: (op.targets ?? []).map((t, ti) =>
+            resolve(t, ['object', 'relation'], index, ['targets', String(ti)]),
+          ),
+          allCiting: op.targets === undefined,
+        }
       case 'createRelation':
         return {
           op: 'createRelation',
@@ -187,9 +255,13 @@ export function writeSetOf(ops: readonly ResolvedOperation[]): string[] {
       op.op === 'updateRelation' ||
       op.op === 'retireRelation' ||
       op.op === 'setDecisionStatus' ||
-      op.op === 'setTaskStatus'
+      op.op === 'setTaskStatus' ||
+      op.op === 'setMaturity'
     )
       ids.add(op.id)
+    // Curation writes the claims it names, so a change to them after the base is a conflict (A1).
+    if (op.op === 'reviewSupport') ids.add(op.target)
+    if (op.op === 'verifySource') for (const t of op.targets) ids.add(t)
   }
   return [...ids]
 }

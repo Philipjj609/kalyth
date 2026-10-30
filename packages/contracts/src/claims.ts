@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ClaimId, ClaimTarget, EvidenceId, EvidenceTarget } from './ids.ts'
+import { SourceVerification, SupportReview } from './knowledge.ts'
 
 /**
  * Where a claim's knowledge comes from. Orthogonal to stance, decision status, realisation
@@ -44,6 +45,12 @@ export const SupportGroupInput = z.object({
 })
 export const SupportGroup = z.object({
   allOf: z.array(EvidenceId).min(1).max(64),
+  /**
+   * A curator's review and source verifications, on knowledge claims only (ADR 0030 C1, C6). Only
+   * reviewSupport and verifySource write them; a claim input never carries them.
+   */
+  review: SupportReview.optional(),
+  verifications: z.record(EvidenceId, SourceVerification).optional(),
 })
 
 export const ModelProvenance = z.object({
