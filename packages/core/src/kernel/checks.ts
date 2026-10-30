@@ -100,9 +100,11 @@ export function basisIssues(overlay: StateView, written: ReadonlyMap<string, num
     }
     for (const [key, lists] of listed)
       if (lists.size > 1) add(`one context (${key}) is both covered and ruled out`)
-    for (const pin of unlisted) add(`${pin} has no listed assessment`)
-    const all = pins
     const { disputed, hypotheses, underspecified } = basis.disclosed
+    // A hypothesis is never assessed (ADR 0026 I5), so one disclosed as such needs no assessment.
+    for (const pin of unlisted)
+      if (!hypotheses.includes(pin)) add(`${pin} has no listed assessment`)
+    const all = pins
     for (const pin of [...disputed, ...hypotheses, ...underspecified])
       if (!all.has(pin)) add(`${pin} is disclosed but not relied on`)
   }
@@ -173,9 +175,16 @@ export function runChecks(
 
     const cites: string[] = []
     if (covered.length === 0) cites.push('it covers no assessed context')
-    for (const pin of pins)
+    for (const pin of pins) {
+      // A disclosed hypothesis is exempt only if it is one at its pinned revision.
+      if (basis.disclosed.hypotheses.includes(pin)) {
+        if (facts(pin, state)?.maturity !== 'hypothesis')
+          cites.push(`${pin} is disclosed as a hypothesis but is not one`)
+        continue
+      }
       if (![...covered, ...ruledOut].some((a) => a.attributes.item === pin))
         cites.push(`${pin} has no assessment in covers or ruledOut`)
+    }
     record('alternatives-cite-assessments', cites)
 
     const reliance: string[] = []

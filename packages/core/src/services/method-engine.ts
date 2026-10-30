@@ -346,7 +346,7 @@ export function planMethodRun(
       collectedAt: '1970-01-01T00:00:00.000Z',
     }
     pins.set(ref, pending)
-    candidates.push({ ...base, ref, revision: use.revision, pending })
+    candidates.push({ ...base, pin: ref, ref, revision: use.revision, pending })
   })
   selection.candidates = candidates.map(({ ref: _r, revision: _v, pending: _p, ...c }) => c)
   if (candidates.length === 0)

@@ -372,3 +372,38 @@ above:
 
 Neither changes an invariant. The worked example's expectation is frozen in
 `deploy/knowledge/fixtures/multi-game-method-run.json`, written before the engine.
+
+## Implementation notes (K6a, 30 October 2026)
+
+Where building K6a had to settle something the contract above left open, I chose the narrowest
+reading and record it here for review. None changes an invariant.
+
+- **Checks apply to alternatives with a `basis`.** An alternative without one (every version 1
+  record, and those people write by hand) is not checked, as before; otherwise every existing
+  decision would fail `alternatives-cite-assessments`. K6b's model-drafted alternatives will carry a
+  basis, so they meet the gate.
+- **A disclosed hypothesis needs no assessment.** The evaluator never assesses a hypothesis (ADR
+  0026 I5: its verdict is `notAssessed`), so the basis rule "every pin has a listed assessment"
+  would make `hypotheses-labelled` unreachable and `unbacked` meaningless. A pin listed in
+  `disclosed.hypotheses` is exempt from that rule and from `alternatives-cite-assessments`, and the
+  check fails if the pin is not in fact a hypothesis at its pinned revision.
+- **An exception must answer a failure.** An exception for a check that passes, or for a target it
+  does not fail on, is refused (`check_exception.not_failing`), so exceptions are never recorded
+  in advance.
+- **Gap Questions follow the `question` steps.** §1's table drives gaps from steps producing
+  `hypothesis`; the seed method has none, yet the frozen fixture expects the gap. Since K6a files a
+  Question, not a hypothesis, gaps are asked whenever the method asks Questions. A method that
+  asks no Questions gets none.
+- **The `parameter` source reads parameters only.** A Question cannot name a pinned concept today
+  (`concerns` targets objects, and a pin is evidence), so "or open Question" has nothing to match.
+- **Selection by graph** records, for each item, the fewest hops from another item selected by the
+  other sources, with the relations followed. An item reached only from itself has no graph source.
+- **The run record** also gives each candidate's pin (an existing one or the one the run files),
+  the libraries not present, the proposal's status read on demand, and `outputSha256`: SHA-256 of
+  the outputs and operations in canonical JSON with every id and version hash replaced by its order
+  of first appearance. Version hashes are masked because they hash content that holds ids.
+- **BM25** moved from `packages/eval` to `packages/core`, which eval re-exports, since eval depends
+  on core. One implementation ranks both.
+- **The non-networking example** is a test library about database scaling
+  (`packages/core/test/method-libraries.ts`), with placeholder sources. It is test data, not a
+  seed.

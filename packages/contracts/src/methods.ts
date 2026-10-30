@@ -100,8 +100,11 @@ export const SelectedItem = z.object({
   id: z.string(),
   type: z.string(),
   name: z.string(),
-  /** The project's pin, when it already had one. */
-  pin: EvidenceId.optional(),
+  /**
+   * The project's pin: one it already had, or the one the run's proposal records (a local ref
+   * while the run has filed nothing).
+   */
+  pin: z.string().optional(),
   sources: z.array(SourceHit),
   reason: z.string().optional(),
 })
