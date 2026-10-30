@@ -32,12 +32,15 @@ rational factors, without offsets, so no float error enters a comparison.
 | boolean, category | none | none |
 
 Values are decimal strings, parsed to exact rationals. Comparing two values of different
-dimensions is `incompatible`. That is an error the validator reports, never a false result.
+dimensions is `incompatible`. That is an error the validator reports, never a false result. The
+unit catalogue has its own version, and it is part of `evaluatorVersion`. Adding a unit therefore
+marks assessments stale with a clear reason (ADR 0029).
 
 ### 2. Scenarios
 
 ```
-core.Scenario { name, order: int, description, base?: LocalRef<Scenario> }
+core.Scenario { name, order: int, description, base?: LocalRef<Scenario>,
+                status: "assumed" | "planned" | "committed", rationale }
 ```
 
 `order` sorts scenarios from small to large. `base` lets a scenario inherit parameters from
@@ -84,12 +87,41 @@ elements) whose values differ are a conflict. It is not resolved by intersection
 recency. Both are kept, and evaluation reports `contradictory` with both values (section 4). A
 person resolves it by retiring one, or by stating a new parameter that `supersedes` both.
 
-**Resolution of a parameter** for a condition, a scenario and an element:
+**Specificity and overrides.** A parameter's scope is a scenario, plus an element list (empty means
+the whole system). For a condition evaluated on element E in scenario S, the parameter used is the
+most specific one, found in this order:
 
-1. a parameter scoped to that element in that scenario;
-2. else one scoped to the whole system in that scenario;
-3. else the same steps up the `base` chain of scenarios;
-4. else none, which makes the condition `missing`.
+1. In S: a parameter whose elements include E.
+2. In S: one whose elements include E's nearest `contains` ancestor, then the next ancestor, and
+   so on up to the system.
+3. In S: one scoped to the whole system.
+4. The same three steps in S's `base` scenario, then its base, and so on. The scenario comes
+   first: a system-wide value in S overrides an element value in a base scenario. S is the context
+   being assessed, and its author chose to state that value for it.
+5. Otherwise none, which makes the condition `missing`.
+
+A parameter may be scoped to proposed (to-be) elements, so a project still in design can be
+assessed. A parameter scoped to a retired element is never used, and is reported as dangling until
+it is retired too.
+
+A more specific parameter overrides a broader one **for that element only**. Siblings keep using
+the broader value. A parameter scoped to several elements applies to each of them equally. Only
+parameters at the same step for the same element, with different values, conflict (see
+Contradiction above). The explanation records the step that resolved each value, for example
+`element`, `ancestor:<id>`, `system`, or `base:<scenario>/system`.
+
+### 3a. Missing requirements and uncertain scenarios stay visible
+
+- **Nothing is derived.** Kalyth never infers one parameter from another: not "needs several
+  regions" from five million players, nor "needs sharding" from a write rate. A value a condition
+  needs is stated, observed or measured, or it is missing. A model may suggest a value, but only
+  as a proposed parameter, which a person commits as `stated`.
+- **Scenarios carry their own certainty:** `status` (assumed, planned or committed) and `rationale`
+  (section 2). Both are shown with every verdict computed in that scenario. A verdict in an
+  `assumed` scenario reads as conditional on that assumption.
+- **Missing stays missing.** A missing or `declared-unknown` parameter gives `unknown` and one
+  open Question. The Question stays open, and is listed with every assessment that needed it,
+  until someone answers it. Scale never fills the gap.
 
 ### 4. Evaluating one condition
 
@@ -123,11 +155,18 @@ true, and unknown otherwise; OR is the dual.
 
 | Item | Verdict |
 |---|---|
-| Pattern | **doesNotApply** if any `unsuitableWhen` is true or any `appliesWhen` is false; **applies** if every `appliesWhen` is true and every `unsuitableWhen` is false; otherwise **unknown** |
+| Pattern | **conditionsNotMet** if any `unsuitableWhen` is true or any `appliesWhen` is false; **conditionsMet** if every `appliesWhen` is true and every `unsuitableWhen` is false; otherwise **unknown** |
 | Pattern with `requires` | as above, AND the verdicts of the required patterns. `requires` among knowledge items is acyclic, checked by the library validator |
-| Principle | **excepted** if any `exceptWhen` is true; **applies** if every `appliesWhen` is true and every `exceptWhen` is false; otherwise **unknown** |
+| Principle | **excepted** if any `exceptWhen` is true; **conditionsMet** if every `appliesWhen` is true and every `exceptWhen` is false; otherwise **unknown** |
 | Hypothesis (any type) | **notAssessed**: never a verdict, but listed as an idea to consider (ADR 0026, I5) |
-| Several libraries | each library separately. If definite verdicts disagree (applies against doesNotApply), the result is **conflicting**. A definite verdict beside an unknown is reported as such, with the unknown noted. A Decision may settle a conflict (ADR 0027) |
+| Several libraries | each library separately. If definite verdicts disagree (conditionsMet against conditionsNotMet), the result is **conflicting**. A definite verdict beside an unknown is reported as such, with the unknown noted. A Decision may settle a conflict (ADR 0027) |
+
+**What a verdict means, and does not mean.** `conditionsMet` means only that every condition the
+library declares for the item holds for the given parameters. It does not mean that the pattern is
+appropriate, best, sufficient or safe for the project. Undeclared considerations, the library's
+coverage, and the alternatives' trade-offs remain for people to weigh. `conditionsNotMet` means a
+declared condition rules the item out; it does not mean nothing like it could work. Views say
+"conditions met" and "conditions not met", never "applies" or "recommended".
 
 **Disputed** knowledge still gets a verdict, flagged as disputed with both sides' sources.
 
@@ -162,6 +201,11 @@ answers "why", one row per condition.
 - I3. Two parameters for one concept and scope are never merged.
 - I4. A verdict is reproducible from its explanation's recorded inputs.
 - I5. `runtimeMeasured` is refused until its basis and evidence kind exist.
+- I6. No parameter is derived from another; a missing value stays missing and asked.
+- I7. A more specific parameter overrides a broader one only for its own element; the resolution
+  step is always recorded.
+- I8. `conditionsMet` asserts only the declared conditions, and is never presented as a
+  recommendation.
 
 ## Migration consequences
 
@@ -182,10 +226,18 @@ answers "why", one row per condition.
 6. The game test case: lockstep, rollback and server authority with prediction get the expected
    verdicts at 4 and 64 players and at launch and peak. Rollback is `unknown` while deterministic
    simulation is unknown.
-7. A hypothesis pattern is `notAssessed` and listed, never `applies`.
+7. A hypothesis pattern is `notAssessed` and listed, never `conditionsMet`.
 8. Unsatisfiable `appliesWhen` bounds on one concept fail library validation.
 9. Property tests: evaluation is deterministic, and monotonic. Narrowing an interval never turns
    `true` into `false`, or the reverse.
+10. Specificity: a system-wide value of 8 players and a value of 64 on the real-time mode give 64
+    for that mode and 8 for its sibling. Both values at the same step for the mode conflict. A
+    system value in `peak` overrides an element value in `growth`, and the explanation names the
+    step.
+11. No derivation: setting peak concurrent players to five million changes no other parameter, and
+    a condition on region count stays `unknown` with an open Question.
+12. A verdict computed in an `assumed` scenario carries the scenario's status and rationale in its
+    explanation.
 
 ## Trade-offs left open
 

@@ -4,9 +4,20 @@ Status: proposed specification, not implemented. Written on 26 October 2026 on t
 `future/engineering-intelligence`, after the submission of v0.1.0, which it does not change. It
 details part 1 of [the roadmap](../roadmap/engineering-intelligence.md) and the parts of 2, 3 and 6
 that knowledge needs. ChatGPT reviewed it and Philip approved it as the basis for K0 on 26 October.
-The contracts are now ADRs 0026 to 0029, which refine and take precedence over this document where
-they differ (for example the relations `exceptWhen` and `realizesPrinciple`, the verdicts
-`excepted`, `conflicting` and `notAssessed`, and `core.LibraryUse` and `core.Correspondence`).
+The contracts are now ADRs 0026 to 0029, amended after ChatGPT's final review on 27 October. They
+take precedence over this document where they differ. Among the differences:
+- verdicts are `conditionsMet`, `conditionsNotMet`, `unknown`, `excepted`, `conflicting` and
+  `notAssessed`, and assert declared conditions only;
+- maturity is a lifecycle, and dispute is a computed overlay;
+- quote match, source verification and support review are separate;
+- canonical form v1 is frozen with test vectors, and pinned content is embedded in the project;
+- parameters have specificity rules, and nothing is derived from scale;
+- selection has several relevance sources;
+- mandatory checks block acceptance without a recorded exception;
+- hypotheses are filed as linked proposals.
+
+Two smaller differences: the relations `exceptWhen` and `realizesPrinciple`, and the types
+`core.LibraryUse` and `core.Correspondence`.
 
 ## 1. The problem, stated narrowly
 
@@ -117,13 +128,13 @@ content. Its excerpt is stored as content, so a project export stays self-contai
 |---|---|---|
 | `core.Scenario` | A named load and context, ordered: launch (1,000 daily players), growth (100,000 concurrent), peak (5 million concurrent, global) | The same project gets different answers under different scenarios |
 | `core.Parameter` | A project quantity or property in a scenario: players per match, peak concurrent users, target action latency, deterministic simulation (yes, no or unknown) | Conditions are evaluated against these, with evidence |
-| `core.Assessment` | A conclusion: whether a piece of knowledge applies to an element in a scenario, with each condition's evaluation | The project-specific conclusion, kept apart from both knowledge and facts |
+| `core.Assessment` | A conclusion: whether the declared conditions of a piece of knowledge are met for an element in a scenario, with each condition's evaluation | The project-specific conclusion, kept apart from both knowledge and facts |
 
 A Parameter is usually `stated` (a person gives the expected load) and sometimes `observed` (a
 constant read in source, such as a tick rate). It names its quantity by pinned knowledge evidence
 to the Concept, so "players per match" means the same thing in every project.
 
-An Assessment has `verdict` (applies, does not apply, unknown), the scenario, the element it
+An Assessment has `verdict` (conditions met, not met, unknown, and the others of ADR 0028), the scenario, the element it
 concerns, and one entry per condition: the condition (knowledge evidence), the parameter used
 (project evidence), and the result. Its claim is `inferred` when computed by Kalyth or drafted by
 a model, and `stated` when a person overrides it, with a reason.
@@ -185,9 +196,10 @@ A method declares:
 
 How a run proceeds:
 
-1. **Select knowledge, deterministically.** From the method's `uses` and the project's element
-   types and parameters, Kalyth walks the pinned library: candidate patterns, their competitors,
-   their conditions and their trade-offs. No model is involved.
+1. **Select knowledge, deterministically.** Candidates come from several bounded sources: the
+   method's `uses`, the project's parameters and element types, typed relations in the pinned
+   libraries, lexical matches and people. Each candidate records how it was reached, and every cut
+   is listed (ADR 0029). No model is involved.
 2. **Ask for what is missing.** Every condition without a parameter becomes a Question. A run can
    stop here and wait for answers.
 3. **Assess, deterministically.** Each candidate pattern gets an Assessment per scenario, with
@@ -197,8 +209,10 @@ How a run proceeds:
    The grounding validator extends to knowledge pins: a quote must occur in the pinned knowledge
    content.
 5. **Check.** The method's checks run: every alternative cites the assessments it relies on;
-   none relies on a pattern assessed as not applying; every `worsens` trade-off of a chosen
-   pattern appears in the alternative's trade-offs; disputed knowledge is flagged.
+   none relies on a pattern whose conditions are not met; every `worsens` trade-off of a chosen
+   pattern appears in the alternative's trade-offs; disputed knowledge is flagged. Failures are
+   always shown. A failed mandatory check blocks acceptance unless a person records an exception
+   with a reason (ADR 0029).
 6. **Decide.** A person compares and decides, as today; hand-off and reconciliation follow.
 
 "Verified" means these checks and grounding passed, not that the design will work at runtime
@@ -215,7 +229,8 @@ How a run proceeds:
   limitations; competing and required patterns; disputes and open questions; history; and, within
   the same store, the projects and assessments that cite it.
 - **In a project.** A knowledge lens on the canvas marks elements with assessments. Selecting an
-  element shows the knowledge that applies in each scenario, and an assessment opens as a table
+  element shows the knowledge whose conditions are met, not met or unknown in each scenario, and
+  an assessment opens as a table
   of conditions, parameter values, evidence and results, with a scenario switch from launch to
   peak.
 

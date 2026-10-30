@@ -36,8 +36,24 @@ Three implementations, in order of delivery:
    library and revision, verified by `stateSha256` on import;
 3. **remote** (later, its own ADR): fetched from a publisher and cached as a snapshot.
 
-A project never needs a library to be present to stay valid. Its export carries the pinned content
-(section 6), so pins resolve from the export itself.
+**Embedded pinned content.** When a project creates a pin, the pinned version's canonical content
+is copied into the project's own content store, keyed by `versionSha256`, in the same
+transaction. It is immutable and never removed while anything cites it. So a project never needs a
+library to be present to stay valid, and its export carries the content (section 6).
+
+**Resolution order** for a pin:
+
+1. the project's embedded content, by `versionSha256`;
+2. the local library, at the pinned revision, when it is present (used to fill the embedded copy
+   if it was ever lost);
+3. a snapshot cache, then a remote publisher (later).
+
+Every step verifies the hash before returning anything.
+
+**Advancing a library.** When a LibraryUse moves to a newer revision, new pins embed the new
+versions beside the old ones. Old pins, and the assessments that cite them, keep resolving to the
+old content. So history and superseded assessments stay readable, and a diff between versions is
+always possible.
 
 ### 2. Identity
 
@@ -46,15 +62,64 @@ A project never needs a library to be present to stay valid. Its export carries 
 - **Knowledge item:** `(library, id)`, where `id` is the object or relation id, stable across
   revisions of that library.
 - **Version:** `(library, id, revision)`, with `versionSha256`, the SHA-256 of the item's
-  canonical form at that revision. The canonical form is the kernel's canonical JSON (sorted keys,
-  no insignificant whitespace, UTF-8, numbers as written). It covers the type and type version,
-  attributes, maturity, and the claim's basis, support groups with their evidence ids and reviews.
-  It excludes timestamps of reading. This ADR freezes the canonical form, with test vectors.
-  Changing it later would invalidate every pin, so that needs a new hash version (`versionHash:
-  "v1"` is stored beside the hash).
+  canonical form v1 at that revision (section 2a). `versionHash: "v1"` is stored beside the hash,
+  so that a later form needs a new version, not a silent change.
 
 Two libraries never share identity. "Rollback" in library A and "rollback" in library B are
 different items, whatever their names.
+
+### 2a. Canonical form v1, frozen
+
+**What it covers.**
+
+- Objects: `type`, `typeVersion`, `maturity`, `attributes` and `claim`. The claim holds `basis`,
+  and `supports`, each group with `allOf` and its `review`.
+- Relations: `type`, `typeVersion`, `properties` (for example `effect` and `note` of `affects`),
+  `claim`, and `from` and `to`, as ids local to the library. Relations carry no maturity in v1; a
+  relation is as mature as the review of its own claim.
+- Each cited piece of evidence appears as `{ evidence: id, evidenceSha256 }`. `evidenceSha256` is
+  the hash of the evidence record's own canonical form, including `SourceMeta` and its
+  SourceVerification.
+- It excludes anything computed on read (dispute, freshness) and every timestamp except those
+  inside reviews and verifications.
+
+**How it is written** (RFC 8785, JSON Canonicalization Scheme, with three restrictions):
+
+1. Object keys sorted by UTF-16 code units, with no whitespace. Strings escaped as RFC 8785 and
+   `JSON.stringify` do.
+2. Every string and key in Unicode NFC, normalised at write time. A string with an unpaired
+   surrogate is refused.
+3. JSON numbers only for safe integers (|n| ≤ 2⁵³ − 1): revisions, versions, counts. Every other
+   number is a **canonical decimal string**:
+   - no sign for positive values;
+   - no leading zeros before a non-zero digit;
+   - no trailing zeros after the point, and no trailing point;
+   - `-0` written as `0`;
+   - no exponent.
+
+   Values are normalised at write time, so the canonicaliser never parses numbers.
+
+The bytes hashed are the UTF-8 encoding of that text. `null` and `false` are written; absent
+optional fields are omitted, never written as `null`.
+
+**Test vectors** (computed with the reference implementation; any implementation must reproduce
+them, on every platform):
+
+| Input | Canonical text | SHA-256 |
+|---|---|---|
+| `{b:2, a:1, c:[true, null, "x"]}` | `{"a":1,"b":2,"c":[true,null,"x"]}` | `ee78b758140705c9412a940a152d297a342a670a702f44047a9baefea5579abb` |
+| `{name: "café"}` (decomposed) | `{"name":"café"}` (NFC) | `645fa443126a8954fc6d871912b8fc67bc2ee8feae417efe55546251962ca74d` |
+| `{name: "café"}` (composed) | `{"name":"café"}` | `645fa443126a8954fc6d871912b8fc67bc2ee8feae417efe55546251962ca74d` |
+| keys `é, z, a, 😀 (U+1F600), U+FFFF` | `{"a":3,"z":2,"é":1,"😀":4,"￿":5}` (UTF-16 order puts the surrogate pair before U+FFFF) | `e1abf7154a7a32ac09084702cc92b4b40b49f79d52e7037765805487abd60163` |
+| a parameter value, `100.0 ms` | `{"kind":"point","unit":"ms","value":"100"}` | `160785619d37a878bda7cd9778f67534b4a9e84ae3ce2cef0768081d703694a3` |
+| a `document` evidence record with `SourceMeta` (quote policy none) | `{"kind":"document","locator":"chapter 7","meta":{…},"uri":"urn:isbn:9780000000000","version":"2nd edition"}` | `85802ce60c18d2d21c9b2833a2624be58ce4542bb3863be315bf2b64aa34653e` |
+| a `knowledge.Pattern` citing that evidence by `{evidence, evidenceSha256}` | (full text in the test fixture) | `a03662070ef94e049585876c25107cb33d6ab7c1048a1744d514407877a158bd` |
+
+Decimal normalisation vectors: `0.10` → `0.1`; `+5` → `5`; `-0.0` → `0`; `1.500` → `1.5`;
+`0100` → `100`; `-2.50` → `-2.5`.
+
+The fixtures, with the full inputs, live with the implementation in K2. The table above is
+normative, and a change to any hash in it is a change to the canonical form.
 
 ### 3. Pins
 
@@ -111,6 +176,19 @@ core.LibraryUse { library: ProjectId, label, revision, role: "primary" | "supple
   same rules. Since pins point only to revisions that already exist, they cannot form a live cycle.
   Freshness propagates one pin deep; deeper chains are reported, not followed.
 
+### 5a. When a referenced version is unavailable or corrupted
+
+| Situation | Behaviour |
+|---|---|
+| The library is not present | Pins resolve from embedded content. Only actions that need the library's current head are refused, with that reason: moving a LibraryUse, and a method run's selection beyond the pins. |
+| Embedded content is missing, but the library or a snapshot has the version | It is restored into the store after the hash checks, and the restoration is logged. |
+| No copy with the right hash exists anywhere | The pin is `unresolved: "unknown-revision"` or `"unknown-target"`. Claims citing it show "evidence unavailable". Assessments that depend on it are stale, with that reason. Reassessing and method runs that need it are refused. |
+| A copy exists but its hash differs | `unresolved: "hash-mismatch"`, reported as corruption with both hashes. The copy is never used, and never replaced by another version. A person restores it from an export or a snapshot that verifies. |
+| Import of an export with a mismatched pinned hash | The import is refused as a whole (ADR 0014), naming the pin. |
+
+Kalyth never substitutes another version, never drops the pin, and never turns an unresolved pin
+into a verdict.
+
 ### 6. Export format 2
 
 A project export gains `knowledge`: for every pinned version, its canonical content, `SourceMeta`
@@ -128,6 +206,9 @@ pins.
 - I4. A pin's revision is no later than its LibraryUse revision.
 - I5. No assessment combines verdicts from two libraries without either a `sameAs` path or a
   `conflicting` result.
+- I6. Creating a pin embeds its content in the same transaction; embedded content is immutable and
+  kept while cited.
+- I7. A resolver returns only content whose hash verifies; otherwise it returns a named failure.
 
 ## Migration consequences
 
@@ -135,14 +216,20 @@ pins.
 - `core.LibraryUse` and `core.Correspondence` are new core types, version 1.
 - Export format 2 is a breaking change for readers of exports; format 1 import stays supported,
   and the version is checked on import.
-- The canonical form and `versionHash: "v1"` must be fixed, with test vectors, before K2 writes
-  the first pin.
+- The canonical form v1 and its test vectors are frozen by section 2a. K2 must reproduce them before
+  it writes the first pin.
+- Strings are normalised to NFC and decimals to canonical form at write time, for knowledge content
+  and parameters. Existing project data is untouched, since nothing old is hashed this way.
+- Embedded pinned content adds rows to each project's content store; it is never garbage-collected
+  while cited.
 - Snapshot caches are new files beside the store, and are read-only; deleting one only makes pins
   resolve from the project's own export or the local store.
 
 ## Test cases (for K2)
 
-1. Canonical-form test vectors give the same hash on Linux and Windows, and across a store reopen.
+1. The canonical-form vectors of section 2a reproduce exactly on Linux and Windows, and across a
+   store reopen. A non-NFC string is stored as NFC, an unpaired surrogate is refused, and a
+   non-canonical decimal is normalised at write.
 2. A pin to a changed object reports `hash-mismatch`, never the new content.
 3. A project exported with pins and imported into an empty store resolves every pin with no
    library present.
@@ -153,6 +240,12 @@ pins.
    explanations. A committed Decision choosing A then gives A's verdict, citing the decision.
 7. A library pinning another library: moving the inner pin reports staleness one level up.
 8. Moving a LibraryUse lists the changed items and stale assessments before commit.
+9. With the library deleted, a project's pins still resolve from embedded content, and moving its
+   LibraryUse is refused with the reason "library not present".
+10. After a LibraryUse moves, an old pin still resolves to the old content, and a superseded
+    assessment still shows its explanation.
+11. Corrupting embedded content gives `hash-mismatch`, the dependent assessments go stale with that
+    reason, and reassessment is refused.
 
 ## Trade-offs left open
 
