@@ -39,7 +39,7 @@ describe('pinned-snapshot read delegation (ADR 0032)', () => {
     expect(issued.summary.scopes).toContain('knowledge.pinned.read')
     const r = h.services.getPinnedKnowledge(caller, { projectId: x.project.id })
     if (!r.ok) throw new Error(r.error.message)
-    expect(r.value.pins).toHaveLength(5)
+    expect(r.value.pins).toHaveLength(6)
     const lockstep = r.value.pins.find((p) => p.evidence === x.P.$lockstep)
     expect(lockstep).toMatchObject({
       state: 'embedded',

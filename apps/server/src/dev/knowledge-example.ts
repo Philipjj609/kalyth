@@ -76,6 +76,7 @@ export function buildKnowledgeExample(services: KalythServices, owner: Caller, a
         },
         claim: stated,
       },
+      pin('$method', L.$chooseSync as string),
       pin('$deterministic', L.$deterministic as string),
       pin('$predictable', L.$predictable as string),
       pin('$lockstep', L.$lockstep as string),

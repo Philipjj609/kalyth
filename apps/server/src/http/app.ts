@@ -315,8 +315,9 @@ export function registerApiRoutes(
     ),
   )
 
-  // K4: read-only knowledge and assessments, one route per shared operation (ADR 0031). The
-  // inputs are structured, so they travel as a JSON body; nothing these routes call writes.
+  // K4 and K6a: knowledge, assessments and method runs, one route per shared operation (ADR
+  // 0031, ADR 0033). The inputs are structured, so they travel as a JSON body. Only run_method
+  // writes, and only a proposal.
   for (const op of KNOWLEDGE_OPERATIONS)
     app.post(`/api/v1/knowledge/${op.name}`, async (req, reply) =>
       send(reply, op.run(workspaceOf(req).services, workspaceOf(req).caller, body(req))),

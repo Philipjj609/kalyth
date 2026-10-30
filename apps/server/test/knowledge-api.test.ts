@@ -40,8 +40,19 @@ function calls(x: Awaited<ReturnType<typeof example>>): [string, Record<string, 
     ],
     ['list_assessments', { projectId: project.id }],
     ['get_assessment', { projectId: project.id, id: assessments.shooterLockstep }],
+    ['run_method', runInput(x)],
+    ['list_method_runs', { projectId: project.id }],
   ]
 }
+
+/** The ADR 0033 worked example's run, on the example project. */
+const runInput = (x: Awaited<ReturnType<typeof example>>) => ({
+  projectId: x.project.id,
+  method: x.P.$method,
+  scenarios: [x.P.$launch, x.P.$expansion],
+  elements: [x.P.$rts, x.P.$shooter],
+  natures: ['expected'],
+})
 
 describe('K4 read access: one contract for MCP and HTTP (ADR 0031)', () => {
   it('exposes every operation as a read-only MCP tool and an HTTP route', async () => {
@@ -57,12 +68,17 @@ describe('K4 read access: one contract for MCP and HTTP (ADR 0031)', () => {
       'assess_applicability',
       'list_assessments',
       'get_assessment',
+      'run_method',
+      'get_method_run',
+      'list_method_runs',
     ])
     const listed = (await h.client.listTools()).tools
     for (const name of names) {
+      // run_method files a proposal (ADR 0033 §11); every other operation only reads.
+      const readOnly = name !== 'run_method'
       const tool = listed.find((t) => t.name === name)
-      expect(tool?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false })
-      expect(TOOLS.find((t) => t.name === name)?.readOnly).toBe(true)
+      expect(tool?.annotations).toMatchObject({ readOnlyHint: readOnly, destructiveHint: false })
+      expect(TOOLS.find((t) => t.name === name)?.readOnly).toBe(readOnly)
     }
   })
 
@@ -76,7 +92,21 @@ describe('K4 read access: one contract for MCP and HTTP (ADR 0031)', () => {
         status: name === 'get_method' ? 422 : 200,
       })
       expect(viaMcp.isError).toBe(viaHttp.status !== 200)
-      if (viaHttp.status === 200)
+      if (name === 'run_method') {
+        // Each call is a new run with its own ids and times; its outputs are the same.
+        expect(viaMcp.body.outputSha256).toBe(viaHttp.body.outputSha256)
+        expect(viaMcp.body).toMatchObject({ status: 'proposed', proposalStatus: 'pending' })
+        expect(viaHttp.body.origin).toBe('human')
+        expect(viaMcp.body.origin).toBe('agent')
+        const id = viaMcp.body.id
+        const run = await h.http('POST', '/api/v1/knowledge/get_method_run', {
+          projectId: x.project.id,
+          id,
+        })
+        const runMcp = await h.mcp('get_method_run', { projectId: x.project.id, id })
+        expect(canonicalJson(runMcp.body)).toBe(canonicalJson(run.body))
+        expect(run.body.selection.candidates).toHaveLength(7)
+      } else if (viaHttp.status === 200)
         expect(canonicalJson(viaMcp.body)).toBe(canonicalJson(viaHttp.body))
       else expect(viaMcp.body.error.code).toBe(viaHttp.body.error.code)
     }
@@ -106,11 +136,16 @@ describe('K4 read access: one contract for MCP and HTTP (ADR 0031)', () => {
     const listed = h.services.listAssessments(caller, { projectId: x.project.id })
     expect(listed.ok).toBe(true)
     const stranger = h.services.createPrincipal('agent', 'Stranger')
+    const someRun = h.services.startMethodRun(
+      { principalId: h.owner.id, origin: 'human' },
+      runInput(x),
+    )
+    const runArgs = { projectId: x.project.id, id: someRun.ok ? someRun.value.id : '' }
     for (const op of KNOWLEDGE_OPERATIONS) {
       const r = op.run(
         h.services,
         { principalId: stranger.id, origin: 'agent' },
-        calls(x).find(([n]) => n === op.name)?.[1],
+        calls(x).find(([n]) => n === op.name)?.[1] ?? runArgs,
       )
       expect({ op: op.name, ok: r.ok }).toEqual({ op: op.name, ok: false })
     }

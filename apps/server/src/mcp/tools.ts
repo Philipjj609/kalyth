@@ -262,9 +262,10 @@ export const TOOLS: readonly ToolSpec[] = [
     readOnly: true,
     run: (d, c, i) => d.services.listProposals(c, i),
   },
-  // K4: read-only knowledge and assessments, from the table HTTP uses too (ADR 0031).
+  // K4 knowledge and assessments, and K6a method runs, from the table HTTP uses too (ADR 0031,
+  // ADR 0033). run_method files a proposal; it commits nothing.
   ...KNOWLEDGE_OPERATIONS.map(
-    (op): ToolSpec => ({ ...op, readOnly: true, run: (d, c, i) => op.run(d.services, c, i) }),
+    (op): ToolSpec => ({ ...op, run: (d, c, i) => op.run(d.services, c, i) }),
   ),
 ]
 

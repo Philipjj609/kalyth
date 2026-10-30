@@ -182,6 +182,10 @@ describe('Navigator over HTTP', () => {
     )
     expect(unknown.status).toBe(404)
     const tools = (await h.client.listTools()).tools.map((t) => t.name)
-    expect(tools.filter((t) => /navigator|run|summar|alternative/.test(t))).toEqual([])
+    // Method runs are deterministic and make no model call (ADR 0033), so they may be on MCP.
+    const methodRuns = ['run_method', 'get_method_run', 'list_method_runs']
+    expect(
+      tools.filter((t) => /navigator|run|summar|alternative/.test(t) && !methodRuns.includes(t)),
+    ).toEqual([])
   })
 })

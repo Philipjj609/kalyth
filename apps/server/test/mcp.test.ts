@@ -60,6 +60,7 @@ describe('MCP interface', () => {
       'get_history',
       'get_knowledge',
       'get_method',
+      'get_method_run',
       'get_pin_status',
       'get_pinned_knowledge',
       'get_project_overview',
@@ -70,6 +71,7 @@ describe('MCP interface', () => {
       'list_context_packages',
       'list_decisions',
       'list_library_uses',
+      'list_method_runs',
       'list_projects',
       'list_proposals',
       'list_tasks',
@@ -78,6 +80,7 @@ describe('MCP interface', () => {
       'query_relations',
       'release_task',
       'renew_task_lease',
+      'run_method',
       'search_knowledge',
       'submit_execution_report',
     ])
