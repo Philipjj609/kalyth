@@ -26,6 +26,7 @@ import {
   fail,
   GetAssessmentInput,
   GetKnowledgeInput,
+  GetMethodRunInput,
   type Grant,
   HistoryQuery,
   type HistoryResult,
@@ -46,7 +47,11 @@ import {
   type LibraryUsesResult,
   ListAssessmentsInput,
   type ListAssessmentsResult,
+  ListMethodRunsInput,
   type Maturity,
+  type MethodRun,
+  MethodRunInput,
+  type MethodRunList,
   ObjectQuery,
   type ObjectQueryResult,
   type ObjectVersion,
@@ -122,6 +127,7 @@ import {
   systemClock,
 } from '../util.ts'
 import { Authorizer, curatorRequired } from './authz.ts'
+import { ENGINE_VERSION, planMethodRun } from './method-engine.ts'
 
 export interface KalythServicesOptions {
   store: SqliteStore
@@ -1666,6 +1672,175 @@ export class KalythServices {
     })
   }
 
+  // ---------- method runs (ADR 0033) ----------
+
+  /**
+   * Runs a method deterministically and files its output as one proposal (ADR 0033 §2 to §9).
+   * It needs read and propose on the project, and read on every library the project uses, since
+   * it selects and evaluates there; nothing is widened for a delegated agent (A2). Refusals leave
+   * no run; a run that fails keeps what it computed. A run never commits, and makes no model call.
+   */
+  startMethodRun(caller: unknown, input: unknown): Result<MethodRun> {
+    const ctx = this.#context(caller)
+    if (!ctx.ok) return ctx
+    const parsed = parse(MethodRunInput, input)
+    if (!parsed.ok) return parsed
+    const req = parsed.value
+    const project = this.store.getProject(req.projectId)
+    if (!project) return fail('not_found', `project ${req.projectId} does not exist`)
+    const { principal, caller: who } = ctx.value
+    const denied = this.#authz.require(principal, project.id, ['project.read', 'proposal.create'])
+    if (denied) return { ok: false, error: denied }
+    const revision = project.headRevision
+    const view = this.store.view(project.id, revision)
+    const unreadable = view
+      .listObjects({ types: ['core.LibraryUse'] })
+      .map((u) => String(u.attributes.library))
+      .filter((lib) => this.store.getProject(lib))
+      .filter((lib) => this.#authz.require(principal, lib, ['project.read']))
+      .sort()
+    if (unreadable.length > 0)
+      return fail(
+        'unauthorized',
+        `a run reads every library the project uses; this caller cannot read ${unreadable.join(', ')}`,
+        {
+          requiredScopes: ['project.read'],
+          issues: [{ code: 'method.library_read_required', message: unreadable.join(', ') }],
+        },
+      )
+    const problems: Issue[] = []
+    for (const s of req.scenarios) {
+      const o = view.getObject(s)
+      if (o?.type !== 'core.Scenario' || o.lifecycle !== 'active')
+        problems.push({
+          code: 'method.scenario_invalid',
+          message: `${s} is not an active scenario`,
+        })
+    }
+    for (const e of req.elements ?? []) {
+      const o = view.getObject(e)
+      if (o?.lifecycle !== 'active' || isKnowledgeType(o.type) || o.type.startsWith('core.'))
+        problems.push({ code: 'method.element_invalid', message: `${e} is not an active element` })
+    }
+    if (req.previous && this.store.getMethodRun(req.previous)?.projectId !== project.id)
+      problems.push({
+        code: 'method.previous_invalid',
+        message: `${req.previous} is not a run here`,
+      })
+    if (problems.length > 0) return fail('invalid', 'the run cannot start', { issues: problems })
+
+    const id = this.#ids('methodRun')
+    const startedAt = this.#clock()
+    const planned = planMethodRun(this.store, project.id, revision, req)
+    const plan = planned.ok ? planned.plan : planned.partial
+    const record = (
+      status: MethodRun['status'],
+      extra: {
+        proposal?: string | null
+        failure?: { code: string; message: string } | null
+        checks?: MethodRun['checks']
+        refs?: Record<string, string>
+      },
+    ): Result<MethodRun> => {
+      const resolve = <T>(value: T): T => replaceRefs(value, extra.refs ?? {})
+      const outputs = {
+        selection: plan.selection ?? {
+          candidates: [],
+          cut: [],
+          ideas: [],
+          excluded: [],
+          missingLibraries: [],
+        },
+        uncertainties: plan.uncertainties ?? [],
+        comparison: plan.comparison ?? [],
+      }
+      const run: Omit<MethodRun, 'proposalStatus'> = {
+        id,
+        projectId: project.id,
+        startedBy: principal.id,
+        origin: who.origin,
+        startedAt,
+        finishedAt: this.#clock(),
+        input: req as unknown as JsonValue,
+        pinned: {
+          method: plan.method ?? null,
+          libraryUses: plan.libraryUses ?? [],
+          projectRevision: revision,
+          engineVersion: ENGINE_VERSION,
+          checkCatalogueVersion: CHECK_CATALOGUE_VERSION,
+        },
+        status,
+        ...resolve(outputs),
+        checks: extra.checks ?? [],
+        proposal: extra.proposal ?? null,
+        failure: extra.failure ?? null,
+        // Ids and times masked, so equal inputs and revisions give equal hashes (§9).
+        outputSha256: maskedSha256({
+          ...outputs,
+          ops: planned.ok ? planned.plan.ops : [],
+          checks: extra.checks ?? [],
+        }),
+        cost: { modelCalls: 0, microUsd: 0 },
+      }
+      this.store.insertMethodRun(run)
+      return ok(this.#withProposalStatus(run))
+    }
+    if (!planned.ok)
+      return record('failed', { failure: { code: planned.code, message: planned.message } })
+    const proposed = this.proposeChange(caller, {
+      projectId: project.id,
+      baseRevision: revision,
+      ops: planned.plan.ops,
+      rationale: `${planned.plan.rationale}, run ${id}`,
+    })
+    if (!proposed.ok)
+      return record('failed', {
+        failure: { code: proposed.error.code, message: proposed.error.message },
+      })
+    const filed = this.store.getProposal(proposed.value.proposalId) as Proposal
+    if (proposed.value.status !== 'pending')
+      return record('failed', {
+        proposal: filed.id,
+        failure: {
+          code: 'method.proposal_invalid',
+          message: proposed.value.issues.map((i) => `${i.code}: ${i.message}`).join('; '),
+        },
+      })
+    return record('proposed', {
+      proposal: filed.id,
+      checks: proposed.value.checks ?? [],
+      refs: localRefsOf(filed.ops),
+    })
+  }
+
+  getMethodRun(caller: unknown, input: unknown): Result<MethodRun> {
+    const r = this.#readable(caller, GetMethodRunInput, input)
+    if (!r.ok) return r
+    const run = this.store.getMethodRun(r.value.input.id)
+    if (run?.projectId !== r.value.project.id)
+      return fail('not_found', `run ${r.value.input.id} is not a run of this project`)
+    return ok(this.#withProposalStatus(run))
+  }
+
+  listMethodRuns(caller: unknown, input: unknown): Result<MethodRunList> {
+    const r = this.#readable(caller, ListMethodRunsInput, input)
+    if (!r.ok) return r
+    const runs = this.store.listMethodRuns(r.value.project.id, r.value.input.limit).map((run) => {
+      const { id, startedBy, origin, startedAt, status, proposal, proposalStatus, failure } =
+        this.#withProposalStatus(run)
+      return { id, startedBy, origin, startedAt, status, proposal, proposalStatus, failure }
+    })
+    return ok({ projectId: r.value.project.id, runs })
+  }
+
+  /** A run is never edited: what became of its proposal is read from the proposal (§9). */
+  #withProposalStatus(run: Omit<MethodRun, 'proposalStatus'>): MethodRun {
+    return {
+      ...run,
+      proposalStatus: run.proposal ? (this.store.getProposal(run.proposal)?.status ?? null) : null,
+    }
+  }
+
   // ---------- helpers ----------
 
   #applyOptions(project: ProjectSummary): ApplyOptions {
@@ -1965,3 +2140,32 @@ function parse<S extends z.ZodType>(schema: S, input: unknown): Result<z.output<
 const AGENT_TOKEN_SCOPES: readonly Scope[] = ['project.read', 'proposal.create', 'task.work']
 
 export type { KernelError }
+
+/** Replaces local refs with the ids they became, anywhere in a value. */
+function replaceRefs<T>(value: T, refs: Readonly<Record<string, string>>): T {
+  const walk = (v: unknown): unknown => {
+    if (typeof v === 'string') return refs[v] ?? v
+    if (Array.isArray(v)) return v.map(walk)
+    if (v && typeof v === 'object')
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]))
+    return v
+  }
+  return walk(value) as T
+}
+
+// Ids, and version hashes, which hash content that holds ids.
+const ID_PATTERN = /\b(?:(?:prj|obj|rel|evd|cnt|prp|pcp|run)_[0-9a-f]{32}|[0-9a-f]{64})\b/g
+
+/**
+ * SHA-256 of a value's canonical JSON with every id and version hash replaced by its order of
+ * first appearance, so two runs on equal inputs and revisions hash alike in any store (ADR 0033
+ * §9).
+ */
+function maskedSha256(value: unknown): string {
+  const seen = new Map<string, string>()
+  const masked = canonicalJson(value).replace(ID_PATTERN, (id) => {
+    if (!seen.has(id)) seen.set(id, `#${seen.size}`)
+    return seen.get(id) as string
+  })
+  return sha256Hex(masked)
+}

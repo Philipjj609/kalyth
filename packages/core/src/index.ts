@@ -7,6 +7,7 @@ export {
 } from './bootstrap.ts'
 export { buildProjectExport, importProjectExport, stateSha256 } from './export.ts'
 export { type ApplyOptions, type ApplyOutcome, applyOperations } from './kernel/apply.ts'
+export { Bm25, tokenize } from './kernel/bm25.ts'
 export {
   canonicalSha256,
   canonicalV1,

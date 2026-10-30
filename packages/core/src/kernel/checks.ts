@@ -72,6 +72,7 @@ export function basisIssues(overlay: StateView, written: ReadonlyMap<string, num
         ...(op === undefined ? {} : { op }),
       })
     const pins = new Set(basis.pins)
+    const unlisted = new Set(basis.pins)
     const listed = new Map<string, Set<string>>()
     for (const [list, ids] of [
       ['covers', basis.covers],
@@ -94,13 +95,13 @@ export function basisIssues(overlay: StateView, written: ReadonlyMap<string, num
         const lists = listed.get(key) ?? new Set<string>()
         lists.add(list)
         listed.set(key, lists)
-        pins.delete(String(a.attributes.item))
+        unlisted.delete(String(a.attributes.item))
       }
     }
     for (const [key, lists] of listed)
       if (lists.size > 1) add(`one context (${key}) is both covered and ruled out`)
-    for (const pin of pins) add(`${pin} has no listed assessment`)
-    const all = new Set(basis.pins)
+    for (const pin of unlisted) add(`${pin} has no listed assessment`)
+    const all = pins
     const { disputed, hypotheses, underspecified } = basis.disclosed
     for (const pin of [...disputed, ...hypotheses, ...underspecified])
       if (!all.has(pin)) add(`${pin} is disclosed but not relied on`)
