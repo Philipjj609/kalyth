@@ -244,7 +244,7 @@ The same services, through the existing doors:
 - **Context packages** gain an optional section of the knowledge an accepted decision relies on,
   with pins, so an agent implements against the same knowledge the person decided with.
 - **MCP (write):** agents propose, never commit: `propose_change` in a project as today, and in a
-  library only with a `knowledge.propose` grant.
+  library only with `proposal.create` on that library (ADR 0030).
 - **HTTP** mirrors MCP, with a parity test. **CLI:** `knowledge:import`, `knowledge:export`, and
   `knowledge:check` for a library's validation rules.
 

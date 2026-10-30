@@ -127,7 +127,7 @@ output is one proposal. A run proceeds:
    | | Library proposal L | Project proposal P |
    |---|---|---|
    | Holds | a `knowledge.Pattern` or `knowledge.Principle`, maturity `hypothesis`, its rationale, and the project's need as a case document (never project source, ADR 0026) | the run's output, including an Alternative marked `unbacked` |
-   | Permission | `knowledge.propose` on that library, for the principal running the method | the project's own proposal rights |
+   | Permission | `proposal.create` on that library, for the principal running the method (ADR 0030, C2; across stores, the cross-store requirements) | the project's own proposal rights |
    | Base revision and lifecycle | the library's head; committed or rejected by its curator, on the library's schedule | the project's head; committed or rejected by the project's people |
    | Link | `links: [{ project, proposal: P }]` | `links: [{ library, proposal: L }]`, and the unbacked alternative names L |
 
@@ -217,7 +217,8 @@ The services are the same for every door. HTTP mirrors MCP, with a parity test.
     Assessment);
   - `list_assessments` (with freshness);
   - `get_method`.
-- **MCP, write:** `propose_change` only, as today. In a library it needs `knowledge.propose`.
+- **MCP, write:** `propose_change` only, as today. In a library it needs `proposal.create` on that
+  library (ADR 0030, C2).
 - **Context packages:** an optional section with the assessments and knowledge pins an accepted
   decision relies on, with their freshness.
 - **CLI:** `knowledge:import`, `knowledge:export` and `knowledge:check` (library validation).

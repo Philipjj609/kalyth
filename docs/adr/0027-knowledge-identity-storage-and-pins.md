@@ -78,8 +78,9 @@ different items, whatever their names.
   `claim`, and `from` and `to`, as ids local to the library. Relations carry no maturity in v1; a
   relation is as mature as the review of its own claim.
 - Each cited piece of evidence appears as `{ evidence: id, evidenceSha256 }`. `evidenceSha256` is
-  the hash of the evidence record's own canonical form, including `SourceMeta` and its
-  SourceVerification.
+  the hash of the evidence record's own, immutable canonical form, including `SourceMeta`.
+  Verifications and reviews live in the claim's support groups, so they are covered by the item's
+  own hash (ADR 0030, C1).
 - It excludes anything computed on read (dispute, freshness) and every timestamp except those
   inside reviews and verifications.
 

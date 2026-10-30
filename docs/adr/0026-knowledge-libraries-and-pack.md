@@ -26,8 +26,10 @@ unchanged). A library:
 - registers the `knowledge` pack and may not hold `software.*` objects;
 - may cite `document`, `external`, `statement` and `knowledge` evidence (ADR 0027), never
   `sourceSpan` evidence;
-- needs the scope `knowledge.curate` to commit, and `knowledge.propose` to propose. Commit policy
-  (ADR 0006) is unchanged otherwise: models and agents propose, a person commits.
+- takes proposals from principals with `proposal.create` on it, and commits with
+  `proposal.commit`, as any project. Maturity, reviews and verifications need the human-only scope
+  `knowledge.curate` (ADR 0030, C2). Commit policy (ADR 0006) is unchanged otherwise: models and
+  agents propose, a person commits.
 
 ### 2. Object types (pack `knowledge`, version 1)
 
@@ -69,7 +71,7 @@ Two separate properties:
 `maturity: "hypothesis" | "proposed" | "established" | "deprecated"`
 
 - **hypothesis:** a new idea proposed because existing knowledge is inadequate. Any principal with
-  `knowledge.propose` may propose one, a model included, during a method run (ADR 0029). It needs a
+  `proposal.create` on the library may propose one, a model included, during a method run (ADR 0029). It needs a
   rationale and at least one piece of evidence, which may be a statement or a case document. It is
   never used to rule a pattern in or out.
 - **proposed:** the curator committed it with its sources, and its support is not yet fully
@@ -89,7 +91,7 @@ it back to proposed, or the commit is refused.
 `dispute: { status: "none" | "disputed", by: KnowledgePin[] }`
 
 An item is disputed while a committed `contradicts` points at it from knowledge whose maturity is
-proposed or established. When the dispute ends, through deprecation or `supersedes`, the item shows
+proposed or established, or while its claim has `contradictedBy` evidence (ADR 0030, C4). When the dispute ends, through deprecation or `supersedes`, the item shows
 its unchanged maturity again. Views show both, for example "established, disputed by 1".
 
 ### 5. Relations (pack `knowledge`, version 1)
@@ -121,6 +123,8 @@ A citation of an external source passes up to three separate checks:
    exists at the stated version, and the locator points to the passage relied on:
 
    ```
+   // Recorded in the citing claim's support group, per evidence id, since evidence is immutable
+   // (ADR 0030, C1).
    SourceVerification { status: "unverified" | "verified" | "failed",
                         method: "retrievedHash" | "manual", by: PrincipalId, at,
                         retrievedSha256?: string, note }
@@ -188,8 +192,9 @@ SourceMeta { title, authors[], publisher?, edition?, version?, published?, locat
 - New pack and relation versions are additions. Core relation endpoints widen in a new version,
   and old versions remain readable.
 - `SupportReview` is new data on knowledge claims only; project claims do not change.
-- The event schema gains `setMaturity`, `reviewSupport` and `verifySource` operations, a
-  schema-version bump with replay of older events unchanged (R3).
+- New operations `setMaturity`, `reviewSupport` and `verifySource` resolve to ordinary object and
+  relation versions in `changeSet.committed` V2. There is no new event type, and older events
+  replay unchanged (R3). ADR 0030 gives the exact contracts.
 
 ## Test cases (for K1)
 
