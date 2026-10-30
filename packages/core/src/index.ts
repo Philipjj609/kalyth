@@ -7,10 +7,19 @@ export {
 } from './bootstrap.ts'
 export { buildProjectExport, importProjectExport, stateSha256 } from './export.ts'
 export { type ApplyOptions, type ApplyOutcome, applyOperations } from './kernel/apply.ts'
+export {
+  canonicalSha256,
+  canonicalV1,
+  evidenceSha256,
+  knowledgeVersion,
+  NotCanonical,
+  normalizeStrings,
+} from './kernel/canonical.ts'
 export { isClaimSupported, validateClaim } from './kernel/claims.ts'
 export { assessFreshness, type SnapshotState } from './kernel/freshness.ts'
 export { elementLabel, type ImpactTrace, traceImpact } from './kernel/impact.ts'
 export { disputeOf, knowledgeStatus } from './kernel/library.ts'
+export { contentIdOf, resolvePin, versionAt } from './kernel/pins.ts'
 export { predicateFingerprint } from './kernel/predicates.ts'
 export { findSecretRule } from './kernel/secrets.ts'
 export { OverlayState, type StateView } from './kernel/state.ts'

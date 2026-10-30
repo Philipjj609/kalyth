@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ContentId, EvidenceId, PrincipalId } from './ids.ts'
+import { ContentId, EvidenceId, PrincipalId, ProjectId } from './ids.ts'
 import { SourceMeta } from './knowledge.ts'
 
 const gitSha = z.string().regex(/^[0-9a-f]{40}$/, 'expected a 40-hex git sha')
@@ -41,6 +41,24 @@ export const EvidenceSource = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('statement'),
     statedBy: PrincipalId,
+  }),
+  /**
+   * A pin to one version of a library item (ADR 0027 §3). A client names the item and revision;
+   * the kernel resolves it, computes `versionSha256` over canonical form v1 and embeds the content
+   * (ADR 0030 §3). A recorded pin always carries both hash fields; a client may send the hash it
+   * expects, which must match.
+   */
+  z.object({
+    kind: z.literal('knowledge'),
+    library: ProjectId,
+    target: z.enum(['object', 'relation']),
+    id: z.string().regex(/^(obj|rel)_[0-9a-f]{32}$/, 'expected an object or relation id'),
+    revision: z.int().min(0),
+    versionHash: z.literal('v1').optional(),
+    versionSha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
   }),
 ])
 export type EvidenceSource = z.infer<typeof EvidenceSource>

@@ -30,7 +30,11 @@ import {
   type KnowledgeStatusResult,
   ObjectQuery,
   type ObjectQueryResult,
+  type OperationParsed,
   ok,
+  type PinFreshness,
+  PinStatusQuery,
+  type PinStatusResult,
   type Principal,
   type PrincipalKind,
   type PrincipalNames,
@@ -54,11 +58,20 @@ import {
 } from '@kalyth/contracts'
 import type { z } from 'zod'
 import { buildProjectExport } from '../export.ts'
-import { applyOperations } from '../kernel/apply.ts'
+import { type ApplyOptions, applyOperations } from '../kernel/apply.ts'
 import { decisionFacets } from '../kernel/facets.ts'
 import { assessFreshness } from '../kernel/freshness.ts'
 import { elementLabel, traceImpact } from '../kernel/impact.ts'
 import { isKnowledgeType, knowledgeStatus, libraryInputIssues } from '../kernel/library.ts'
+import {
+  contentIdOf,
+  EVIDENCE_MEDIA_TYPE,
+  evidenceText,
+  KNOWLEDGE_MEDIA_TYPE,
+  type PinSource,
+  resolvePin,
+  versionAt,
+} from '../kernel/pins.ts'
 import { predicateFingerprint } from '../kernel/predicates.ts'
 import { localRefsOf, readSetOf, resolveOperations, writeSetOf } from '../kernel/resolve.ts'
 import { findSecretRule } from '../kernel/secrets.ts'
@@ -288,6 +301,42 @@ export class KalythServices {
    * Maturity, dispute and support of a library's knowledge items at a revision (ADR 0026): a read
    * model, computed on read, so nothing it reports is ever stored.
    */
+  /**
+   * Every pin of a project, how it resolves, and how it compares with the library revision the
+   * project uses, or with a previewed one (ADR 0027 §4, §5a): what moving a LibraryUse would
+   * change, before it is proposed. Computed on read; nothing is written.
+   */
+  getPinStatus(caller: unknown, input: unknown): Result<PinStatusResult> {
+    const r = this.#readable(caller, PinStatusQuery, input)
+    if (!r.ok) return r
+    const { project, revision, input: q } = r.value
+    const view = this.store.view(project.id, revision)
+    const pins = [...this.store.evidenceMapAt(project.id, revision).values()]
+      .filter((e) => e.source.kind === 'knowledge')
+      .map((e) => {
+        const pin = e.source as PinSource
+        const uses = view.listObjects({
+          types: ['core.LibraryUse'],
+          attributeEquals: { library: pin.library },
+        })
+        const used = uses[0] ? Number(uses[0].attributes.revision) : null
+        const comparedWith = q.preview?.[pin.library] ?? used
+        return {
+          evidence: e.id,
+          library: pin.library,
+          target: pin.target,
+          id: pin.id,
+          revision: pin.revision,
+          versionSha256: pin.versionSha256 ?? '',
+          resolution: resolvePin(this.store, project.id, pin),
+          comparedWith,
+          freshness: pinFreshness(this.store, pin, comparedWith),
+        }
+      })
+      .sort((a, b) => (a.evidence < b.evidence ? -1 : 1))
+    return ok({ projectId: project.id, revision, pins })
+  }
+
   getKnowledgeStatus(caller: unknown, input: unknown): Result<KnowledgeStatusResult> {
     const r = this.#readable(caller, KnowledgeStatusQuery, input)
     if (!r.ok) return r
@@ -656,10 +705,20 @@ export class KalythServices {
       }
     }
 
+    // Pinning reads a library, so the proposer must be able to read it (ADR 0030 §3).
+    for (const op of req.ops) {
+      if (op.op !== 'recordEvidence' || op.evidence.source.kind !== 'knowledge') continue
+      const unreadable = this.#authz.require(ctx.value.principal, op.evidence.source.library, [
+        'project.read',
+      ])
+      if (unreadable) return { ok: false, error: unreadable }
+    }
+
     return this.store.writeTransaction(() => {
       const now = this.#clock()
+      const pinned = this.#pin(project.id, req.ops, now)
       const resolved = resolveOperations(
-        req.ops,
+        pinned.ops,
         this.#ids,
         { putExcerpt: (text) => this.#putExcerpt(project.id, text, now) },
         now,
@@ -669,15 +728,20 @@ export class KalythServices {
         },
       )
       const base = this.store.view(project.id, req.baseRevision)
-      const applied = applyOperations(base, resolved.ops, this.registry, req.baseRevision + 1, {
-        kind: project.kind,
-      })
+      const applied = applyOperations(
+        base,
+        resolved.ops,
+        this.registry,
+        req.baseRevision + 1,
+        this.#applyOptions(project),
+      )
       // A verifySource without targets records the claims it found (ADR 0030 A1).
       for (const { op, targets } of applied.expansions) {
         const found = resolved.ops[op]
         if (found?.op === 'verifySource') resolved.ops[op] = { ...found, targets }
       }
       const issues: Issue[] = [
+        ...pinned.issues,
         ...resolved.issues,
         ...(project.kind === 'library' ? libraryInputIssues(req.ops) : []),
         ...applied.issues,
@@ -813,7 +877,7 @@ export class KalythServices {
 
       const revision = head + 1
       const headView = this.store.view(project.id, head)
-      const options = { kind: project.kind }
+      const options = this.#applyOptions(project)
       const own = applyOperations(headView, proposal.ops, this.registry, revision, options)
       if (own.issues.length > 0) {
         decide('conflicting', { issues: own.issues })
@@ -951,6 +1015,75 @@ export class KalythServices {
 
   // ---------- helpers ----------
 
+  #applyOptions(project: ProjectSummary): ApplyOptions {
+    return {
+      kind: project.kind,
+      projectId: project.id,
+      libraries: (id) => {
+        const found = this.store.getProject(id)
+        return found ? { kind: found.kind, headRevision: found.headRevision } : undefined
+      },
+      pinVerified: (sha) => {
+        const copy = this.store.getContent(project.id, contentIdOf(sha))
+        return typeof copy?.body === 'string' && sha256Hex(copy.body) === sha
+      },
+    }
+  }
+
+  /**
+   * Resolves every pin a proposal records (ADR 0027 §1, ADR 0030 §3): the library's item at the
+   * pinned revision, in canonical form v1, hashed and embedded in the project's content, with the
+   * evidence records it cites, in the proposal's transaction. Clients name the item and revision;
+   * a hash they send must match.
+   */
+  #pin(projectId: string, ops: readonly OperationParsed[], now: string) {
+    const issues: Issue[] = []
+    const embed = (text: string, mediaType: string) => {
+      const sha256 = sha256Hex(text)
+      this.store.putContent(projectId, {
+        id: contentIdOf(sha256),
+        sha256,
+        mediaType,
+        body: text,
+        redactionReason: null,
+        createdAt: now,
+      })
+    }
+    const pinned = ops.map((op, index): OperationParsed => {
+      if (op.op !== 'recordEvidence' || op.evidence.source.kind !== 'knowledge') return op
+      const pin = op.evidence.source
+      const add = (code: string, message: string) =>
+        issues.push({ code, message, op: index, path: ['evidence', 'source'] })
+      if (pin.library === projectId) {
+        add('pin.self', 'a project pins libraries, not itself')
+        return op
+      }
+      const version = versionAt(this.store, pin)
+      if (!version.ok) {
+        add(`pin.${version.reason}`, version.detail)
+        return op
+      }
+      if (pin.versionSha256 && pin.versionSha256 !== version.sha256) {
+        add('pin.hash_differs', `${pin.id} at revision ${pin.revision} hashes to ${version.sha256}`)
+        return op
+      }
+      const view = this.store.view(pin.library, pin.revision)
+      for (const { evidence } of version.cites) {
+        const record = view.getEvidence(evidence)
+        if (record) embed(evidenceText(record.source), EVIDENCE_MEDIA_TYPE)
+      }
+      embed(version.text, KNOWLEDGE_MEDIA_TYPE)
+      return {
+        ...op,
+        evidence: {
+          ...op.evidence,
+          source: { ...pin, versionHash: 'v1', versionSha256: version.sha256 },
+        },
+      }
+    })
+    return { ops: pinned, issues }
+  }
+
   #context(caller: unknown): Result<Context> {
     const parsed = Caller.safeParse(caller)
     if (!parsed.success) return fail('unauthenticated', 'no valid caller')
@@ -993,6 +1126,14 @@ export class KalythServices {
       createdAt: now,
     })
   }
+}
+
+function pinFreshness(store: SqliteStore, pin: PinSource, against: number | null): PinFreshness {
+  if (against === null) return 'noLibraryUse'
+  if (against === pin.revision) return 'current'
+  const now = versionAt(store, { ...pin, revision: against })
+  if (now.ok) return now.sha256 === pin.versionSha256 ? 'unchanged' : 'changed'
+  return now.reason === 'unknown-target' ? 'removed' : 'libraryNotPresent'
 }
 
 /** Curation given at commit records no evidence, so it stores no excerpts. */

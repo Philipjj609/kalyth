@@ -48,7 +48,7 @@ describe('project export and import (ADR 0014)', () => {
     const { ctx, bundle } = exported()
     expect(bundle).toMatchObject({
       format: 'kalyth.project-export',
-      formatVersion: 1,
+      formatVersion: 2,
       exportedBy: ctx.ownerPrincipal.id,
       project: { id: ctx.project.id, headRevision: 3 },
       stateSha256: stateSha256(ctx.store, ctx.project.id),

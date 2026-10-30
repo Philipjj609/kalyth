@@ -11,6 +11,7 @@ import type {
 } from '@kalyth/contracts'
 import { AlternativeStatus, DecisionStatus, TASK_TRANSITIONS } from '@kalyth/contracts'
 import type { TypeRegistry } from '../registry/registry.ts'
+import { NotCanonical, normalizeStrings } from './canonical.ts'
 import { validateClaim } from './claims.ts'
 import {
   applyCuration,
@@ -22,6 +23,7 @@ import {
 } from './library.ts'
 import { OverlayState, type StateView } from './state.ts'
 import { carryCuration } from './support.ts'
+import { checkPinsAndUses, type PinRules } from './uses.ts'
 
 export interface ApplyOutcome {
   writes: ResolvedWrite[]
@@ -35,7 +37,7 @@ export interface ApplyOutcome {
   curation: ProposalCuration
 }
 
-export interface ApplyOptions {
+export interface ApplyOptions extends PinRules {
   /** The kind of the project written to; a library gets the rules of ADRs 0026 and 0030. */
   kind?: ProjectKind
 }
@@ -146,7 +148,7 @@ export function applyOperations(
             )
           }
         }
-        const attributes = parseAttributes(def.attributes, op.attributes, add)
+        const attributes = knowledgeText(parseAttributes(def.attributes, op.attributes, add), add)
         if (!attributes) break
         issues.push(...validateClaim(op.claim, op.stance, op.id, overlay, index))
         write({
@@ -186,7 +188,7 @@ export function applyOperations(
           if (value === null) delete merged[key]
           else merged[key] = value
         }
-        const attributes = parseAttributes(def.attributes, merged, add)
+        const attributes = knowledgeText(parseAttributes(def.attributes, merged, add), add)
         if (!attributes) break
         const claim: Claim = op.claim ? carryCuration(current.claim, op.claim) : current.claim
         if (op.claim) issues.push(...validateClaim(op.claim, current.stance, op.id, overlay, index))
@@ -414,6 +416,7 @@ export function applyOperations(
       }
     }
   }
+  issues.push(...checkPinsAndUses(overlay, state, written, options))
   const curation: ProposalCuration = { required: [], gaps: [] }
   if (library) {
     const checked = checkLibraryState(overlay, written, state)
@@ -433,6 +436,25 @@ function lastVersions(writes: readonly ResolvedWrite[]): ResolvedWrite[] {
     `${w.kind}:${w.kind === 'evidence' ? w.record.id : w.version.id}`
   const last = new Map(writes.map((w, i) => [idOf(w), i]))
   return writes.filter((w, i) => last.get(idOf(w)) === i)
+}
+
+/**
+ * Knowledge is hashed in canonical form v1, so its strings are stored in NFC, and a string that
+ * cannot be written (an unpaired surrogate) is refused (ADR 0027 §2a). Normalising every type's
+ * attributes keeps one rule; NFC does not change what a string means.
+ */
+function knowledgeText(
+  attributes: Record<string, JsonValue> | undefined,
+  add: (code: string, message: string) => void,
+): Record<string, JsonValue> | undefined {
+  if (!attributes) return undefined
+  try {
+    return normalizeStrings(attributes)
+  } catch (error) {
+    if (!(error instanceof NotCanonical)) throw error
+    add('attribute.not_canonical', error.message)
+    return undefined
+  }
 }
 
 function parseAttributes(

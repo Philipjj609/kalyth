@@ -606,6 +606,8 @@ function locationOf(v: EvidenceView): string {
       return s.uri
     case 'statement':
       return `statement by ${s.statedBy}`
+    case 'knowledge':
+      return `${s.library} ${s.id} @ revision ${s.revision}`
   }
 }
 

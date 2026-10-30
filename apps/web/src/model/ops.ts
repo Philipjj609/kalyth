@@ -34,6 +34,11 @@ export function evidenceLocation(source: EvidenceSource): { primary: string; sec
       return { primary: source.uri, secondary: `retrieved ${source.retrievedAt.slice(0, 10)}` }
     case 'statement':
       return { primary: `Statement by ${shortId(source.statedBy)}`, secondary: 'statement' }
+    case 'knowledge':
+      return {
+        primary: `Knowledge ${shortId(source.id)} @ revision ${source.revision}`,
+        secondary: `pinned from library ${shortId(source.library)}`,
+      }
   }
 }
 

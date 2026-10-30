@@ -2,6 +2,7 @@ import {
   CONTRACTS_VERSION,
   canonicalJson,
   type ExportedContent,
+  type ExportedPin,
   fail,
   type ImportSummary,
   type Issue,
@@ -10,6 +11,7 @@ import {
   ProjectExport,
   type Result,
 } from '@kalyth/contracts'
+import { contentIdOf } from './kernel/pins.ts'
 import { replayEvents } from './replay.ts'
 import { SCHEMA_VERSION } from './store/schema.ts'
 import type { SqliteStore } from './store/sqlite-store.ts'
@@ -61,18 +63,54 @@ export function buildProjectExport(
     named.add(event.actor)
     if (event.type === 'changeSet.committed') named.add(event.payload.proposedBy)
   }
+  const content = store.listContent(projectId)
   return {
     format: 'kalyth.project-export',
-    formatVersion: 1,
+    formatVersion: 2,
     exportedAt,
     exportedBy,
     source: { contractsVersion: CONTRACTS_VERSION, schemaVersion: SCHEMA_VERSION },
     project,
     principals: [...named].sort().flatMap((id) => store.getPrincipal(id) ?? []),
     events,
-    content: store.listContent(projectId),
+    content,
+    knowledge: exportedPins(events, content),
     stateSha256: stateSha256(store, projectId),
   }
+}
+
+/** Every pin the events record, with what its embedded version cites (ADR 0027 §6). */
+function exportedPins(events: readonly KalythEvent[], content: readonly ExportedContent[]) {
+  const bodies = new Map(content.map((c) => [c.id, c.body]))
+  const pins: ExportedPin[] = []
+  for (const event of events) {
+    if (event.type !== 'changeSet.committed') continue
+    for (const write of event.payload.writes) {
+      if (write.kind !== 'evidence' || write.record.source.kind !== 'knowledge') continue
+      const s = write.record.source
+      const sha = s.versionSha256 ?? ''
+      const body = bodies.get(contentIdOf(sha))
+      pins.push({
+        evidence: write.record.id,
+        library: s.library,
+        target: s.target,
+        id: s.id,
+        revision: s.revision,
+        versionSha256: sha,
+        cites: body ? citesOf(body) : [],
+      })
+    }
+  }
+  return pins
+}
+
+function citesOf(body: string): ExportedPin['cites'] {
+  const version = JSON.parse(body) as {
+    claim?: { supports?: { allOf?: { evidence: string; evidenceSha256: string }[] }[] }
+  }
+  const all = (version.claim?.supports ?? []).flatMap((g) => g.allOf ?? [])
+  const unique = new Map(all.map((c) => [c.evidence, c.evidenceSha256]))
+  return [...unique].map(([evidence, evidenceSha256]) => ({ evidence, evidenceSha256 }))
 }
 
 class StateMismatch extends Error {}
@@ -88,7 +126,7 @@ class StateMismatch extends Error {}
 export function importProjectExport(store: SqliteStore, input: unknown): Result<ImportSummary> {
   const parsed = ProjectExport.safeParse(input)
   if (!parsed.success) {
-    return fail('invalid', 'not a Kalyth project export (format 1)', {
+    return fail('invalid', 'not a Kalyth project export (format 1 or 2)', {
       issues: parsed.error.issues.slice(0, 20).map((i) => ({
         code: `schema.${i.code}`,
         message: i.message,
@@ -115,6 +153,7 @@ export function importProjectExport(store: SqliteStore, input: unknown): Result<
   })
   const events = [...raw].sort((a, b) => a.seq - b.seq)
   issues.push(...checkBundle(bundle.project.headRevision, projectId, events, bundle.content))
+  issues.push(...checkPins(bundle.formatVersion, events, bundle.content, bundle.knowledge))
   if (issues.length > 0) {
     return fail('invalid', 'the export is inconsistent', { issues: issues.slice(0, 20) })
   }
@@ -150,6 +189,50 @@ export function importProjectExport(store: SqliteStore, input: unknown): Result<
     principalsAdded,
     stateSha256: bundle.stateSha256,
   })
+}
+
+/**
+ * Every pin the events record is listed, and its embedded version and the evidence it cites are
+ * present with matching hashes, so the project resolves its pins with no library present (ADR
+ * 0027 I3). A mismatch refuses the whole import, naming the pin (ADR 0027 §5a).
+ */
+function checkPins(
+  formatVersion: 1 | 2,
+  events: readonly KalythEvent[],
+  content: readonly ExportedContent[],
+  knowledge: readonly ExportedPin[],
+): Issue[] {
+  const issues: Issue[] = []
+  const add = (code: string, message: string) => issues.push({ code, message })
+  const bodies = new Map(content.map((c) => [c.id, c]))
+  const listed = new Map(knowledge.map((k) => [k.evidence, k]))
+  const verifies = (sha: string) => {
+    const c = bodies.get(contentIdOf(sha))
+    return c?.body !== null && c?.body !== undefined && sha256Hex(c.body) === sha
+  }
+  for (const event of events) {
+    if (event.type !== 'changeSet.committed') continue
+    for (const write of event.payload.writes) {
+      if (write.kind !== 'evidence' || write.record.source.kind !== 'knowledge') continue
+      const pin = write.record.source
+      const id = write.record.id
+      if (formatVersion === 1) {
+        add('export.pins_need_format_2', `${id} is a pin, which format 1 cannot carry`)
+        continue
+      }
+      const entry = listed.get(id)
+      if (!entry || entry.versionSha256 !== pin.versionSha256)
+        add('export.pin_unlisted', `pin ${id} is not listed with its hash`)
+      if (!pin.versionSha256 || !verifies(pin.versionSha256)) {
+        add('export.pin_hash', `pin ${id} (${pin.id}) has no embedded copy that verifies`)
+        continue
+      }
+      for (const cite of entry?.cites ?? [])
+        if (!verifies(cite.evidenceSha256))
+          add('export.pin_hash', `pin ${id} cites ${cite.evidence}, whose record is missing`)
+    }
+  }
+  return issues
 }
 
 function checkBundle(

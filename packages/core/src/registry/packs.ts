@@ -170,6 +170,19 @@ export const corePack: ObjectTypeDef[] = [
         .optional(),
     }),
   },
+  {
+    type: 'core.LibraryUse',
+    version: 1,
+    pack: 'core',
+    description:
+      'A library this project uses, at a revision (ADR 0027 §4). Pins cite that revision or an earlier one.',
+    attributes: z.strictObject({
+      library: z.string().regex(/^prj_[0-9a-f]{32}$/, 'expected a project id'),
+      label: title,
+      revision: z.int().min(0),
+      role: z.enum(['primary', 'supplementary']),
+    }),
+  },
 ]
 
 // ---------- software pack ----------

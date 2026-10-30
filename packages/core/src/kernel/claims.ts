@@ -71,6 +71,9 @@ export function validateClaim(
     const evidence = state.getEvidence(id)
     if (!evidence) {
       add('claim.evidence_not_found', `evidence ${id} does not exist`)
+    } else if (claim.basis === 'observed' && evidence.source.kind === 'knowledge') {
+      // Separation (ADR 0030 §4 as A13 reads it): library knowledge is never a tool observation.
+      add('claim.observed_from_knowledge', `evidence ${id} is a knowledge pin, not an observation`)
     } else if (claim.basis === 'observed' && evidence.source.kind === 'statement') {
       add(
         'claim.observed_needs_source_evidence',

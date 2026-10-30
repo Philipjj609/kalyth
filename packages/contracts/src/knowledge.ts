@@ -194,3 +194,62 @@ export const KnowledgeStatusResult = z.object({
   items: z.array(KnowledgeItemStatus),
 })
 export type KnowledgeStatusResult = z.infer<typeof KnowledgeStatusResult>
+
+/** How a pin resolved (ADR 0027 §5a): never to a different version, and never silently. */
+export const PinResolution = z.union([
+  z.object({
+    state: z.literal('resolved'),
+    from: z.enum(['embedded', 'library']),
+    content: z.unknown(),
+  }),
+  z.object({
+    state: z.literal('unresolved'),
+    reason: z.enum(['unknown-library', 'unknown-revision', 'unknown-target', 'hash-mismatch']),
+    detail: z.string(),
+  }),
+])
+export type PinResolution = z.infer<typeof PinResolution>
+
+/**
+ * A pin against the library revision its project uses (ADR 0027 §4): `current` at that revision,
+ * `unchanged` when older but identical, `changed` or `removed` when the used revision differs,
+ * `noLibraryUse` or `libraryNotPresent` when it cannot be compared.
+ */
+export const PinFreshness = z.enum([
+  'current',
+  'unchanged',
+  'changed',
+  'removed',
+  'noLibraryUse',
+  'libraryNotPresent',
+])
+export type PinFreshness = z.infer<typeof PinFreshness>
+
+export const PinStatus = z.object({
+  evidence: EvidenceId,
+  library: ProjectId,
+  target: z.enum(['object', 'relation']),
+  id: z.string(),
+  revision: z.int().min(0),
+  versionSha256: z.string(),
+  resolution: PinResolution,
+  /** The revision compared against: the LibraryUse's, or the one previewed. */
+  comparedWith: z.int().min(0).nullable(),
+  freshness: PinFreshness,
+})
+export type PinStatus = z.infer<typeof PinStatus>
+
+export const PinStatusQuery = z.object({
+  projectId: ProjectId,
+  revision: z.int().min(0).optional(),
+  /** Library revisions to compare with instead of the LibraryUse's: a preview of moving it. */
+  preview: z.record(ProjectId, z.int().min(0)).optional(),
+})
+export type PinStatusQuery = z.input<typeof PinStatusQuery>
+
+export const PinStatusResult = z.object({
+  projectId: ProjectId,
+  revision: z.int().min(0),
+  pins: z.array(PinStatus),
+})
+export type PinStatusResult = z.infer<typeof PinStatusResult>
