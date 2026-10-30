@@ -740,3 +740,27 @@
 .kalyth-flow .react-flow__node:focus-visible {
   outline-offset: 6px;
 }
+
+/* Knowledge explorer neighbourhood (K5): the canvas's ink and paper, smaller. */
+.react-flow__node.k-kn-node {
+  border: 1px solid var(--k-fg);
+  border-radius: 0;
+  background: var(--k-surface);
+  color: var(--k-fg);
+  font-size: 12px;
+  padding: 6px 8px;
+  width: 170px;
+  cursor: pointer;
+}
+.react-flow__node.k-kn-centre {
+  border-width: 2px;
+  font-weight: 600;
+  cursor: default;
+}
+.k-kn-edge .react-flow__edge-text {
+  font-size: 10px;
+  fill: var(--k-fg-muted);
+}
+.k-kn-edge .react-flow__edge-textbg {
+  fill: var(--k-surface-2);
+}

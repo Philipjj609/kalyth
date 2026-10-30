@@ -12,6 +12,7 @@ export const VIEWS = [
   'tasks',
   'change',
   'compare',
+  'knowledge',
 ] as const
 
 function env(name: string): string {

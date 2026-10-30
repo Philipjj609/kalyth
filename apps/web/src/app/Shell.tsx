@@ -67,6 +67,7 @@ const NavigatorView = lazy(() =>
 const HandoffView = lazy(() =>
   import('../handoff/HandoffView.tsx').then((m) => ({ default: m.HandoffView })),
 )
+const KnowledgeView = lazy(() => import('../knowledge/KnowledgeView.tsx'))
 const TasksView = lazy(() =>
   import('../tasks/TasksView.tsx').then((m) => ({ default: m.TasksView })),
 )
@@ -357,6 +358,8 @@ function CurrentView({ view }: { view: View }) {
       return <HandoffView />
     case 'tasks':
       return <TasksView />
+    case 'knowledge':
+      return <KnowledgeView />
     case 'compare':
       return <CompareView />
     case 'change':

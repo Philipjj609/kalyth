@@ -410,7 +410,7 @@ export class KalythServices {
               library: String(u.attributes.library),
               revision: Number(u.attributes.revision),
             }))
-    const needle = q.text.toLowerCase()
+    const needle = q.text.trim().toLowerCase()
     const libraries: KnowledgeSearchResult['libraries'] = []
     const hits: KnowledgeSearchResult['hits'] = []
     for (const target of targets) {

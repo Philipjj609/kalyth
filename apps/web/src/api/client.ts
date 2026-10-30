@@ -258,6 +258,9 @@ export function createApi(getToken: () => string | null, fetchImpl?: FetchLike) 
     types: () => request<TypeDescriptors>('GET', '/api/v1/types'),
     /** Who each principal id stands for; `you` marks the session's own. */
     principals: () => request<PrincipalNames>('GET', '/api/v1/principals'),
+    /** A read-only knowledge operation (K4, ADR 0031): the same contract as the MCP tool. */
+    knowledge: <T>(name: string, input: Record<string, unknown>) =>
+      request<T>('POST', `/api/v1/knowledge/${name}`, input),
     listProjects: () => request<{ projects: ProjectSummary[] }>('GET', '/api/v1/projects'),
     createProject: (input: { name: string; description: string }) =>
       request<ProjectSummary>('POST', '/api/v1/projects', input),

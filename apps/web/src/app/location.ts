@@ -18,6 +18,7 @@ export const VIEWS = [
   'decisions',
   'change',
   'compare',
+  'knowledge',
 ] as const
 export type View = (typeof VIEWS)[number]
 
@@ -44,7 +45,14 @@ export interface AppLocation {
   lens?: Lens | undefined
   /** The alternative whose impact the canvas shows (Graph view, impact lens). */
   alternative?: string | undefined
+  /** The knowledge item shown, as `<library>/<item>` (Knowledge view, K5). */
+  item?: string | undefined
+  /** The knowledge search text (Knowledge view). */
+  find?: string | undefined
 }
+
+/** A knowledge item reference: a library id and an object or relation id. */
+const ITEM_REF = /^prj_[0-9a-f]{32}\/(obj|rel)_[0-9a-f]{32}$/
 
 export const LENSES = ['basis', 'freshness', 'impact', 'decisions'] as const
 export type Lens = (typeof LENSES)[number]
@@ -76,6 +84,8 @@ export function parseLocation(search: string): AppLocation {
       ? (q.get('lens') as Lens)
       : undefined,
     alternative: OBJECT_ID.test(q.get('alt') ?? '') ? (q.get('alt') as string) : undefined,
+    item: ITEM_REF.test(q.get('item') ?? '') ? (q.get('item') as string) : undefined,
+    find: (q.get('find') ?? '').slice(0, 200) || undefined,
   }
 }
 
@@ -95,6 +105,8 @@ export function formatLocation(loc: AppLocation): string {
     q.set('decision', loc.decision)
   if (loc.lens && loc.view === 'graph') q.set('lens', loc.lens)
   if (loc.alternative && loc.view === 'graph') q.set('alt', loc.alternative)
+  if (loc.item && loc.view === 'knowledge') q.set('item', loc.item)
+  if (loc.find && loc.view === 'knowledge') q.set('find', loc.find)
   const s = q.toString()
   return s ? `?${s}` : ''
 }

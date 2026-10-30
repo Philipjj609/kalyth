@@ -30,12 +30,13 @@ export type ReadAs = z.infer<typeof ReadAs>
 export const KnowledgeSearchInput = z.object({
   /** A library, searched at its head, or a project, whose used libraries are searched at the revisions it uses. */
   projectId: ProjectId,
-  text: z.string().min(1).max(200),
+  /** Empty lists every item, for browsing; the result says when it was cut at `limit`. */
+  text: z.string().max(200).default(''),
   types: z
     .array(z.string().regex(/^knowledge\.[A-Z]\w*$/))
     .max(5)
     .optional(),
-  limit: z.int().min(1).max(100).default(20),
+  limit: z.int().min(1).max(200).default(20),
 })
 export type KnowledgeSearchInput = z.input<typeof KnowledgeSearchInput>
 

@@ -7,7 +7,7 @@ import { defineConfig } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
   // The hosted demo has its own server and setup: playwright.demo.config.ts.
-  testIgnore: ['demo/**'],
+  testIgnore: ['demo/**', 'knowledge/**'],
   globalSetup: './e2e/global-setup.ts',
   workers: 1,
   fullyParallel: false,

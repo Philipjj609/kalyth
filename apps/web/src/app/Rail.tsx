@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   ChevronsLeft,
   ChevronsRight,
   ClockArrowLeft,
@@ -33,6 +34,8 @@ export const PLACES: { view: View; label: string; icon: LucideIcon; group: 'work
     { view: 'tasks', label: 'Tasks', icon: SquareKanban, group: 'records' },
     { view: 'handoff', label: 'Agents and packages', icon: Handshake, group: 'records' },
     { view: 'history', label: 'History', icon: ClockArrowLeft, group: 'records' },
+    // Last, so the number keys 1 to 9 keep the places they had before K5; it shows with the work.
+    { view: 'knowledge', label: 'Knowledge', icon: BookOpen, group: 'work' },
   ]
 
 const MAX_CHANGES = 8
@@ -87,7 +90,7 @@ export function Rail({
         aria-current={active ? 'page' : undefined}
         aria-label={collapsed ? `${p.label}${badge ? `, ${badge} pending` : ''}` : undefined}
         className={cn('k-rail-link', active && 'k-rail-active')}
-        title={collapsed ? undefined : `${p.label} (${i + 1})`}
+        title={collapsed ? undefined : i < 9 ? `${p.label} (${i + 1})` : p.label}
       >
         <p.icon aria-hidden className="size-4 shrink-0" />
         {!collapsed && <span className="truncate">{p.label}</span>}
