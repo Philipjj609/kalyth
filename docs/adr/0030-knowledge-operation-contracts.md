@@ -72,7 +72,8 @@ from the input.
 
 ### 4. Validation that applies to every claim (K2)
 
-- An `observed` claim may cite only `sourceSpan` evidence (separation rule 1, extending R4).
+- An `observed` claim may cite only `sourceSpan` evidence (separation rule 1, extending R4). A13
+  narrows this to "never a `knowledge` pin", since the task verifier observes git commits.
 - A claim in a library may not cite `sourceSpan` evidence (ADR 0026 I1).
 - A `knowledge` pin's hash must verify at the head when the citing proposal commits. Otherwise the
   commit is refused with `hash-mismatch` (ADR 0027 §5a).
@@ -299,3 +300,42 @@ knowledge through pins and keep their own assessments (K2, K3).
   event version, never by dropping fields. Format 2, with embedded pins, is part of K2.
 - Verifying a source writes one version per citing claim. Every version of one verification is in
   one change set and one event, so it is atomic, attributable to one curator, and replayed exactly.
+
+## Amendment of 2026-10-30, K2
+
+Recorded while implementing K2 (pins, LibraryUse, export format 2). A13 resolves a contradiction
+with the existing kernel; A14 and A15 state how K2 meets ADR 0027 without changing it.
+
+### A13. Separation rule 1 protects observations from knowledge
+
+§4 said an `observed` claim may cite only `sourceSpan` evidence. The existing task verifier
+(ADR 0013) records `observed` verifications citing a git commit as `document` evidence, so that
+reading would break a shipped contract. The rule's purpose is that library knowledge never passes
+for a tool observation: an `observed` claim may not cite `knowledge` pins
+(`claim.observed_from_knowledge`), and, as before, not statements. Observed claims keep citing
+`sourceSpan` and tool-recorded `document` evidence.
+
+### A14. What a pin embeds, and how it is checked
+
+- Creating a pin embeds the version's canonical text, keyed by `versionSha256`, and the canonical
+  text of every evidence record it cites, keyed by `evidenceSha256` (the hash of the record's
+  source, SourceMeta included, as vector V6). Attribution therefore travels with the project.
+- A pin is recorded only after the kernel resolved it; a client may send the hash it expects
+  (`pin.hash_differs` if it differs). The proposer must hold `project.read` on the library.
+- At commit, the embedded copy must verify (`pin.hash_mismatch`), and I4 is checked on the state
+  the whole proposal produces, so a LibraryUse and its first pins can be one proposal.
+- A LibraryUse names a present library other than its own project, at a revision the library has;
+  there is one per library; it never changes library and never moves back, so no pin can become
+  later than its use.
+- Moving a LibraryUse is previewed with the pin status read model (`preview`), which reports each
+  pin as `current`, `unchanged`, `changed`, `removed`, `noLibraryUse` or `libraryNotPresent`.
+  Proposals still carry no warnings of their own.
+
+### A15. K2 scope
+
+- One resolver, `local` (ADR 0027 §1). Snapshot and remote resolvers, and cross-store pins (K6),
+  are not built. A pin whose embedded copy is lost resolves from the local library, but the copy is
+  not written back yet.
+- `core.Correspondence`, cross-library evaluation and `conflicting` verdicts need conditions to be
+  evaluated, so they come with K3. Freshness of assessments (ADR 0029) also waits for K3; K2 gives
+  pin freshness.
