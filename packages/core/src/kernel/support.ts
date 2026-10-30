@@ -53,16 +53,33 @@ export function groupCounts(group: Group): boolean {
   return !Object.values(group.verifications ?? {}).some((v) => v.status === 'failed')
 }
 
+/** A document or external source with attribution: one a person can look up (ADR 0030 A8). */
+function attributable(record: EvidenceRecord | undefined): boolean {
+  const source = record?.source
+  return (source?.kind === 'document' || source?.kind === 'external') && source.meta !== undefined
+}
+
 /**
- * ADR 0026 I3: every remaining group reviewed as supporting (fully or partly), and every cited
- * source verified. K1 stores no full source content, so no citation is quote-matched; a source
- * reaches I3 by verification only. Returns what is missing, empty when I3 holds.
+ * ADR 0026 I3, as ADR 0030 A8 strengthens it: every remaining group reviewed as supporting (fully
+ * or partly), every cited source's locator verified, and at least one group reviewed as fully
+ * supporting that holds a verified, attributable source. K1 stores no source content, so no
+ * citation is quote-matched; a source reaches I3 by locator verification only (A9). Returns what
+ * is missing, empty when I3 holds.
  */
 export function establishedGaps(
   claim: Claim,
   evidence: (id: string) => EvidenceRecord | undefined,
 ): string[] {
   const gaps: string[] = []
+  const anchored = claim.supports.some(
+    (group) =>
+      group.review?.verdict === 'supports' &&
+      group.allOf.some(
+        (id) => attributable(evidence(id)) && verificationStatus(group, id) === 'verified',
+      ),
+  )
+  if (claim.supports.length > 0 && !anchored)
+    gaps.push('no group reviewed as supporting holds a verified, attributable source')
   claim.supports.forEach((group) => {
     const key = supportGroupKey(group.allOf)
     const verdict = group.review?.verdict ?? 'unreviewed'

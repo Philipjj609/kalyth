@@ -39,6 +39,7 @@ import {
   ProjectRef,
   type ProjectSummary,
   type Proposal,
+  type ProposalCuration,
   ProposalListQuery,
   ProposeChangeInput,
   type ProposeChangeOutput,
@@ -72,7 +73,7 @@ import {
   sha256Hex,
   systemClock,
 } from '../util.ts'
-import { Authorizer } from './authz.ts'
+import { Authorizer, curatorRequired } from './authz.ts'
 
 export interface KalythServicesOptions {
   store: SqliteStore
@@ -624,7 +625,7 @@ export class KalythServices {
     if (!project) return fail('not_found', `project ${req.projectId} does not exist`)
     const denied =
       this.#authz.require(ctx.value.principal, project.id, ['proposal.create']) ??
-      this.#authz.authorizeProposal(ctx.value.principal, ctx.value.caller, project.id, req.ops)
+      this.#authz.authorizeProposal(ctx.value.principal, ctx.value.caller, project, req.ops)
     if (denied) return { ok: false, error: denied }
     if (req.baseRevision > project.headRevision) {
       return fail(
@@ -706,9 +707,15 @@ export class KalythServices {
         decidedAt: null,
         decidedBy: null,
         decisionNote: null,
+        ...(hasCuration(applied.curation) ? { curation: applied.curation } : {}),
       }
       this.store.insertProposal(proposal, requestHash)
-      return ok({ proposalId: proposal.id, status: proposal.status, issues })
+      return ok({
+        proposalId: proposal.id,
+        status: proposal.status,
+        issues,
+        ...(proposal.curation ? { curation: proposal.curation } : {}),
+      })
     })
   }
 
@@ -753,17 +760,19 @@ export class KalythServices {
           issues: [{ code: 'proposal.not_pending', message: proposal.status }],
         })
       }
-      const denied = this.#authz.authorizeCommit(
-        principal,
-        who,
-        proposal.projectId,
-        proposal.ops,
-        proposal,
-      )
-      if (denied) return { ok: false, error: denied }
-
       const project = this.store.getProject(proposal.projectId)
       if (!project) return fail('not_found', `project ${proposal.projectId} does not exist`)
+      const denied = this.#authz.authorizeCommit(principal, who, project, proposal.ops, proposal)
+      if (denied) return { ok: false, error: denied }
+      // Curation given with the commit is the committer's own (ADR 0030 A7, A2).
+      const given = parsed.value.curation
+      if (given && !this.#authz.curates(principal, who, project.id))
+        return {
+          ok: false,
+          error: curatorRequired(
+            'curation given at commit comes from a person acting directly with knowledge.curate',
+          ),
+        }
       const head = project.headRevision
       const now = this.#clock()
       const decide = (
@@ -803,20 +812,64 @@ export class KalythServices {
       }
 
       const revision = head + 1
-      const applied = applyOperations(
-        this.store.view(project.id, head),
-        proposal.ops,
-        this.registry,
-        revision,
-        { kind: project.kind },
-      )
-      if (applied.issues.length > 0) {
-        decide('conflicting', { issues: applied.issues })
+      const headView = this.store.view(project.id, head)
+      const options = { kind: project.kind }
+      const own = applyOperations(headView, proposal.ops, this.registry, revision, options)
+      if (own.issues.length > 0) {
+        decide('conflicting', { issues: own.issues })
         return fail('conflicting', 'the proposal violates an invariant at the current head', {
+          currentRevision: head,
+          issues: own.issues,
+        })
+      }
+      // ADR 0030 A7: a change to established knowledge is committed by a curator.
+      if (own.curation.required.length > 0 && !this.#authz.curates(principal, who, project.id))
+        return {
+          ok: false,
+          error: curatorRequired(
+            `this proposal changes established knowledge (${own.curation.required.join(', ')}); a person acting directly with knowledge.curate commits it`,
+          ),
+        }
+      const curation = given
+        ? resolveOperations(given, this.#ids, noExcerpts, now, { actor: principal.id })
+        : undefined
+      if (curation && curation.issues.length > 0)
+        return fail('invalid', 'the curation given does not resolve; name records by id', {
+          issues: curation.issues,
+        })
+      const curationOps = curation?.ops ?? []
+      const applied = curation
+        ? applyOperations(
+            headView,
+            [...proposal.ops, ...curationOps],
+            this.registry,
+            revision,
+            options,
+          )
+        : own
+      for (const { op, targets } of applied.expansions) {
+        const found = curationOps[op - proposal.ops.length]
+        if (found?.op === 'verifySource')
+          curationOps[op - proposal.ops.length] = { ...found, targets }
+      }
+      // Problems the curation brings, or curation still missing, leave the proposal pending.
+      if (applied.issues.length > 0)
+        return fail('invalid', 'the curation given at commit is not valid at the current head', {
           currentRevision: head,
           issues: applied.issues,
         })
-      }
+      if (applied.curation.gaps.length > 0)
+        return fail(
+          'invalid',
+          'established knowledge would miss what ADR 0026 I3 needs: give curation with the commit, or reject the proposal',
+          {
+            currentRevision: head,
+            issues: applied.curation.gaps.map((g) => ({
+              code: 'curation.required',
+              message: `${g.id}: ${g.gaps.join('; ')}`,
+            })),
+          },
+        )
 
       this.store.applyWrites(project.id, revision, applied.writes)
       this.#faults('afterVersionWrites')
@@ -865,6 +918,7 @@ export class KalythServices {
         eventId,
         rebasedFrom: head === proposal.baseRevision ? null : proposal.baseRevision,
         refs: localRefsOf(proposal.ops),
+        ...(curationOps.length > 0 ? { curation: curationOps } : {}),
       }
       decide('committed', { result })
       return ok(result)
@@ -940,6 +994,15 @@ export class KalythServices {
     })
   }
 }
+
+/** Curation given at commit records no evidence, so it stores no excerpts. */
+const noExcerpts = {
+  putExcerpt(): never {
+    throw new Error('curation given at commit records no evidence')
+  },
+}
+
+const hasCuration = (c: ProposalCuration) => c.required.length > 0 || c.gaps.length > 0
 
 function parse<S extends z.ZodType>(schema: S, input: unknown): Result<z.output<S>> {
   const parsed = schema.safeParse(input)

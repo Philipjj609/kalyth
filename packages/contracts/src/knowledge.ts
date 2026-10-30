@@ -134,6 +134,13 @@ export const Dispute = z.object({
 export type Dispute = z.infer<typeof Dispute>
 
 /**
+ * Kalyth comparing a stored quote with stored source content (ADR 0030 A9). K1 stores no source
+ * content, so a stored quote is `unchecked`; `matched` and `mismatch` wait for it.
+ */
+export const QuoteMatch = z.enum(['notApplicable', 'unchecked', 'matched', 'mismatch'])
+export type QuoteMatch = z.infer<typeof QuoteMatch>
+
+/**
  * How a knowledge item stands, computed on read: maturity as stored, dispute, and each support
  * group's review and sources. Quote match, verification and review are reported separately and
  * never combined into "true" (ADR 0026 §6).
@@ -157,10 +164,15 @@ export const KnowledgeItemStatus = z.object({
         z.object({
           evidence: EvidenceId,
           kind: z.string(),
-          /** A quote is stored. K1 has no stored full sources, so no quote is matched yet. */
-          quoted: z.boolean(),
-          /** Null for evidence that is not verified this way (statements). */
-          verification: VerificationStatus.nullable(),
+          /** Whether a quote is stored, or the citation is a paraphrase with a locator. */
+          quote: z.enum(['none', 'stored']),
+          quoteMatch: QuoteMatch,
+          /**
+           * Whether a person found the source and the passage at the locator (ADR 0030 A9). It
+           * never says that a stored quote is verbatim. Null for statements, which are not
+           * verified this way.
+           */
+          locatorVerification: VerificationStatus.nullable(),
         }),
       ),
       counts: z.boolean(),

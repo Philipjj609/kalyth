@@ -9,6 +9,7 @@ import {
   ProjectId,
   RelationId,
 } from './ids.ts'
+import { ResolvedOperation } from './ops.ts'
 
 export const ErrorCode = z.enum([
   'invalid',
@@ -62,6 +63,8 @@ export const CommitSuccess = z.object({
    * proposal named no refs, and for proposals committed before refs were kept.
    */
   refs: z.record(LocalRef, z.union([ObjectId, RelationId, EvidenceId])),
+  /** Curation the committer gave with the commit, as resolved and written (ADR 0030 A7). */
+  curation: z.array(ResolvedOperation).optional(),
 })
 export type CommitSuccess = z.infer<typeof CommitSuccess>
 

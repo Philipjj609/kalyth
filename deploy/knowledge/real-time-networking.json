@@ -189,7 +189,7 @@
           "retrievedAt": "2026-10-30T07:00:00.000Z",
           "meta": {
             "title": "1500 Archers on a 28.8: Network Programming in Age of Empires and Beyond",
-            "authors": ["Mark Terrano", "Paul Bettner"],
+            "authors": ["Paul Bettner"],
             "publisher": "Game Developer",
             "published": "2001-03-22",
             "locator": "section \"Simultaneous Simulations\"",
@@ -213,7 +213,7 @@
           "retrievedAt": "2026-10-30T07:00:00.000Z",
           "meta": {
             "title": "1500 Archers on a 28.8: Network Programming in Age of Empires and Beyond",
-            "authors": ["Mark Terrano", "Paul Bettner"],
+            "authors": ["Paul Bettner"],
             "publisher": "Game Developer",
             "published": "2001-03-22",
             "locator": "section \"Hidden Benefits\"",
@@ -576,7 +576,7 @@
       "attributes": {
         "statement": "Do not trust the client: assume players will try to cheat, and decide the game state where they cannot change it.",
         "rationale": "A client runs on the player’s machine, so its code and messages can be modified to report a state the rules do not allow.",
-        "scope": "Multiplayer games where one player’s cheating affects other players.",
+        "scope": "Multiplayer games, the context of the cited article. A narrower scope is open (see the Question on exceptions).",
         "exceptions": []
       },
       "claim": {
@@ -809,6 +809,19 @@
       }
     },
     {
+      "op": "createObject",
+      "ref": "$aoeAuthors",
+      "type": "core.Question",
+      "stance": "asIs",
+      "attributes": {
+        "text": "Who wrote \"1500 Archers on a 28.8\"? Its gamedeveloper.com page credits only Paul Bettner, while its text describes work by a colleague called Mark, and it is often cited as co-written with Mark Terrano. Confirm the authors before verifying the two citations of it.",
+        "inquiryRole": "exploratory"
+      },
+      "claim": {
+        "basis": "stated"
+      }
+    },
+    {
       "op": "createRelation",
       "type": "addresses",
       "from": "$neverTrust",
@@ -845,6 +858,17 @@
       "type": "concerns",
       "from": "$exceptions",
       "to": "$neverTrust",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "stated"
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "concerns",
+      "from": "$aoeAuthors",
+      "to": "$lockstep",
       "stance": "asIs",
       "properties": {},
       "claim": {

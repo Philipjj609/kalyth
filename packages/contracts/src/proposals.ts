@@ -10,9 +10,20 @@ import {
   ProposalId,
 } from './ids.ts'
 import { JsonRecord } from './json.ts'
-import { OperationInput, ResolvedOperation } from './ops.ts'
+import { CurationOperationInput, OperationInput, ResolvedOperation } from './ops.ts'
 import { RelationTypeName, TypeName } from './registry.ts'
 import { CommitSuccess, Issue } from './results.ts'
+
+/**
+ * The established knowledge a proposal changes, and what ADR 0026 I3 would then miss for each
+ * item. Only a curator commits it, and may give the missing curation when committing (ADR 0030
+ * A7).
+ */
+export const ProposalCuration = z.object({
+  required: z.array(ObjectId),
+  gaps: z.array(z.object({ id: ObjectId, gaps: z.array(z.string()) })),
+})
+export type ProposalCuration = z.infer<typeof ProposalCuration>
 
 /**
  * A query whose result a proposal depends on (R1). Its result fingerprint is taken at the base
@@ -86,10 +97,19 @@ export const Proposal = z.object({
   decidedAt: z.iso.datetime().nullable(),
   decidedBy: PrincipalId.nullable(),
   decisionNote: z.string().nullable(),
+  /** Absent when the proposal changes no established knowledge. */
+  curation: ProposalCuration.optional(),
 })
 export type Proposal = z.infer<typeof Proposal>
 
-export const CommitProposalInput = z.object({ proposalId: ProposalId })
+/**
+ * A commit, with the curation a curator gives at that moment (ADR 0030 A7): setMaturity,
+ * reviewSupport and verifySource, naming records by id.
+ */
+export const CommitProposalInput = z.object({
+  proposalId: ProposalId,
+  curation: z.array(CurationOperationInput).min(1).max(1000).optional(),
+})
 export const RejectProposalInput = z.object({
   proposalId: ProposalId,
   reason: z.string().min(1).max(2000),
@@ -99,5 +119,7 @@ export const ProposeChangeOutput = z.object({
   proposalId: ProposalId,
   status: ProposalStatus,
   issues: z.array(Issue),
+  /** Present when only a curator can commit it (ADR 0030 A7). */
+  curation: ProposalCuration.optional(),
 })
 export type ProposeChangeOutput = z.infer<typeof ProposeChangeOutput>

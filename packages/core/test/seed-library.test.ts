@@ -52,9 +52,9 @@ describe('seed library: real-time networking (K1)', () => {
       'knowledge.Principle': 1,
       'knowledge.Pattern': 7,
       'knowledge.Condition': 2,
-      'core.Question': 1,
+      'core.Question': 2,
     })
-    expect(Object.values(overview.relationCounts).reduce((a, b) => a + b, 0)).toBe(23)
+    expect(Object.values(overview.relationCounts).reduce((a, b) => a + b, 0)).toBe(24)
   })
 
   it('claims nothing it has not earned: proposed, unreviewed, unverified, paraphrased, licence unknown', () => {
@@ -72,8 +72,9 @@ describe('seed library: real-time networking (K1)', () => {
         for (const source of group.sources) {
           expect(source).toMatchObject({
             kind: 'external',
-            quoted: false,
-            verification: 'unverified',
+            quote: 'none',
+            quoteMatch: 'notApplicable',
+            locatorVerification: 'unverified',
           })
         }
       }

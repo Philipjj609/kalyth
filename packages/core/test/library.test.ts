@@ -191,6 +191,7 @@ describe('library projects (ADR 0026 §1, ADR 0030 C3)', () => {
       const path = join(dir, 'old.db')
       const first = new SqliteStore(path)
       // What a schema 3 store looked like: no kind column, no trigger, and a project.
+      first.db.exec('ALTER TABLE proposals DROP COLUMN curation')
       first.db.exec('DROP TRIGGER projects_kind_fixed')
       first.db.exec('ALTER TABLE projects DROP COLUMN kind')
       first.setMeta('schema_version', '3')
@@ -202,7 +203,7 @@ describe('library projects (ADR 0026 §1, ADR 0030 C3)', () => {
       first.close()
       const reopened = new SqliteStore(path)
       try {
-        expect(reopened.getMeta('schema_version')).toBe('4')
+        expect(reopened.getMeta('schema_version')).toBe('5')
         expect(reopened.getProject(`prj_${'1'.repeat(32)}`)?.kind).toBe('project')
       } finally {
         reopened.close()
@@ -305,6 +306,52 @@ describe('sources and quotes (ADR 0026 §7, ADR 0030 A5)', () => {
     )
     expect(error).toMatchObject({ code: 'unauthorized', requiredScopes: ['knowledge.curate'] })
     expect(unwrap(propose(ctx, lib.id, [source('$e')], ctx.agent)).status).toBe('pending')
+    // Outside libraries, evidence keeps its ordinary permissions (A10).
+    const inProject = unwrap(
+      propose(ctx, ctx.project.id, [source('$e', { meta: { licence: 'proprietary' } })], ctx.agent),
+    )
+    expect(inProject.status).toBe('pending')
+    const committer = person(ctx, ctx.project.id, ['project.read', 'proposal.commit'])
+    unwrap(ctx.services.commitProposal(committer, { proposalId: inProject.proposalId }))
+  })
+
+  it('never reports a verified locator as a matched quotation (A9)', () => {
+    const ctx = setup()
+    const lib = library(ctx)
+    const { refs } = commit(ctx, lib.id, [
+      source('$q', { excerpt: 'Never trust the client.', meta: { quotePolicy: 'excerpt' } }),
+      concept('$c', 'Trust boundary', { kind: 'quality' }, '$q'),
+      source('$p', { uri: 'urn:x:p' }),
+      concept('$d', 'Authority', { kind: 'quality' }, '$p'),
+    ])
+    commit(ctx, lib.id, [
+      {
+        op: 'verifySource',
+        evidence: refs.$q as string,
+        status: 'verified',
+        method: 'manual',
+        note: 'n',
+      },
+      {
+        op: 'verifySource',
+        evidence: refs.$p as string,
+        status: 'verified',
+        method: 'manual',
+        note: 'n',
+      },
+    ])
+    const quoted = status(ctx, lib.id, refs.$c as string)?.groups[0]?.sources[0]
+    expect(quoted).toMatchObject({
+      quote: 'stored',
+      quoteMatch: 'unchecked',
+      locatorVerification: 'verified',
+    })
+    const paraphrase = status(ctx, lib.id, refs.$d as string)?.groups[0]?.sources[0]
+    expect(paraphrase).toMatchObject({
+      quote: 'none',
+      quoteMatch: 'notApplicable',
+      locatorVerification: 'verified',
+    })
   })
 })
 
@@ -489,12 +536,14 @@ describe('maturity (ADR 0026 §4, ADR 0030 C7 and I3)', () => {
     expect(s).toMatchObject({ maturity: 'established', supported: true, establishedGaps: [] })
     expect(
       s?.groups.every(
-        (g) => g.review === 'supports' && g.sources.every((x) => x.verification === 'verified'),
+        (g) =>
+          g.review === 'supports' && g.sources.every((x) => x.locatorVerification === 'verified'),
       ),
     ).toBe(true)
     expect(objectAt(ctx, lib.id, auth)?.attributes.maturityReason).toBe('reviewed')
 
-    // A failed verification must take it back to proposed in the same proposal (A3).
+    // A failed verification needs curation that takes the item back to proposed (A3, A7): the
+    // proposal is filed for a curator, and its commit is refused until the curation is given.
     const fail: OperationInput = {
       op: 'verifySource',
       evidence: evidence[0] as string,
@@ -502,14 +551,250 @@ describe('maturity (ADR 0026 §4, ADR 0030 C7 and I3)', () => {
       method: 'manual',
       note: 'The chapter does not say this.',
     }
-    expect(refused(ctx, lib.id, [fail])).toContain('maturity.established_gaps')
-    commit(ctx, lib.id, [
-      fail,
-      { op: 'setMaturity', id: auth, maturity: 'proposed', reason: 'a source failed' },
-    ])
+    const p = unwrap(propose(ctx, lib.id, [fail]))
+    expect(p.status).toBe('pending')
+    expect(p.curation?.gaps.map((g) => g.id)).toEqual([auth])
+    const missing = errorOf(ctx.services.commitProposal(ctx.owner, { proposalId: p.proposalId }))
+    expect(missing.issues.map((i) => i.code)).toEqual(['curation.required'])
+    expect(unwrap(ctx.services.getProposal(ctx.owner, { proposalId: p.proposalId })).status).toBe(
+      'pending',
+    )
+    unwrap(
+      ctx.services.commitProposal(ctx.owner, {
+        proposalId: p.proposalId,
+        curation: [
+          { op: 'setMaturity', id: auth, maturity: 'proposed', reason: 'a source failed' },
+        ],
+      }),
+    )
     const after = status(ctx, lib.id, auth)
     expect(after?.maturity).toBe('proposed')
     expect(after?.groups.map((g) => g.counts)).toContain(false)
+    // In one proposal, the set-back still works as before.
+    commit(ctx, lib.id, [
+      { ...fail, status: 'verified', note: 'Re-checked: the passage is there.' } as OperationInput,
+    ])
+  })
+
+  it('needs a verified, attributable source reviewed as fully supporting (A8)', () => {
+    const ctx = setup()
+    const lib = library(ctx)
+    const statement: OperationInput = {
+      op: 'recordEvidence',
+      ref: '$st',
+      evidence: {
+        source: { kind: 'statement', statedBy: ctx.ownerPrincipal.id },
+        excerpt: 'In my experience this holds.',
+        collectedBy: tool,
+      },
+    }
+    const { refs } = commit(ctx, lib.id, [
+      statement,
+      concept('$j', 'Jitter', { kind: 'quality' }, '$st'),
+      source('$s'),
+      concept('$k', 'Packet loss', { kind: 'quality' }, '$s'),
+    ])
+    const establish = (id: string): OperationInput => ({
+      op: 'setMaturity',
+      id,
+      maturity: 'established',
+      reason: 'r',
+    })
+    // Statement-only support, reviewed as supporting, is not enough.
+    const onlyStatement = refused(ctx, lib.id, [
+      {
+        op: 'reviewSupport',
+        target: refs.$j as string,
+        group: { allOf: [refs.$st as string] },
+        verdict: 'supports',
+        note: 'n',
+      },
+      establish(refs.$j as string),
+    ])
+    expect(onlyStatement).toContain('maturity.established_gaps')
+    // A verified source reviewed only as partly supporting is not enough either.
+    const k = refs.$k as string
+    const s = refs.$s as string
+    const verify: OperationInput = {
+      op: 'verifySource',
+      evidence: s,
+      status: 'verified',
+      method: 'manual',
+      note: 'n',
+      targets: [k],
+    }
+    expect(
+      refused(ctx, lib.id, [
+        verify,
+        {
+          op: 'reviewSupport',
+          target: k,
+          group: { allOf: [s] },
+          verdict: 'partly',
+          scopeLimit: 'LAN play',
+          note: 'n',
+        },
+        establish(k),
+      ]),
+    ).toContain('maturity.established_gaps')
+    commit(ctx, lib.id, [
+      verify,
+      { op: 'reviewSupport', target: k, group: { allOf: [s] }, verdict: 'supports', note: 'n' },
+      establish(k),
+    ])
+    expect(status(ctx, lib.id, k)?.maturity).toBe('established')
+  })
+})
+
+/** Reviews and verifies both groups of the seeded pattern, and establishes it. */
+function establishAuth(ctx: Ctx, libId: string, auth: string) {
+  const groups = objectAt(ctx, libId, auth)?.claim.supports.map((g) => g.allOf) ?? []
+  commit(ctx, libId, [
+    ...groups.map(
+      (allOf): OperationInput => ({
+        op: 'reviewSupport',
+        target: auth,
+        group: { allOf },
+        verdict: 'supports',
+        note: 'n',
+      }),
+    ),
+    ...groups.flat().map(
+      (e): OperationInput => ({
+        op: 'verifySource',
+        evidence: e,
+        status: 'verified',
+        method: 'manual',
+        note: 'n',
+      }),
+    ),
+    { op: 'setMaturity', id: auth, maturity: 'established', reason: 'reviewed' },
+  ])
+}
+
+describe('changes to established knowledge (ADR 0030 A7)', () => {
+  it('files an agent change for a curator, who commits it with the curation it needs', () => {
+    const ctx = setup()
+    const { lib, id } = seeded(ctx)
+    const auth = id('$auth')
+    establishAuth(ctx, lib.id, auth)
+    const groups = (objectAt(ctx, lib.id, auth)?.claim.supports ?? []).map((g) => ({
+      allOf: g.allOf,
+    }))
+    // An agent proposes a new source for the established pattern.
+    const p = unwrap(
+      propose(
+        ctx,
+        lib.id,
+        [
+          source('$new', { uri: 'urn:x:new' }),
+          {
+            op: 'updateObject',
+            id: auth,
+            set: {},
+            claim: { basis: 'imported', supports: [...groups, { allOf: ['$new'] }] },
+          },
+        ],
+        ctx.agent,
+      ),
+    )
+    expect(p.status).toBe('pending')
+    expect(p.issues).toEqual([])
+    expect(p.curation?.required).toEqual([auth])
+    expect(p.curation?.gaps[0]?.gaps.join(' ')).toMatch(/unreviewed/)
+
+    // A person who may commit, but not curate, cannot accept it.
+    const committer = person(ctx, lib.id, ['project.read', 'proposal.commit'])
+    expect(
+      errorOf(ctx.services.commitProposal(committer, { proposalId: p.proposalId })),
+    ).toMatchObject({
+      code: 'unauthorized',
+      requiredScopes: ['knowledge.curate'],
+    })
+    // Nor can that person give curation with the commit.
+    const newEvidence = unwrap(
+      ctx.services.getProposal(ctx.owner, { proposalId: p.proposalId }),
+    ).ops.find((op) => op.op === 'recordEvidence')
+    const e = newEvidence?.op === 'recordEvidence' ? newEvidence.id : ''
+    const curation = [
+      {
+        op: 'reviewSupport',
+        target: auth,
+        group: { allOf: [e] },
+        verdict: 'supports',
+        note: 'Checked.',
+      },
+      {
+        op: 'verifySource',
+        evidence: e,
+        status: 'verified',
+        method: 'manual',
+        note: 'Found it.',
+        targets: [auth],
+      },
+    ]
+    expect(
+      errorOf(ctx.services.commitProposal(committer, { proposalId: p.proposalId, curation })).code,
+    ).toBe('unauthorized')
+    // The curator, without curation, is told what is missing; the proposal stays pending.
+    expect(
+      errorOf(ctx.services.commitProposal(ctx.owner, { proposalId: p.proposalId })).issues[0]?.code,
+    ).toBe('curation.required')
+    const result = unwrap(
+      ctx.services.commitProposal(ctx.owner, { proposalId: p.proposalId, curation }),
+    )
+    expect(result.curation).toHaveLength(2)
+    const after = objectAt(ctx, lib.id, auth)
+    expect(after?.attributes.maturity).toBe('established')
+    expect(after?.claim.supports.at(-1)?.review).toMatchObject({
+      verdict: 'supports',
+      reviewer: ctx.ownerPrincipal.id,
+    })
+    // The curation is in the same change set: one event wrote it all.
+    const event = ctx.store.listEvents(lib.id).at(-1)
+    expect(event?.type === 'changeSet.committed' && event.payload.proposedBy).toBe(
+      ctx.agentPrincipal.id,
+    )
+    expect(event?.actor).toBe(ctx.ownerPrincipal.id)
+  })
+
+  it('needs a curator for any change to accepted knowledge, but not for a challenge', () => {
+    const ctx = setup()
+    const { lib, id } = seeded(ctx)
+    const auth = id('$auth')
+    establishAuth(ctx, lib.id, auth)
+    const committer = person(ctx, lib.id, ['project.read', 'proposal.commit'])
+    const filed = (ops: OperationInput[]) => unwrap(propose(ctx, lib.id, ops, ctx.agent))
+
+    const rename = filed([{ op: 'updateObject', id: auth, set: { aliases: ['server authority'] } }])
+    expect(rename.curation).toEqual({ required: [auth], gaps: [] })
+    expect(
+      errorOf(ctx.services.commitProposal(committer, { proposalId: rename.proposalId })).code,
+    ).toBe('unauthorized')
+
+    const retire = filed([{ op: 'retireRelation', id: id('$aff'), reason: 'disputed' }])
+    expect(retire.curation?.required).toEqual([auth])
+
+    // A challenge leaves the item unchanged: an ordinary committer may accept it.
+    const challenge = filed([
+      source('$c', { uri: 'urn:x:c' }),
+      pattern('$alt', 'Client authority with audits', imported(['$c'])),
+      relation('affects', '$alt', id('$cheat'), imported(['$c']), { effect: 'worsens', note: 'n' }),
+      relation('contradicts', '$alt', auth, imported(['$c'])),
+    ])
+    expect(challenge.curation).toBeUndefined()
+    unwrap(ctx.services.commitProposal(committer, { proposalId: challenge.proposalId }))
+    expect(status(ctx, lib.id, auth)).toMatchObject({
+      maturity: 'established',
+      dispute: { status: 'disputed' },
+    })
+
+    // The curator accepts the rename; the item stays established.
+    unwrap(ctx.services.commitProposal(ctx.owner, { proposalId: rename.proposalId }))
+    expect(objectAt(ctx, lib.id, auth)?.attributes).toMatchObject({
+      maturity: 'established',
+      aliases: ['server authority'],
+    })
   })
 })
 
@@ -655,7 +940,9 @@ describe('source verification (ADR 0030 A3)', () => {
     const event = ctx.store.listEvents(lib.id).at(-1)
     expect(event?.type === 'changeSet.committed' && event.payload.writes).toHaveLength(5)
     expect(result.revision).toBe(2)
-    expect(status(ctx, lib.id, id('$rtt'))?.groups[0]?.sources[0]?.verification).toBe('verified')
+    expect(status(ctx, lib.id, id('$rtt'))?.groups[0]?.sources[0]?.locatorVerification).toBe(
+      'verified',
+    )
   })
 
   it('is conflicting when the citing claims changed between proposal and commit', () => {
@@ -704,7 +991,9 @@ describe('source verification (ADR 0030 A3)', () => {
     ).toContain('verify.not_cited')
     commit(ctx, lib.id, [v({ status: 'failed', method: 'manual' })])
     commit(ctx, lib.id, [v({ status: 'unverified', method: 'manual' })])
-    expect(status(ctx, lib.id, id('$rtt'))?.groups[0]?.sources[0]?.verification).toBe('unverified')
+    expect(status(ctx, lib.id, id('$rtt'))?.groups[0]?.sources[0]?.locatorVerification).toBe(
+      'unverified',
+    )
     const statement: OperationInput = {
       op: 'recordEvidence',
       ref: '$st',
@@ -901,6 +1190,34 @@ describe('replay, export and import (ADR 0030 §5, I5)', () => {
     expect(summary.stateSha256).toBe(stateSha256(ctx.store, lib.id))
     expect(stateSha256(target, lib.id)).toBe(bundle.stateSha256)
     expect(target.getProject(lib.id)?.kind).toBe('library')
+  })
+
+  it('replays curation given at commit exactly, from the events alone', () => {
+    const ctx = setup()
+    const { lib, id } = seeded(ctx)
+    const auth = id('$auth')
+    establishAuth(ctx, lib.id, auth)
+    const p = unwrap(
+      propose(
+        ctx,
+        lib.id,
+        [{ op: 'updateObject', id: auth, set: { aliases: ['authority'] } }],
+        ctx.agent,
+      ),
+    )
+    unwrap(
+      ctx.services.commitProposal(ctx.owner, {
+        proposalId: p.proposalId,
+        curation: [
+          { op: 'setMaturity', id: auth, maturity: 'proposed', reason: 'renamed; re-review' },
+        ],
+      }),
+    )
+    expect(objectAt(ctx, lib.id, auth)?.attributes.maturity).toBe('proposed')
+    const bundle = unwrap(ctx.services.exportProject(ctx.owner, { projectId: lib.id }))
+    const target = new SqliteStore(':memory:')
+    unwrap(importProjectExport(target, JSON.parse(JSON.stringify(bundle))))
+    expect(stateSha256(target, lib.id)).toBe(stateSha256(ctx.store, lib.id))
   })
 
   it('imports a v0.1.0 export of version 1 events, and replays a log of version 1 and 2 events', () => {

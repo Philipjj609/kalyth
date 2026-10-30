@@ -2,14 +2,14 @@
 
 `real-time-networking.json` is the first Kalyth knowledge library (K1 of
 [the knowledge-fabric design](../../docs/design/knowledge-fabric.md)). It holds the operations of
-one proposal, to file in a project of kind `library`: 16 cited passages, 21 objects (10 concepts,
-1 principle, 7 patterns, 2 conditions, 1 open question) and 23 relations about networking
+one proposal, to file in a project of kind `library`: 16 cited passages, 22 objects (10 concepts,
+1 principle, 7 patterns, 2 conditions, 2 open questions) and 24 relations about networking
 real-time multiplayer games.
 
 ## Where it comes from
 
 Claude drafted it as a research agent on 30 October 2026, from eight public articles by Gabriel
-Gambetta, Glenn Fiedler, and Mark Terrano and Paul Bettner. Each page was fetched that day to
+Gambetta, Glenn Fiedler and Paul Bettner. Each page was fetched that day to
 confirm its title and the section cited. The Valve developer wiki articles were left out: their
 pages sit behind a bot check.
 
@@ -21,10 +21,17 @@ pages sit behind a bot check.
   (`quotePolicy: "none"`).
 - Every licence is `unknown`, because an agent may not confirm one (ADR 0030 A2). A curator
   confirms it with `verifySource`.
-- The gamedeveloper.com page's byline names only Paul Bettner. The paper is usually credited to
-  Mark Terrano and Paul Bettner, so both are listed; verifying that source should check this.
-- The principle "do not trust the client" has no exceptions, because its source gives none. An
-  open Question asks where it does not apply.
+- Authors are recorded as each cited page credits them. The Age of Empires article's page
+  credits only Paul Bettner (its byline, author data and "About the Author"), while its text
+  describes work by a colleague called Mark, and the article is often cited as co-written with
+  Mark Terrano. I could not confirm that from the page or a search, so only Paul Bettner is
+  listed, and an open Question asks the curator to confirm the authors before verifying either
+  citation of that article.
+- The principle "do not trust the client" has no exceptions, because its source gives none. Its
+  scope is the article's context, multiplayer games, and an open Question asks where it does not
+  apply.
+- No citation is a matched quotation. Verifying a source records that the page exists and that
+  the section holds the passage relied on; it does not check any wording.
 
 ## Curating it
 

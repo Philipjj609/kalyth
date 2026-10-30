@@ -4,6 +4,7 @@ import type {
   JsonValue,
   ObjectVersion,
   ProjectKind,
+  ProposalCuration,
   ResolvedOperation,
   ResolvedWrite,
   TaskStatus,
@@ -16,6 +17,7 @@ import {
   CURATION_OPS,
   checkLibraryEvidence,
   checkLibraryState,
+  establishedChanged,
   isKnowledgeType,
 } from './library.ts'
 import { OverlayState, type StateView } from './state.ts'
@@ -26,6 +28,11 @@ export interface ApplyOutcome {
   issues: Issue[]
   /** Claims a `verifySource` without targets found, by operation index (ADR 0030 A1). */
   expansions: { op: number; targets: string[] }[]
+  /**
+   * Established items the operations change, which only a curator commits, and what ADR 0026 I3
+   * would then miss for each (ADR 0030 A7). Empty outside libraries.
+   */
+  curation: ProposalCuration
 }
 
 export interface ApplyOptions {
@@ -59,11 +66,15 @@ export function applyOperations(
   const issues: Issue[] = []
   const expansions: ApplyOutcome['expansions'] = []
   const written = new Map<string, number>()
+  const writers: { id: string; op: ResolvedOperation }[] = []
   let currentOp = -1
   const write = (w: ResolvedWrite) => {
     overlay.apply(w)
     writes.push(w)
-    written.set(w.kind === 'evidence' ? w.record.id : w.version.id, currentOp)
+    const id = w.kind === 'evidence' ? w.record.id : w.version.id
+    written.set(id, currentOp)
+    const op = ops[currentOp]
+    if (op) writers.push({ id, op })
   }
   const ordered = ops.map((op, index) => ({ op, index })).sort((a, b) => phase(a.op) - phase(b.op))
 
@@ -403,8 +414,14 @@ export function applyOperations(
       }
     }
   }
-  if (library) issues.push(...checkLibraryState(overlay, written))
-  return { writes: lastVersions(writes), issues, expansions }
+  const curation: ProposalCuration = { required: [], gaps: [] }
+  if (library) {
+    const checked = checkLibraryState(overlay, written, state)
+    issues.push(...checked.issues)
+    curation.gaps = checked.gaps
+    curation.required = establishedChanged(state, overlay, writers)
+  }
+  return { writes: lastVersions(writes), issues, expansions, curation }
 }
 
 /**

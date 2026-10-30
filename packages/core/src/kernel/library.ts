@@ -266,16 +266,29 @@ export function applyCuration(
 
 // ---------- rules on the state a proposal produces ----------
 
+/** What I3 still misses for established items, reported for a curator rather than refused. */
+export interface CurationGap {
+  id: string
+  gaps: string[]
+}
+
+const isEstablished = (record: Record_ | undefined) =>
+  record !== undefined && !('from' in record) && record.attributes.maturity === 'established'
+
 /**
  * Library rules checked once, on the state the whole proposal produces (ADR 0030 A3): support,
  * groups, quotes, established items, pattern trade-offs and condition validity. `written` maps
- * each written id to the last operation that wrote it, for the issue.
+ * each written id to the last operation that wrote it, for the issue. An I3 gap on an item that
+ * `before` already had established is returned for its curator; one on an item the proposal
+ * itself establishes is an issue (A7).
  */
 export function checkLibraryState(
   overlay: StateView,
   written: ReadonlyMap<string, number>,
-): Issue[] {
+  before: StateView,
+): { issues: Issue[]; gaps: CurationGap[] } {
   const issues: Issue[] = []
+  const curation: CurationGap[] = []
   const at = (id: string) => written.get(id)
   const add = (id: string, code: string, message: string) => {
     const op = at(id)
@@ -318,6 +331,16 @@ export function checkLibraryState(
     }
     if (isKnowledgeRecord(overlay, record))
       checkKnowledgeClaim(overlay, record, (code, message) => add(id, code, message))
+    if (isEstablished(record)) {
+      const gaps = establishedGaps(record.claim, (e) => overlay.getEvidence(e))
+      if (gaps.length > 0 && isEstablished(before.getObject(id))) curation.push({ id, gaps })
+      else if (gaps.length > 0)
+        add(
+          id,
+          'maturity.established_gaps',
+          `established needs every group reviewed, every source verified, and a verified attributable source reviewed as supporting (ADR 0026 I3, ADR 0030 A8): ${gaps.join('; ')}`,
+        )
+    }
   }
 
   // A changed concept re-checks the conditions on it.
@@ -336,7 +359,32 @@ export function checkLibraryState(
     if (item.type === 'knowledge.Pattern' || item.type === 'knowledge.Principle')
       checkSatisfiable(overlay, item, say)
   }
-  return issues
+  return { issues, gaps: curation }
+}
+
+/**
+ * The established items a proposal changes (ADR 0030 A7): established objects it writes, and
+ * established endpoints of relations it writes. Creating a `contradicts` relation is a challenge,
+ * not a change. `before` is the state the proposal applies to.
+ */
+export function establishedChanged(
+  before: StateView,
+  overlay: StateView,
+  writes: readonly { id: string; op: ResolvedOperation }[],
+): string[] {
+  const changed = new Set<string>()
+  for (const { id, op } of writes) {
+    if (CURATION_OPS.has(op.op) || op.op === 'recordEvidence') continue
+    const relation = overlay.getRelation(id)
+    if (!relation) {
+      if (isEstablished(before.getObject(id))) changed.add(id)
+      continue
+    }
+    if (op.op === 'createRelation' && op.type === 'contradicts') continue
+    for (const end of [relation.from, relation.to])
+      if (isEstablished(before.getObject(end))) changed.add(end)
+  }
+  return [...changed].sort()
 }
 
 function checkKnowledgeClaim(
@@ -368,14 +416,6 @@ function checkKnowledgeClaim(
         'library.too_many_quotes',
         `${count} quotes from ${uri}; at most ${EXCERPT_LIMITS.maxPerSourcePerClaim} per claim`,
       )
-  if (!('from' in record) && record.attributes.maturity === 'established') {
-    const gaps = establishedGaps(claim, (id) => state.getEvidence(id))
-    if (gaps.length > 0)
-      add(
-        'maturity.established_gaps',
-        `established needs every group reviewed and every source verified (ADR 0026 I3): ${gaps.join('; ')}`,
-      )
-  }
 }
 
 function checkRelation(
@@ -554,8 +594,10 @@ export function knowledgeStatus(state: StateView, item: ObjectVersion): Knowledg
       return {
         evidence: id,
         kind,
-        quoted: Boolean(e?.excerpt),
-        verification: VERIFIABLE_KINDS.has(kind) ? verificationStatus(g, id) : null,
+        quote: e?.excerpt ? ('stored' as const) : ('none' as const),
+        // No source content is stored in K1, so nothing is compared (ADR 0030 A9).
+        quoteMatch: e?.excerpt ? ('unchecked' as const) : ('notApplicable' as const),
+        locatorVerification: VERIFIABLE_KINDS.has(kind) ? verificationStatus(g, id) : null,
       }
     }),
     counts: groupCounts(g),

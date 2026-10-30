@@ -147,6 +147,7 @@ describe('agent tokens (ADR 0011)', () => {
       for (const from of [1, 2]) {
         const path = join(dir, `k${from}.db`)
         const first = new SqliteStore(path)
+        first.db.exec('ALTER TABLE proposals DROP COLUMN curation')
         first.db.exec('DROP TRIGGER projects_kind_fixed')
         first.db.exec('ALTER TABLE projects DROP COLUMN kind')
         first.db.exec('ALTER TABLE proposals DROP COLUMN context_package_id')

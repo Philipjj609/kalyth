@@ -1,7 +1,7 @@
 # 0030. Operation contracts for knowledge libraries and pins (K1 and K2)
 
-Date: 2026-10-30. Status: Accepted for K1 on 30 October, with the amendment at the end (A1 to
-A6). An addendum to ADRs 0026 to 0029,
+Date: 2026-10-30. Status: Accepted for K1 on 30 October, with the amendments at the end (A1 to
+A12). An addendum to ADRs 0026 to 0029,
 which Philip accepted as the foundation on 30 October subject to this contract. It fixes what K1
 (library kernel) and K2 (pins and separation) need at the operation level, and resolves the places
 where those ADRs contradict the existing kernel contracts (ADRs 0003, 0004, 0005, 0006, 0014). The
@@ -193,10 +193,10 @@ SourceVerification { status: "verified" | "failed" | "unverified",
     whose every group has a failed verification or a `doesNotSupport` review is shown as
     unsupported. It is not refused, so a failure can always be recorded truthfully.
   - `unverified` no longer counts towards I3.
-  - Maturity never changes by itself. A proposal that leaves an `established` item failing I3,
-    through a verification, a review or a claim replacement, must set it back to `proposed`
-    in the same proposal, or it is refused. I3 is checked once, on the state the whole proposal
-    produces.
+  - Maturity never changes by itself. A change that leaves an `established` item failing I3,
+    through a verification, a review or a claim replacement, must come with curation that sets
+    it back to `proposed` or completes it, in the same proposal or when it is committed (A7).
+    Otherwise the commit is refused. I3 is checked once, on the state the whole commit produces.
 - A `licence` in a verification is the curator's confirmation for that citation. The evidence's own
   `SourceMeta.licence` never changes (C1).
 
@@ -204,7 +204,8 @@ SourceVerification { status: "verified" | "failed" | "unverified",
 
 `by` is the authenticated proposer, and `at` the time the proposal was filed. Both are written into
 the resolved operation, so the proposal shows exactly the record its commit will write. The
-committer is recorded in the change set, as for every commit.
+committer is recorded in the change set, as for every commit. For curation given at commit (A7),
+`by` is the committer and `at` the commit time.
 
 ### A5. Where `SourceMeta` sits
 
@@ -219,3 +220,82 @@ source must have a locator, on the source or in `meta`.
   Condition and category parameters are checked against (ADR 0028 §3 and §4 rely on them).
 - A Condition's `subject` is an object reference that local refs in the same proposal may name. In
   K1 it names a Concept of the same library; the pinned form is K2.
+
+## Amendment of 2026-10-30, after the K1 review
+
+Philip accepted K1 provisionally (KAL-20261030-067 review) and decided the six questions it
+raised. A7 to A9 change the contract; A10 to A12 record decisions without changing it. None
+changes an invariant of ADRs 0026 to 0029: A7 keeps I3 whole, and A8 strengthens it.
+
+### A7. Agents may propose changes to established knowledge; only a curator accepts them
+
+- **Accepted knowledge** is an object whose maturity is `established` before the proposal
+  applies, together with the relations that have it as an endpoint.
+- **A change to it** is an update or retirement of such an object, or a creation, update or
+  retirement of such a relation. Creating a `contradicts` relation is a challenge, not a change:
+  the item is unchanged, and the dispute overlay shows it (C4).
+- **Filing:** anyone with `proposal.create` may propose a change, an agent included. The proposal
+  is filed as pending and stays reviewable. It lists, in `curation.required`, the established
+  items it changes, and in `curation.gaps`, what I3 would then be missing for each. An I3 gap on
+  an item that was already established is reported there, not as an issue. Setting an item to
+  `established` in the proposal itself still needs I3 to hold, or the proposal is invalid.
+- **Commit:** a change to accepted knowledge is committed only by a person acting directly with
+  `knowledge.curate`. The committer may give curation with the commit:
+
+  ```
+  CommitProposalInput { proposalId, curation?: (SetMaturityOp | ReviewSupportOp | VerifySourceOp)[] }
+  ```
+
+  Curation given at commit is authorised as in A2 for the committer, resolved with the committer
+  as reviewer or verifier and the commit time (A4), applied after the proposal's operations, and
+  written in the same change set and event. The commit result lists it, so the proposal's record
+  shows who curated what. It names records by id; local refs belong to the proposal.
+- **I3 at commit:** the state the commit produces, curation included, must satisfy I3 for every
+  established item. Otherwise the commit is refused with `curation.required`, naming the gaps,
+  and the proposal stays pending, so the curator can try again with curation, or reject it.
+- **No silent change:** maturity changes only through `setMaturity` by a curator, in a proposal or
+  at commit. Nothing an agent proposes moves an item back to `proposed` or changes an accepted
+  item without a curator committing it.
+
+### A8. Established needs an attributable, verified source reviewed for the declared scope
+
+ADR 0026 I3 is strengthened. Besides every remaining group being reviewed and every cited source
+verified, at least one group must be reviewed as `supports` (not `partly`), and contain a
+`document` or `external` source with `SourceMeta` whose locator is verified. Support made only of
+statements, or only of `partly` reviews, is not enough. Established still means reviewed for the
+stated scope, never universally true (ADR 0026 I7).
+
+### A9. Matching, verifying and supporting stay separate in every view
+
+- **Quote match** is Kalyth comparing a stored quote with stored source content. K1 stores no
+  source content, so no citation is ever matched in K1. A stored quote is reported as `unchecked`;
+  `matched` and `mismatch` exist in the contract for when source content can be stored.
+- **Locator verification** (`verifySource`) records that a person found the source at the stated
+  version and the passage relied on at the locator. `retrievedSha256` is the hash of the retrieved
+  source, not of any quote. A verified locator never says a stored quote is verbatim, and views
+  never present it as a matched quotation.
+- **Support review** records whether the passage backs the claim for its scope.
+- ADR 0026 I3 ("matched or verified") is met in K1 by locator verification. ADR 0026 test 2
+  (an unmatched quote is refused) waits for stored source content: until then, refusing unmatched
+  quotes would refuse every quote.
+
+The status read model reports each source as `{ quote: "none" | "stored", quoteMatch:
+"notApplicable" | "unchecked" | "matched" | "mismatch", locatorVerification }`.
+
+### A10. Licence confirmation is a library rule
+
+A licence other than `unknown` needs `knowledge.curate` only in a library (A2). Evidence in
+ordinary projects keeps the permissions it had: `proposal.create` to propose, `proposal.commit`
+to commit.
+
+### A11. Knowledge stays in libraries
+
+`knowledge.*` objects exist only in projects of kind `library`. Ordinary projects refer to
+knowledge through pins and keep their own assessments (K2, K3).
+
+### A12. Two costs accepted for now
+
+- K1 exports stay format 1, carrying version 2 events; an older build refuses them as an unknown
+  event version, never by dropping fields. Format 2, with embedded pins, is part of K2.
+- Verifying a source writes one version per citing claim. Every version of one verification is in
+  one change set and one event, so it is atomic, attributable to one curator, and replayed exactly.

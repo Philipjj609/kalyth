@@ -84,7 +84,8 @@ Two separate properties:
 
 Only `setMaturity`, by a curator, changes maturity. It needs a reason, recorded as a statement. If
 a later review leaves an established item without the reviews it needs, the same proposal must set
-it back to proposed, or the commit is refused.
+it back to proposed, or the commit is refused. (ADR 0030 A7 lets a curator give that curation when
+committing someone else's proposal.)
 
 **Dispute** is computed on read, never stored, and never changes maturity:
 
@@ -178,7 +179,8 @@ SourceMeta { title, authors[], publisher?, edition?, version?, published?, locat
 - I2. Every knowledge claim has at least one support group. Every quoted citation matches, and every
   unquoted one has a SourceVerification record, which may still be `unverified`.
 - I3. `established` requires every remaining group to be reviewed as `supports` or `partly`, and
-  every cited source to be matched or `verified`.
+  every cited source to be matched or `verified`. ADR 0030 A8 adds: at least one group reviewed as
+  `supports` holds a verified, attributable document or external source.
 - I4. Dispute is computed on read from committed `contradicts` relations. It is never stored, and
   never changes maturity.
 - I5. A hypothesis never decides an applicability verdict (ADR 0028).

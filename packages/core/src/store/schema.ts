@@ -4,7 +4,7 @@
  * Triggers make events, change sets and evidence append-only, and allow a version row only to be
  * closed (rev_to set once). Content rows may only lose their body (redaction).
  */
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 5
 
 export const SCHEMA_V1 = `
 CREATE TABLE meta (
@@ -250,4 +250,9 @@ ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'project'
 CREATE TRIGGER projects_kind_fixed BEFORE UPDATE OF kind ON projects
 WHEN NEW.kind IS NOT OLD.kind
 BEGIN SELECT RAISE(ABORT, 'a project kind never changes'); END;
+`
+
+/** Version 5: the established knowledge a proposal changes, for its curator (ADR 0030 A7). */
+export const SCHEMA_V5 = `
+ALTER TABLE proposals ADD COLUMN curation TEXT;
 `

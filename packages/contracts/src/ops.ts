@@ -206,6 +206,14 @@ export const VerifySourceOp = z.object({
   targets: z.array(ClaimTarget).min(1).max(1000).optional(),
 })
 
+/** The operations a curator may also give when committing a proposal (ADR 0030 A7). */
+export const CurationOperationInput = z.discriminatedUnion('op', [
+  SetMaturityOp,
+  ReviewSupportOp,
+  VerifySourceOp,
+])
+export type CurationOperationInput = z.input<typeof CurationOperationInput>
+
 export const OperationInput = z.discriminatedUnion('op', [
   CreateObjectOp,
   UpdateObjectOp,

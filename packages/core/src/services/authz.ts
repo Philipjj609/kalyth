@@ -3,6 +3,8 @@ import type {
   KernelError,
   OperationParsed,
   Principal,
+  ProjectKind,
+  ProjectSummary,
   Proposal,
   ResolvedOperation,
   Scope,
@@ -51,37 +53,23 @@ export class Authorizer {
   }
 
   /**
-   * Commit policy, version 1 (decision D4):
-   * - any decision status change needs a human principal, acting directly (origin "human"),
-   *   holding decision.decide;
-   * - a task becoming completed or cancelled needs a person acting directly (ADR 0013);
-   * - recording a task's git finding needs the task coordinator (a tool with task.coordinate);
-   * - curation needs a person acting directly with knowledge.curate, who proposed it, and a
-   *   person doing the same to commit it (ADR 0030 A2);
-   * - otherwise proposal.commit allows any operation;
-   * - ingest.observed allows only evidence plus records whose claim basis is "observed";
-   * - task.coordinate allows only task lifecycle records (ADR 0013).
-   */
-  /**
-   * Curation, when proposed (ADR 0030 A2): setMaturity, reviewSupport, verifySource and a confirmed
-   * licence come only from a person acting directly with knowledge.curate. Checked again at commit.
+   * Curation, when proposed (ADR 0030 A2, A10): setMaturity, reviewSupport, verifySource and, in a
+   * library, a confirmed licence come only from a person acting directly with knowledge.curate.
+   * Checked again at commit.
    */
   authorizeProposal(
     principal: Principal,
     caller: Caller,
-    projectId: string,
+    project: Pick<ProjectSummary, 'id' | 'kind'>,
     ops: readonly OperationParsed[],
   ): KernelError | undefined {
-    if (!needsCuration(ops) || this.#curates(principal, caller, projectId)) return undefined
-    return {
-      code: 'unauthorized',
-      message: 'curation is proposed by a person acting directly with knowledge.curate',
-      issues: [],
-      requiredScopes: ['knowledge.curate'],
-    }
+    if (!needsCuration(ops, project.kind) || this.curates(principal, caller, project.id))
+      return undefined
+    return curatorRequired('curation is proposed by a person acting directly with knowledge.curate')
   }
 
-  #curates(principal: Principal, caller: Caller, projectId: string): boolean {
+  /** A person acting directly, holding knowledge.curate on the project. */
+  curates(principal: Principal, caller: Caller, projectId: string): boolean {
     return (
       principal.kind === 'human' &&
       caller.origin === 'human' &&
@@ -89,30 +77,39 @@ export class Authorizer {
     )
   }
 
+  /**
+   * Commit policy, version 1 (decision D4):
+   * - any decision status change needs a human principal, acting directly (origin "human"),
+   *   holding decision.decide;
+   * - a task becoming completed or cancelled needs a person acting directly (ADR 0013);
+   * - recording a task's git finding needs the task coordinator (a tool with task.coordinate);
+   * - curation needs a person acting directly with knowledge.curate, who proposed it, and a
+   *   person doing the same to commit it (ADR 0030 A2); a change to established knowledge is
+   *   checked after it is applied at the head (A7, in the services);
+   * - otherwise proposal.commit allows any operation;
+   * - ingest.observed allows only evidence plus records whose claim basis is "observed";
+   * - task.coordinate allows only task lifecycle records (ADR 0013).
+   */
   authorizeCommit(
     principal: Principal,
     caller: Caller,
-    projectId: string,
+    project: Pick<ProjectSummary, 'id' | 'kind'>,
     ops: readonly ResolvedOperation[],
     proposal?: Pick<Proposal, 'proposedBy' | 'origin'>,
   ): KernelError | undefined {
+    const projectId = project.id
     const held = this.scopes(principal.id, projectId)
-    if (needsCuration(ops)) {
+    if (needsCuration(ops, project.kind)) {
       // ADR 0030 A2: the committer curates, acting directly, and so must the proposer still.
       const proposer = proposal && this.#store.getPrincipal(proposal.proposedBy)
       const proposerCurates =
         proposer?.kind === 'human' &&
         proposal?.origin === 'human' &&
         this.scopes(proposer.id, projectId).has('knowledge.curate')
-      if (!this.#curates(principal, caller, projectId) || !proposerCurates) {
-        return {
-          code: 'unauthorized',
-          message:
-            'curation is committed by a person acting directly with knowledge.curate, and proposed by one',
-          issues: [],
-          requiredScopes: ['knowledge.curate'],
-        }
-      }
+      if (!this.curates(principal, caller, projectId) || !proposerCurates)
+        return curatorRequired(
+          'curation is committed by a person acting directly with knowledge.curate, and proposed by one',
+        )
     }
     if (ops.some((op) => op.op === 'setDecisionStatus')) {
       const direct = principal.kind === 'human' && caller.origin === 'human'
@@ -160,11 +157,24 @@ export class Authorizer {
 
 const CURATION = new Set(['setMaturity', 'reviewSupport', 'verifySource'])
 
-/** Operations that need knowledge.curate (ADR 0030 A2), submitted or resolved. */
-function needsCuration(ops: readonly (ResolvedOperation | OperationParsed)[]): boolean {
+export const curatorRequired = (message: string): KernelError => ({
+  code: 'unauthorized',
+  message,
+  issues: [],
+  requiredScopes: ['knowledge.curate'],
+})
+
+/**
+ * Operations that need knowledge.curate (ADR 0030 A2), submitted or resolved. Confirming a
+ * licence is a library rule; evidence in ordinary projects keeps its permissions (A10).
+ */
+function needsCuration(
+  ops: readonly (ResolvedOperation | OperationParsed)[],
+  kind: ProjectKind,
+): boolean {
   return ops.some((op) => {
     if (CURATION.has(op.op)) return true
-    if (op.op !== 'recordEvidence') return false
+    if (op.op !== 'recordEvidence' || kind !== 'library') return false
     const source = 'evidence' in op ? op.evidence.source : op.source
     const licence =
       source.kind === 'document' || source.kind === 'external' ? source.meta?.licence : undefined
