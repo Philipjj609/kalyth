@@ -1,6 +1,7 @@
 # 0030. Operation contracts for knowledge libraries and pins (K1 and K2)
 
-Date: 2026-10-30. Status: Proposed, for review before K1 code. An addendum to ADRs 0026 to 0029,
+Date: 2026-10-30. Status: Accepted for K1 on 30 October, with the amendment at the end (A1 to
+A6). An addendum to ADRs 0026 to 0029,
 which Philip accepted as the foundation on 30 October subject to this contract. It fixes what K1
 (library kernel) and K2 (pins and separation) need at the operation level, and resolves the places
 where those ADRs contradict the existing kernel contracts (ADRs 0003, 0004, 0005, 0006, 0014). The
@@ -61,8 +62,8 @@ evidence versions) inside `changeSet.committed` V2.
 | knowledge objects and relations | existing `createObject`, `updateObject`, `retireObject`, `createRelation`, `updateRelation`, `retireRelation` with `knowledge.*` types | propose: `proposal.create` on the library; commit: `proposal.commit` on the library | the library rules of ADR 0026 (I1, I2, I6) and ADR 0028 §7; `maturity` on create must be `hypothesis` or `proposed`, never `established` | object and relation versions |
 | record a source | existing `recordEvidence` with `document` or `external` and `meta` | `proposal.create` | in a library `meta` is required. A `licence` other than `unknown` needs `knowledge.curate` (agents and models: `unknown` only). Quotes respect `quotePolicy` (ADR 0026 §7) | evidence version |
 | `setMaturity` | `{ id, maturity, reason }` | `knowledge.curate`, origin human | allowed moves: hypothesis → proposed; proposed ↔ established; any → deprecated. To established: ADR 0026 I3 holds at the head | object version, maturity changed |
-| `reviewSupport` | `{ id, group: index, verdict, note, scopeLimit? }` | `knowledge.curate`, origin human | `partly` needs `scopeLimit`; `doesNotSupport` removes the group, and the claim must keep at least one; an established item that would break I3 must be set back to proposed in the same proposal | object or relation version, claim updated |
-| `verifySource` | `{ evidence, status, method, retrievedSha256?, licence?, note, targets?: ClaimTarget[] }` | `knowledge.curate`, origin human | `retrievedHash` needs `retrievedSha256`; with no `targets`, it applies to every current claim in the library citing that evidence | one version per updated claim |
+| `reviewSupport` | `{ target, group: key, verdict, note, scopeLimit? }` (A1) | `knowledge.curate`, origin human | `partly` needs `scopeLimit`; `doesNotSupport` removes the group, and the claim must keep at least one; an established item that would break I3 must be set back to proposed in the same proposal | object or relation version, claim updated |
+| `verifySource` | `{ evidence, status, method, retrievedSha256?, licence?, note, targets? }` (A3) | `knowledge.curate`, origin human | `retrievedHash` needs `retrievedSha256`; with no `targets`, it applies to every current claim in the library citing that evidence | one version per updated claim |
 | pin knowledge (K2) | `recordEvidence { kind: "knowledge", library, target, id, revision }` | `proposal.create` on the project, and `project.read` on the library when it is local | the kernel resolves the version (ADR 0027 §1), computes `versionSha256`, and embeds the content in the same transaction (I6). The revision must not be later than the project's LibraryUse for that library (I4). A library may pin only libraries, not projects | evidence version + content record |
 | use a library (K2) | `createObject` or `updateObject` of `core.LibraryUse` | propose: `proposal.create`; commit: `proposal.commit` | the library resolves at that revision. Moving a LibraryUse reports changed pins and stale assessments in the proposal's issues (warnings, not refusals) | object version |
 
@@ -120,3 +121,101 @@ from the input.
   without targets writes them all in one proposal, at the cost of many versions.
 - Bumping both event schemas touches every reader once. The upcast is small and tested; the
   alternative, new event types, would split the log's model.
+
+## Amendment of 2026-10-30, after review
+
+Philip approved this ADR as the foundation for K1 (KAL-20261030-066 review), with three
+clarifications, A1 to A3. A4 to A6 are gaps found while mapping it onto the kernel code. All of them
+are narrow. None changes an invariant of ADRs 0026 to 0029 or of this ADR.
+
+### A1. Support groups are addressed by a content key, with concurrency checks at commit
+
+- A support group's key is `sg_` followed by the first 32 hex digits of the SHA-256 of the
+  canonical JSON of its sorted, de-duplicated `allOf` evidence ids. It is computed, never stored,
+  so replay and export reproduce it, and it does not depend on the group's position.
+- In a library, two groups of one claim may not have the same key (`support.duplicate_group`).
+- `reviewSupport` takes `{ target, group: key, … }` instead of an index. C6 is the same rule seen
+  through the key: a replaced claim keeps the review and verifications of every group whose key is
+  unchanged.
+- Concurrency: every target of `reviewSupport`, `setMaturity` and `verifySource` is in the
+  proposal's write set, so a change to that record after the base makes the commit `stale` (ADR
+  0004). At the head, the group must still exist (`support.group_not_found`, R1).
+- `verifySource` without `targets` is resolved at proposal time to the claims citing the evidence
+  at the base, which are recorded in the proposal. At commit the citing set at the head must be
+  the same, or the proposal is `conflicting` (`verify.citing_claims_changed`).
+
+### A2. Curation is authorised when proposed and again when committed
+
+The operations that need `knowledge.curate` are `setMaturity`, `reviewSupport`, `verifySource`,
+and `recordEvidence` with a `licence` other than `unknown`. For a proposal holding any of them:
+
+- **When proposed:** the proposer is a human principal, acting directly (origin `human`), and holds
+  `knowledge.curate` on the library. Otherwise the proposal is refused (`unauthorized`), not filed
+  as invalid.
+- **When committed:** the committer is a human principal, acting directly, holding
+  `knowledge.curate` on the library. The proposer must still hold it at that moment, so a revoked or
+  expired grant cannot be committed through someone else. Otherwise the commit is refused
+  (`unauthorized`) and the proposal stays pending.
+- `knowledge.curate` is human-only (ADR 0006): `grant` refuses it for other principals, as for
+  `decision.decide`.
+- A curation operation targets only records of a project of kind `library`
+  (`knowledge.not_a_library`).
+
+### A3. `verifySource`: statuses, transitions and consequences
+
+```
+VerifySourceOp { op: "verifySource", evidence: EvidenceId,
+                 status: "verified" | "failed" | "unverified",
+                 method: "retrievedHash" | "manual", retrievedSha256?: sha256,
+                 licence?: Licence, note, targets?: (ObjectId | RelationId)[] }
+SourceVerification { status: "verified" | "failed" | "unverified",
+                     method, by: PrincipalId, at, retrievedSha256?, licence?, note }
+```
+
+- **Which evidence:** `document` and `external` only. A statement is not a source to verify;
+  `sourceSpan` cannot occur in a library; a `knowledge` pin is checked by its hash (§4).
+- **Absent means unverified.** A citation with no record is `unverified`. The kernel never writes
+  an implicit record, so a new citation needs no operation.
+- **Method:** `retrievedHash` requires `retrievedSha256`; `manual` must not carry it. Withdrawing
+  (status `unverified`) uses `manual`. In K1, Kalyth does not fetch sources: a person records what
+  they checked.
+- **Transitions,** per citing group:
+
+  | From | To `verified` | To `failed` | To `unverified` |
+  |---|---|---|---|
+  | unverified (absent) | allowed | allowed | refused (`verify.no_change`) |
+  | verified | allowed (a re-check, newer record) | allowed | allowed (withdrawn) |
+  | failed | allowed (re-checked and found) | allowed (newer record) | allowed (withdrawn) |
+
+- **Consequences:**
+  - `verified` counts towards ADR 0026 I3 for that evidence in that group.
+  - `failed` keeps the group, with its record, and the group stops counting as support. A claim
+    whose every group has a failed verification or a `doesNotSupport` review is shown as
+    unsupported. It is not refused, so a failure can always be recorded truthfully.
+  - `unverified` no longer counts towards I3.
+  - Maturity never changes by itself. A proposal that leaves an `established` item failing I3,
+    through a verification, a review or a claim replacement, must set it back to `proposed`
+    in the same proposal, or it is refused. I3 is checked once, on the state the whole proposal
+    produces.
+- A `licence` in a verification is the curator's confirmation for that citation. The evidence's own
+  `SourceMeta.licence` never changes (C1).
+
+### A4. Reviewer, verifier and time
+
+`by` is the authenticated proposer, and `at` the time the proposal was filed. Both are written into
+the resolved operation, so the proposal shows exactly the record its commit will write. The
+committer is recorded in the change set, as for every commit.
+
+### A5. Where `SourceMeta` sits
+
+`SourceMeta` is a field `meta` of the `document` or `external` source, as ADR 0027 vector V6 shows.
+It does not repeat what the source already says: a `document` keeps its own `version` and
+`locator`, so `SourceMeta.locator` and `SourceMeta.version` are optional. In a library every cited
+source must have a locator, on the source or in `meta`.
+
+### A6. Two attribute details
+
+- A Concept whose `dimension` is `category` lists its allowed `values`, which the `in` test of a
+  Condition and category parameters are checked against (ADR 0028 §3 and §4 rely on them).
+- A Condition's `subject` is an object reference that local refs in the same proposal may name. In
+  K1 it names a Concept of the same library; the pinned form is K2.
