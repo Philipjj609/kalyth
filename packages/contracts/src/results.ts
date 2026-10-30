@@ -65,6 +65,8 @@ export const CommitSuccess = z.object({
   refs: z.record(LocalRef, z.union([ObjectId, RelationId, EvidenceId])),
   /** Curation the committer gave with the commit, as resolved and written (ADR 0030 A7). */
   curation: z.array(ResolvedOperation).optional(),
+  /** Exceptions to failed mandatory checks the committer gave, as written (ADR 0033 §8). */
+  exceptions: z.array(ResolvedOperation).optional(),
 })
 export type CommitSuccess = z.infer<typeof CommitSuccess>
 

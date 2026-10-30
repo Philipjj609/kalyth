@@ -25,6 +25,15 @@ export const EVALUATOR_VERSION = `kalyth-applicability/3 units/${UNIT_CATALOGUE_
 export const VERDICT_MEANING =
   'conditionsMet means only that every condition the library declares for this item holds for the stated parameters, and that it declares at least one that must hold. It is not a recommendation: it does not say the item is appropriate, best, sufficient or safe, and undeclared considerations, the library’s coverage and the alternatives’ trade-offs remain for people to weigh. conditionsNotMet means a declared condition rules the item out, not that nothing like it could work. unknown means a value is missing, unknown, straddles a threshold or is contradictory, or that the item declares nothing that must hold. conflicting means libraries disagree and no decision has chosen between them.'
 
+export interface EvaluateOptions {
+  /**
+   * Pins filed in the same proposal as the assessment, not yet in the state (ADR 0033 §9). The
+   * verdict, explanation and inputs name an item by library, id and revision, never by the pin's
+   * evidence id, so they are the same before and after the pin is committed.
+   */
+  pins?: (evidenceId: string) => EvidenceRecord | undefined
+}
+
 export type Evaluation =
   | { ok: true; verdict: Verdict; explanation: Explanation; inputs: DependencySet }
   | { ok: false; code: string; message: string }
@@ -71,6 +80,7 @@ export function evaluate(
     /** Required for new requests; stored assessments without one were about expected values. */
     nature?: ParameterNature | undefined
   },
+  options: EvaluateOptions = {},
 ): Evaluation {
   const view = store.view(projectId, revision)
   const fail = (code: string, message: string): Evaluation => ({ ok: false, code, message })
@@ -116,7 +126,8 @@ export function evaluate(
   const parameters = view.listObjects({ types: ['core.Parameter'] })
   const correspondences = view.listObjects({ types: ['core.Correspondence'] })
   const pinOf = (evidenceId: unknown): PinSource | undefined => {
-    const e: EvidenceRecord | undefined = view.getEvidence(String(evidenceId))
+    const e: EvidenceRecord | undefined =
+      options.pins?.(String(evidenceId)) ?? view.getEvidence(String(evidenceId))
     return e?.source.kind === 'knowledge' ? e.source : undefined
   }
   /** A pinned concept's content, from the project's own copy. */

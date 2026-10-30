@@ -117,15 +117,23 @@ export function resolveOperations(
     attributes: Record<string, JsonValue>,
     index: number,
   ): Record<string, JsonValue> => {
-    const out = { ...attributes }
+    const out = structuredClone(attributes)
     for (const ref of context.referenceAttributes?.(type) ?? []) {
-      const key = typeof ref === 'string' ? ref : ref.key
+      // A dotted key names a nested attribute, such as basis.pins (ADR 0033 §6).
+      const path = (typeof ref === 'string' ? ref : ref.key).split('.')
       const kind: RefKind = typeof ref === 'string' ? 'object' : ref.kind
-      const value = out[key]
-      if (typeof value === 'string') out[key] = resolve(value, [kind], index, ['attributes', key])
+      const key = path.pop() as string
+      let holder: JsonValue | undefined = out
+      for (const step of path)
+        holder =
+          holder && typeof holder === 'object' && !Array.isArray(holder) ? holder[step] : undefined
+      if (!holder || typeof holder !== 'object' || Array.isArray(holder)) continue
+      const at = ['attributes', ...path, key]
+      const value = holder[key]
+      if (typeof value === 'string') holder[key] = resolve(value, [kind], index, at)
       else if (Array.isArray(value))
-        out[key] = value.map((v, i) =>
-          typeof v === 'string' ? resolve(v, [kind], index, ['attributes', key, String(i)]) : v,
+        holder[key] = value.map((v, i) =>
+          typeof v === 'string' ? resolve(v, [kind], index, [...at, String(i)]) : v,
         )
     }
     return out

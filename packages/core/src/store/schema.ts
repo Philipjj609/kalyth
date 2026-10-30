@@ -4,7 +4,7 @@
  * Triggers make events, change sets and evidence append-only, and allow a version row only to be
  * closed (rev_to set once). Content rows may only lose their body (redaction).
  */
-export const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 6
 
 export const SCHEMA_V1 = `
 CREATE TABLE meta (
@@ -255,4 +255,25 @@ BEGIN SELECT RAISE(ABORT, 'a project kind never changes'); END;
 /** Version 5: the established knowledge a proposal changes, for its curator (ADR 0030 A7). */
 export const SCHEMA_V5 = `
 ALTER TABLE proposals ADD COLUMN curation TEXT;
+`
+
+/**
+ * Version 6 (ADR 0033): the checks on a proposal's alternatives when it was proposed, and method
+ * runs. A run is operational data outside the event log, like a navigator run: it is never
+ * exported, and a re-run is a new row.
+ */
+export const SCHEMA_V6 = `
+ALTER TABLE proposals ADD COLUMN checks TEXT;
+
+CREATE TABLE method_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  started_by TEXT NOT NULL REFERENCES principals(id),
+  origin TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running', 'proposed', 'failed')),
+  proposal_id TEXT,
+  body TEXT NOT NULL
+) STRICT;
+CREATE INDEX method_runs_project ON method_runs(project_id, started_at);
 `

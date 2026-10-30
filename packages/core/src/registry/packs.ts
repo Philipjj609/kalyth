@@ -1,5 +1,6 @@
 import {
   AlternativeStatus,
+  CheckName,
   ContextPackageId,
   DecisionStatus,
   ParameterValue,
@@ -16,6 +17,28 @@ import type { ObjectTypeDef, RelationTypeDef } from './types.ts'
 const title = z.string().min(1).max(300)
 const text = z.string().min(1).max(8000)
 const optionalText = z.string().max(8000).optional()
+const ids = z.array(z.string()).max(400)
+
+/**
+ * What an alternative relies on, so checks read structure, never prose (ADR 0033 §6, A1).
+ * Coverage is per assessment, which fixes the exact item, scenario, element and nature.
+ */
+const AlternativeBasis = z.strictObject({
+  /** The project's pins of the knowledge relied on. */
+  pins: z.array(z.string()).min(1).max(20),
+  /** Assessments of those pins whose verdict is conditionsMet or unknown. */
+  covers: ids,
+  /** Assessments of those pins whose verdict is conditionsNotMet. */
+  ruledOut: ids,
+  disclosed: z.strictObject({
+    disputed: ids.default([]),
+    hypotheses: ids.default([]),
+    worsens: z.array(z.string().min(1).max(300)).max(50).default([]),
+    underspecified: ids.default([]),
+  }),
+  /** True when it rests on hypotheses only; always false for a deterministic run. */
+  unbacked: z.boolean(),
+})
 
 // ---------- core pack: domain-neutral engineering knowledge ----------
 
@@ -60,7 +83,9 @@ export const corePack: ObjectTypeDef[] = [
   },
   {
     type: 'core.Alternative',
-    version: 1,
+    // Version 2 adds the optional, structured basis that checks read (ADR 0033 §6). Every
+    // version 1 record is valid as it stands.
+    version: 2,
     pack: 'core',
     description: 'One candidate answer to a Decision, linked by alternativeOf.',
     attributes: z.strictObject({
@@ -69,8 +94,17 @@ export const corePack: ObjectTypeDef[] = [
       tradeoffs: optionalText,
       status: AlternativeStatus.default('proposed'),
       statusRationale: z.string().max(2000).optional(),
+      basis: AlternativeBasis.optional(),
     }),
     reserved: { status: 'proposed' },
+    references: [
+      { key: 'basis.pins', kind: 'evidence' },
+      'basis.covers',
+      'basis.ruledOut',
+      { key: 'basis.disclosed.disputed', kind: 'evidence' },
+      { key: 'basis.disclosed.hypotheses', kind: 'evidence' },
+      { key: 'basis.disclosed.underspecified', kind: 'evidence' },
+    ],
   },
   {
     type: 'core.Question',
@@ -262,6 +296,20 @@ export const corePack: ObjectTypeDef[] = [
       { key: 'a', kind: 'evidence' },
       { key: 'b', kind: 'evidence' },
     ],
+  },
+  {
+    type: 'core.CheckException',
+    version: 1,
+    pack: 'core',
+    description:
+      'A person let a failed mandatory check through, with a reason (ADR 0033 §8). Given only with a commit, by a person acting directly.',
+    attributes: z.strictObject({
+      check: CheckName,
+      checkVersion: z.int().min(1),
+      target: z.string(),
+      reason: z.string().min(1).max(2000),
+    }),
+    references: ['target'],
   },
   {
     type: 'core.LibraryUse',

@@ -10,6 +10,7 @@ import type {
   InstructionOrigin,
   Issue,
   KalythEvent,
+  MethodRun,
   ObjectVersion,
   Principal,
   ProjectSummary,
@@ -25,7 +26,15 @@ import {
   type RelationFilter,
   type StateView,
 } from '../kernel/state.ts'
-import { SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_VERSION } from './schema.ts'
+import {
+  SCHEMA_V1,
+  SCHEMA_V2,
+  SCHEMA_V3,
+  SCHEMA_V4,
+  SCHEMA_V5,
+  SCHEMA_V6,
+  SCHEMA_VERSION,
+} from './schema.ts'
 
 type Row = Record<string, unknown>
 const str = (v: unknown): string => v as string
@@ -72,6 +81,7 @@ export class SqliteStore {
         if (version < 3) this.db.exec(SCHEMA_V3)
         if (version < 4) this.db.exec(SCHEMA_V4)
         if (version < 5) this.db.exec(SCHEMA_V5)
+        if (version < 6) this.db.exec(SCHEMA_V6)
         this.setMeta('schema_version', String(SCHEMA_VERSION))
       })()
     }
@@ -566,13 +576,45 @@ export class SqliteStore {
     }))
   }
 
+  // ---------- method runs (ADR 0033 §9) ----------
+
+  /** A run is written once, when it has finished; it is never edited afterwards. */
+  insertMethodRun(run: Omit<MethodRun, 'proposalStatus'>): void {
+    this.#stmt(
+      `INSERT INTO method_runs (id, project_id, started_by, origin, started_at, status, proposal_id, body)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      run.id,
+      run.projectId,
+      run.startedBy,
+      run.origin,
+      run.startedAt,
+      run.status,
+      run.proposal,
+      JSON.stringify(run),
+    )
+  }
+
+  getMethodRun(id: string): Omit<MethodRun, 'proposalStatus'> | undefined {
+    const row = this.#stmt('SELECT body FROM method_runs WHERE id = ?').get(id) as Row | undefined
+    return row ? json(row.body) : undefined
+  }
+
+  listMethodRuns(projectId: string, limit: number): Omit<MethodRun, 'proposalStatus'>[] {
+    return (
+      this.#stmt(
+        'SELECT body FROM method_runs WHERE project_id = ? ORDER BY started_at DESC, id DESC LIMIT ?',
+      ).all(projectId, limit) as Row[]
+    ).map((r) => json(r.body))
+  }
+
   // ---------- proposals ----------
 
   insertProposal(p: Proposal, opsHash: string): void {
     this.#stmt(
       `INSERT INTO proposals (id, project_id, base_revision, proposed_by, origin, ops, ops_hash, rationale, read_set, write_set, predicates,
-         idempotency_key, status, issues, result, created_at, decided_at, decided_by, decision_note, context_package_id, curation)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         idempotency_key, status, issues, result, created_at, decided_at, decided_by, decision_note, context_package_id, curation, checks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       p.id,
       p.projectId,
@@ -595,6 +637,7 @@ export class SqliteStore {
       p.decisionNote,
       p.contextPackageId,
       p.curation ? JSON.stringify(p.curation) : null,
+      p.checks ? JSON.stringify(p.checks) : null,
     )
   }
 
@@ -859,6 +902,7 @@ function toProposal(r: Row): Proposal {
     decidedBy: nstr(r.decided_by),
     decisionNote: nstr(r.decision_note),
     ...(r.curation ? { curation: json(r.curation) } : {}),
+    ...(r.checks ? { checks: json(r.checks) } : {}),
   }
 }
 

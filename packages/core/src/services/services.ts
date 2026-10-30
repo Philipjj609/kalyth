@@ -7,6 +7,7 @@ import {
   type AssessmentStatusResult,
   type AssessmentView,
   Caller,
+  CHECK_CATALOGUE_VERSION,
   CommitProposalInput,
   type CommitSuccess,
   CreateProjectInput,
@@ -85,6 +86,7 @@ import {
 import type { z } from 'zod'
 import { buildProjectExport } from '../export.ts'
 import { type ApplyOptions, applyOperations } from '../kernel/apply.ts'
+import { blocking, missingQuestionText, type PinnedFacts } from '../kernel/checks.ts'
 import { EVALUATOR_VERSION, evaluate } from '../kernel/evaluate.ts'
 import { decisionFacets } from '../kernel/facets.ts'
 import { assessFreshness } from '../kernel/freshness.ts'
@@ -107,6 +109,7 @@ import {
 import { predicateFingerprint } from '../kernel/predicates.ts'
 import { localRefsOf, readSetOf, resolveOperations, writeSetOf } from '../kernel/resolve.ts'
 import { findSecretRule } from '../kernel/secrets.ts'
+import type { StateView } from '../kernel/state.ts'
 import { defaultRegistry, type TypeRegistry } from '../registry/registry.ts'
 import type { SqliteStore } from '../store/sqlite-store.ts'
 import {
@@ -715,19 +718,7 @@ export class KalythServices {
       ),
     ]
     e.explanation.missing.forEach((m, i) => {
-      const where = m.element ?? 'the whole system'
-      const unit = m.dimension ? ` (${m.dimension})` : ''
-      const text =
-        'What is the ' +
-        m.nature +
-        ' value of "' +
-        m.conceptName +
-        '" for ' +
-        where +
-        ' in scenario ' +
-        m.scenario +
-        unit +
-        '?'
+      const text = missingQuestionText(m)
       if (open.some((x) => x.attributes.text === text)) return
       ops.push(
         {
@@ -1357,6 +1348,7 @@ export class KalythServices {
         decidedBy: null,
         decisionNote: null,
         ...(hasCuration(applied.curation) ? { curation: applied.curation } : {}),
+        ...(applied.checks.length > 0 ? { checks: applied.checks } : {}),
       }
       this.store.insertProposal(proposal, requestHash)
       return ok({
@@ -1364,6 +1356,7 @@ export class KalythServices {
         status: proposal.status,
         issues,
         ...(proposal.curation ? { curation: proposal.curation } : {}),
+        ...(proposal.checks ? { checks: proposal.checks } : {}),
       })
     })
   }
@@ -1422,6 +1415,14 @@ export class KalythServices {
             'curation given at commit comes from a person acting directly with knowledge.curate',
           ),
         }
+      // Exceptions to failed checks are a person's, acting directly (ADR 0033 §8).
+      const excepting = parsed.value.exceptions
+      if (excepting && !(principal.kind === 'human' && who.origin === 'human'))
+        return fail(
+          'unauthorized',
+          'an exception to a failed check is given by a person acting directly (ADR 0033 §8)',
+          { requiredScopes: ['proposal.commit'] },
+        )
       const head = project.headRevision
       const now = this.#clock()
       const decide = (
@@ -1493,15 +1494,59 @@ export class KalythServices {
           issues: curation.issues,
         })
       const curationOps = curation?.ops ?? []
-      const applied = curation
-        ? applyOperations(
-            headView,
-            [...proposal.ops, ...curationOps],
-            this.registry,
-            revision,
-            options,
-          )
-        : own
+      // Each exception must answer a mandatory failure the kernel finds at the head.
+      const failing = blocking(own.checks)
+      for (const x of excepting ?? [])
+        if (!failing.some((f) => f.check === x.check && f.target === x.target))
+          return fail('invalid', `${x.check} does not fail for ${x.target}; nothing to except`, {
+            currentRevision: head,
+            issues: [{ code: 'check_exception.not_failing', message: `${x.check} ${x.target}` }],
+          })
+      const exceptionOps = excepting
+        ? resolveOperations(
+            excepting.flatMap((x, i): OperationParsed[] => [
+              {
+                op: 'recordEvidence',
+                ref: `$exceptionBy${i}`,
+                evidence: {
+                  source: { kind: 'statement', statedBy: principal.id },
+                  collectedBy: { tool: 'kalyth-commit', toolVersion: '1' },
+                },
+              },
+              {
+                op: 'createObject',
+                type: 'core.CheckException',
+                stance: 'toBe',
+                attributes: {
+                  check: x.check,
+                  checkVersion: CHECK_CATALOGUE_VERSION,
+                  target: x.target,
+                  reason: x.reason,
+                },
+                claim: {
+                  basis: 'stated',
+                  supports: [{ allOf: [`$exceptionBy${i}`] }],
+                  contradictedBy: [],
+                  derivedFrom: [x.target],
+                },
+              },
+            ]),
+            this.#ids,
+            noExcerpts,
+            now,
+            { actor: principal.id },
+          ).ops
+        : []
+      const applied =
+        curation || excepting
+          ? applyOperations(
+              headView,
+              [...proposal.ops, ...curationOps, ...exceptionOps],
+              this.registry,
+              revision,
+              { ...options, exceptionsGiven: exceptionOps.length > 0 },
+            )
+          : own
       for (const { op, targets } of applied.expansions) {
         const found = curationOps[op - proposal.ops.length]
         if (found?.op === 'verifySource')
@@ -1522,6 +1567,22 @@ export class KalythServices {
             issues: applied.curation.gaps.map((g) => ({
               code: 'curation.required',
               message: `${g.id}: ${g.gaps.join('; ')}`,
+            })),
+          },
+        )
+
+      // A failed mandatory check refuses the commit, and so the acceptance of an alternative,
+      // unless a person excepts it (ADR 0033 §8). The checks are computed again here, at the head.
+      const blocked = blocking(applied.checks)
+      if (blocked.length > 0)
+        return fail(
+          'invalid',
+          'a mandatory check fails; correct the proposal, or give an exception with a reason',
+          {
+            currentRevision: head,
+            issues: blocked.map((b) => ({
+              code: 'check.failed',
+              message: `${b.check} on ${b.target}: ${b.detail}`,
             })),
           },
         )
@@ -1574,6 +1635,7 @@ export class KalythServices {
         rebasedFrom: head === proposal.baseRevision ? null : proposal.baseRevision,
         refs: localRefsOf(proposal.ops),
         ...(curationOps.length > 0 ? { curation: curationOps } : {}),
+        ...(exceptionOps.length > 0 ? { exceptions: exceptionOps } : {}),
       }
       decide('committed', { result })
       return ok(result)
@@ -1624,6 +1686,31 @@ export class KalythServices {
           ? JSON.parse(copy.body)
           : undefined
       },
+      facts: (pin, pending) => this.#pinnedFacts(pin, pending),
+    }
+  }
+
+  /**
+   * What the checks read about a pinned item: its maturity, dispute and worsened qualities in its
+   * library at the pinned revision (ADR 0033 §8). Undefined when that cannot be read.
+   */
+  #pinnedFacts(pinId: string, pending: StateView): PinnedFacts | undefined {
+    const record = pending.getEvidence(pinId)
+    const pin = record?.source.kind === 'knowledge' ? record.source : undefined
+    if (pin?.target !== 'object' || !this.store.getProject(pin.library)) return undefined
+    const lib = this.store.view(pin.library, pin.revision)
+    const item = lib.getObject(pin.id)
+    if (!item) return undefined
+    return {
+      name: String(item.attributes.name ?? item.attributes.statement ?? item.id),
+      type: item.type,
+      maturity: String(item.attributes.maturity ?? 'proposed'),
+      disputed: disputeOf(lib, item).status === 'disputed',
+      worsens: lib
+        .listRelations({ types: ['affects'], from: item.id })
+        .filter((r) => r.properties.effect === 'worsens')
+        .map((r) => String(lib.getObject(r.to)?.attributes.name ?? r.to))
+        .sort(),
     }
   }
 
@@ -1638,10 +1725,13 @@ export class KalythServices {
     ops: readonly ResolvedOperation[],
   ): Issue[] {
     const issues: Issue[] = []
+    const pins = pendingPins(ops)
     ops.forEach((op, index) => {
       if (op.op !== 'createObject' || op.type !== 'core.Assessment') return
       const a = op.attributes as Record<string, unknown>
-      const computed = evaluate(this.store, projectId, revision, assessed(a))
+      const computed = evaluate(this.store, projectId, revision, assessed(a), {
+        pins: (id) => pins.get(id),
+      })
       const claimed = canonicalJson({
         verdict: a.verdict,
         explanation: a.explanation,
@@ -1833,10 +1923,25 @@ function assessed(a: Record<string, unknown>) {
   }
 }
 
-/** Curation given at commit records no evidence, so it stores no excerpts. */
+/** The pins a proposal records, by evidence id, for assessments in the same proposal. */
+function pendingPins(ops: readonly ResolvedOperation[]): Map<string, EvidenceRecord> {
+  const pins = new Map<string, EvidenceRecord>()
+  for (const op of ops)
+    if (op.op === 'recordEvidence' && op.source.kind === 'knowledge')
+      pins.set(op.id, {
+        id: op.id,
+        source: op.source,
+        excerpt: op.excerpt,
+        collectedBy: op.collectedBy,
+        collectedAt: op.collectedAt,
+      })
+  return pins
+}
+
+/** What is given at commit (curation, check exceptions) stores no excerpts. */
 const noExcerpts = {
   putExcerpt(): never {
-    throw new Error('curation given at commit records no evidence')
+    throw new Error('what is given at commit records no excerpts')
   },
 }
 

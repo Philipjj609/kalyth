@@ -14,7 +14,10 @@ export interface ObjectTypeDef {
   readonly initial?: Readonly<Record<string, readonly JsonValue[]>>
   /** The operation that changes the reserved attributes, named in refusals. */
   readonly reservedBy?: string
-  /** Top-level attributes holding an object id, which a local ref may name when created. */
+  /**
+   * Attributes holding an object id, which a local ref may name when created. A dotted key names a
+   * nested attribute.
+   */
   readonly references?: readonly (string | { key: string; kind: 'object' | 'evidence' })[]
 }
 

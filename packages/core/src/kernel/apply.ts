@@ -1,4 +1,5 @@
 import type {
+  CheckResult,
   Claim,
   Issue,
   JsonValue,
@@ -12,6 +13,7 @@ import type {
 import { AlternativeStatus, DecisionStatus, TASK_TRANSITIONS } from '@kalyth/contracts'
 import type { TypeRegistry } from '../registry/registry.ts'
 import { NotCanonical, normalizeStrings } from './canonical.ts'
+import { basisIssues, checkedAlternatives, type FactsOf, runChecks } from './checks.ts'
 import { validateClaim } from './claims.ts'
 import {
   applyCuration,
@@ -36,6 +38,8 @@ export interface ApplyOutcome {
    * would then miss for each (ADR 0030 A7). Empty outside libraries.
    */
   curation: ProposalCuration
+  /** The checks on the alternatives written, on the state they produce (ADR 0033 §8). */
+  checks: CheckResult[]
 }
 
 export interface ApplyOptions extends PinRules {
@@ -43,6 +47,10 @@ export interface ApplyOptions extends PinRules {
   pinContent?: PinContent
   /** The kind of the project written to; a library gets the rules of ADRs 0026 and 0030. */
   kind?: ProjectKind
+  /** What checks read about pinned items; without it, alternatives are not checked. */
+  facts?: FactsOf
+  /** CheckExceptions are created only from the exceptions a person gives with a commit. */
+  exceptionsGiven?: boolean
 }
 
 /** Evidence first, then the other operations, then curation, each in the order given. */
@@ -133,6 +141,14 @@ export function applyOperations(
         }
         if (isKnowledgeType(op.type) && !library) {
           add('knowledge.library_only', `${op.type} belongs in a library`, ['type'])
+          break
+        }
+        if (op.type === 'core.CheckException' && !options.exceptionsGiven) {
+          add(
+            'check_exception.commit_only',
+            'a check exception is given with the commit, by a person acting directly (ADR 0033 §8)',
+            ['type'],
+          )
           break
         }
         for (const [key, initial] of Object.entries(def.reserved ?? {})) {
@@ -421,6 +437,10 @@ export function applyOperations(
   }
   issues.push(...checkPinsAndUses(overlay, state, written, options))
   issues.push(...checkScenarioRecords(overlay, state, written, options.pinContent))
+  issues.push(...basisIssues(overlay, written))
+  const checks = options.facts
+    ? runChecks(overlay, checkedAlternatives(overlay, written.keys()), options.facts)
+    : []
   const curation: ProposalCuration = { required: [], gaps: [] }
   if (library) {
     const checked = checkLibraryState(overlay, written, state)
@@ -428,7 +448,7 @@ export function applyOperations(
     curation.gaps = checked.gaps
     curation.required = establishedChanged(state, overlay, writers)
   }
-  return { writes: lastVersions(writes), issues, expansions, curation }
+  return { writes: lastVersions(writes), issues, expansions, curation, checks }
 }
 
 /**

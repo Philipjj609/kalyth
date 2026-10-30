@@ -10,6 +10,7 @@ import {
   ProposalId,
 } from './ids.ts'
 import { JsonRecord } from './json.ts'
+import { CheckExceptionInput, CheckResult } from './methods.ts'
 import { CurationOperationInput, OperationInput, ResolvedOperation } from './ops.ts'
 import { RelationTypeName, TypeName } from './registry.ts'
 import { CommitSuccess, Issue } from './results.ts'
@@ -99,16 +100,24 @@ export const Proposal = z.object({
   decisionNote: z.string().nullable(),
   /** Absent when the proposal changes no established knowledge. */
   curation: ProposalCuration.optional(),
+  /**
+   * The checks on its alternatives when it was proposed, for display (ADR 0033 §8). The kernel
+   * computes them again at commit; these are never trusted. Absent when it has no alternative
+   * with a basis.
+   */
+  checks: z.array(CheckResult).optional(),
 })
 export type Proposal = z.infer<typeof Proposal>
 
 /**
  * A commit, with the curation a curator gives at that moment (ADR 0030 A7): setMaturity,
- * reviewSupport and verifySource, naming records by id.
+ * reviewSupport and verifySource, naming records by id; and the exceptions a person gives to
+ * failed mandatory checks (ADR 0033 §8).
  */
 export const CommitProposalInput = z.object({
   proposalId: ProposalId,
   curation: z.array(CurationOperationInput).min(1).max(1000).optional(),
+  exceptions: z.array(CheckExceptionInput).min(1).max(100).optional(),
 })
 export const RejectProposalInput = z.object({
   proposalId: ProposalId,
@@ -121,5 +130,7 @@ export const ProposeChangeOutput = z.object({
   issues: z.array(Issue),
   /** Present when only a curator can commit it (ADR 0030 A7). */
   curation: ProposalCuration.optional(),
+  /** Present when it has alternatives with a basis (ADR 0033 §8). */
+  checks: z.array(CheckResult).optional(),
 })
 export type ProposeChangeOutput = z.infer<typeof ProposeChangeOutput>

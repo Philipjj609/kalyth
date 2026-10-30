@@ -191,6 +191,8 @@ describe('library projects (ADR 0026 §1, ADR 0030 C3)', () => {
       const path = join(dir, 'old.db')
       const first = new SqliteStore(path)
       // What a schema 3 store looked like: no kind column, no trigger, and a project.
+      first.db.exec('DROP TABLE method_runs')
+      first.db.exec('ALTER TABLE proposals DROP COLUMN checks')
       first.db.exec('ALTER TABLE proposals DROP COLUMN curation')
       first.db.exec('DROP TRIGGER projects_kind_fixed')
       first.db.exec('ALTER TABLE projects DROP COLUMN kind')
@@ -203,7 +205,7 @@ describe('library projects (ADR 0026 §1, ADR 0030 C3)', () => {
       first.close()
       const reopened = new SqliteStore(path)
       try {
-        expect(reopened.getMeta('schema_version')).toBe('5')
+        expect(reopened.getMeta('schema_version')).toBe('6')
         expect(reopened.getProject(`prj_${'1'.repeat(32)}`)?.kind).toBe('project')
       } finally {
         reopened.close()
