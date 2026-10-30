@@ -247,3 +247,38 @@ answers "why", one row per condition.
   concept needs them.
 - Being conservative yields many `unknown` verdicts at first. That is intended: each one asks for
   a parameter, rather than guessing.
+
+## Amendment of 2026-10-30, K3: parameter nature and scope
+
+Decided while implementing K3, after Philip's review of the unfinished evaluator. It changes no
+invariant: I3 (never merged) and I6 (never derived) are kept and made more precise.
+
+### A1. Nature is part of what a parameter says
+
+`current`, `expected`, `target` and `limit` are different facts about one property, and all of
+them may hold at once: 40 players now, 120 expected at launch, a capacity target of 200, a hard
+limit of 256. So:
+
+- **An assessment is about one nature.** `assess` takes `nature`, which defaults to `expected`
+  (the value the scenario is about). The explanation records it, and the verdict is read as
+  "conditions met for the expected values". Assessing the same item for `current` or `target` is
+  a separate assessment.
+- **Lookup reads that nature only.** Specificity (§3, steps 1 to 5) runs over the parameters of
+  the assessed nature. A `current` value is never used for an `expected` assessment, or the other
+  way round: that would derive one parameter from another (I6). If the scenario states no value
+  of that nature, the condition is `unknown`, reason `missing`, and the open Question names the
+  nature.
+- **Contradiction needs the same nature.** Two parameters conflict only when they share concept,
+  scope (scenario and elements, at the same resolution step) and nature, and their values differ.
+  A current value and a forecast that differ are not a contradiction; both are kept and shown.
+- **Other natures stay visible.** The explanation lists, for each condition, the parameters of
+  other natures found at the same step, as context, without using them in the result.
+- **Limits and targets are values like the others.** `limit` describes a bound the system has,
+  such as a capacity; whether a condition should be read against a limit is the assessor's
+  choice of nature, never Kalyth's.
+
+### A2. Where scope is stored
+
+`core.Parameter` keeps scope as two top-level attributes, `scenario` and `elements`, rather than a
+nested `scope` object, so that local refs in one proposal can name them (ADR 0030 A6). The meaning
+is unchanged: an empty `elements` is the whole system.

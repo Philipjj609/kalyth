@@ -22,6 +22,10 @@ export const ParameterValue = z.discriminatedUnion('kind', [
 ])
 export type ParameterValue = z.infer<typeof ParameterValue>
 
+/** Which facts about a property a parameter states (ADR 0028 §3, amendment A1). */
+export const ParameterNature = z.enum(['current', 'expected', 'target', 'limit'])
+export type ParameterNature = z.infer<typeof ParameterNature>
+
 /** What applicability may say (ADR 0028 §5). Declared conditions only, never a recommendation. */
 export const Verdict = z.enum([
   'conditionsMet',
@@ -89,6 +93,17 @@ export const ExplanationStep = z.object({
       resolvedFrom: z.string(),
     }),
   ),
+  /** Values of other natures at the same scope, shown as context and never used (A1). */
+  context: z
+    .array(
+      z.object({
+        id: ObjectId,
+        nature: ParameterNature,
+        value: ParameterValue,
+        resolvedFrom: z.string(),
+      }),
+    )
+    .optional(),
   result: ConditionResult,
   reason: UnknownReason.optional(),
   /** For `requires`: the required pattern's verdict. */
@@ -102,6 +117,7 @@ export const MissingValue = z.object({
   conceptName: z.string(),
   scenario: ObjectId,
   element: ObjectId.optional(),
+  nature: ParameterNature,
   dimension: z.string().optional(),
 })
 export type MissingValue = z.infer<typeof MissingValue>
@@ -110,6 +126,8 @@ export const Explanation = z.object({
   item: z.object({ library: ProjectId, id: z.string(), revision: z.int(), name: z.string() }),
   verdict: Verdict,
   evaluatorVersion: z.string(),
+  /** The nature of the values assessed: the verdict holds for these, not for others (A1). */
+  nature: ParameterNature,
   steps: z.array(ExplanationStep),
   missing: z.array(MissingValue),
   /** What the verdict says about the knowledge itself, so a reader never mistakes it for advice. */
@@ -131,6 +149,8 @@ export const AssessInput = z.object({
   scenario: ObjectId,
   /** Omitted for the whole system. */
   element: ObjectId.optional(),
+  /** Which values to assess; other natures are context only (ADR 0028 amendment A1). */
+  nature: ParameterNature.default('expected'),
 })
 export type AssessInput = z.input<typeof AssessInput>
 

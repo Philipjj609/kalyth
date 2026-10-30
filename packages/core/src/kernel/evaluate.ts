@@ -10,7 +10,7 @@ import type {
   ParameterValue,
   Verdict,
 } from '@kalyth/contracts'
-import { UNIT_CATALOGUE_VERSION } from '@kalyth/contracts'
+import { ParameterNature, UNIT_CATALOGUE_VERSION } from '@kalyth/contracts'
 import type { SqliteStore } from '../store/sqlite-store.ts'
 import { canonicalV1 } from './canonical.ts'
 import { disputeOf } from './library.ts'
@@ -40,7 +40,12 @@ export function evaluate(
   store: SqliteStore,
   projectId: string,
   revision: number,
-  input: { item: string; scenario: string; element?: string | undefined },
+  input: {
+    item: string
+    scenario: string
+    element?: string | undefined
+    nature?: ParameterNature | undefined
+  },
 ): Evaluation {
   const view = store.view(projectId, revision)
   const fail = (code: string, message: string): Evaluation => ({ ok: false, code, message })
@@ -114,12 +119,14 @@ export function evaluate(
     }
   }
 
+  const nature: ParameterNature = input.nature ?? 'expected'
   const parameters = view.listObjects({ types: ['core.Parameter'] })
   const missing: MissingValue[] = []
 
   /** The most specific parameters for one concept (ADR 0028 §3): scenario first, then element. */
-  const resolveParameters = (conceptId: string) => {
+  const resolveParameters = (conceptId: string, wanted: ParameterNature) => {
     const forConcept = parameters.filter((p) => {
+      if (p.attributes.nature !== wanted) return false
       const e = view.getEvidence(String(p.attributes.concept))
       return (
         e?.source.kind === 'knowledge' &&
@@ -160,16 +167,33 @@ export function evaluate(
       test,
     }
     const dimension = subject?.attributes.dimension as Dimension | undefined
-    const found = resolveParameters(subjectId)
+    const found = resolveParameters(subjectId, nature)
+    // Values of other natures are shown beside the result, never used for it (A1).
+    const context = ParameterNature.options
+      .filter((n) => n !== nature)
+      .flatMap((n) => {
+        const other = resolveParameters(subjectId, n)
+        return (other?.found ?? []).map((p) => {
+          readRecord(deps.parameters, p)
+          return {
+            id: p.id,
+            nature: n,
+            value: p.attributes.value as ParameterValue,
+            resolvedFrom: other?.step ?? '',
+          }
+        })
+      })
+    const withContext = context.length > 0 ? { context } : {}
     if (!found) {
       missing.push({
         concept: subjectId,
         conceptName: String(subject?.attributes.name ?? subjectId),
         scenario: scenario.id,
         ...(input.element ? { element: input.element } : {}),
+        nature,
         ...(dimension ? { dimension } : {}),
       })
-      return { ...base, parameters: [], result: 'unknown', reason: 'missing' }
+      return { ...base, parameters: [], ...withContext, result: 'unknown', reason: 'missing' }
     }
     for (const p of found.found) readRecord(deps.parameters, p)
     const used = found.found.map((p) => ({
@@ -178,12 +202,19 @@ export function evaluate(
       value: p.attributes.value as ParameterValue,
       resolvedFrom: found.step,
     }))
-    // Two values for one concept at the same step are a conflict, never merged (ADR 0028 I3).
+    // Two values of one nature for one concept at the same step are a conflict, never merged
+    // (ADR 0028 I3, A1).
     const values = new Set(used.map((u) => canonicalV1(u.value)))
     if (values.size > 1)
-      return { ...base, parameters: used, result: 'unknown', reason: 'contradictory' }
+      return {
+        ...base,
+        parameters: used,
+        ...withContext,
+        result: 'unknown',
+        reason: 'contradictory',
+      }
     const outcome = testValue(test, used[0]?.value as ParameterValue, dimension)
-    return { ...base, parameters: used, ...outcome }
+    return { ...base, parameters: used, ...withContext, ...outcome }
   }
 
   const item = lib.getObject(pin.id) as ObjectVersion
@@ -249,6 +280,7 @@ export function evaluate(
     },
     verdict,
     evaluatorVersion: EVALUATOR_VERSION,
+    nature,
     steps,
     missing,
     knowledge: { maturity, disputed },

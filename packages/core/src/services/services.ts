@@ -2,13 +2,18 @@ import { randomBytes } from 'node:crypto'
 import {
   AgentTokenListQuery,
   type AgentTokenSummary,
+  AssessInput,
+  type AssessmentResult,
+  type AssessmentStatusResult,
   Caller,
   CommitProposalInput,
   type CommitSuccess,
   CreateProjectInput,
+  canonicalJson,
   type DecisionSummary,
   DecisionsQuery,
   type DecisionsResult,
+  type DependencySet,
   EvidenceQuery,
   type EvidenceQueryResult,
   type EvidenceRecord,
@@ -25,13 +30,17 @@ import {
   type Issue,
   IssueAgentTokenInput,
   type IssuedAgentToken,
+  type JsonValue,
   type KernelError,
   KnowledgeStatusQuery,
   type KnowledgeStatusResult,
   ObjectQuery,
   type ObjectQueryResult,
+  type ObjectVersion,
+  type OperationInput,
   type OperationParsed,
   ok,
+  type ParameterNature,
   type PinFreshness,
   PinStatusQuery,
   type PinStatusResult,
@@ -50,6 +59,7 @@ import {
   RejectProposalInput,
   RelationQuery,
   type RelationQueryResult,
+  type ResolvedOperation,
   type Result,
   RevokeAgentTokenInput,
   type Scope,
@@ -59,6 +69,7 @@ import {
 import type { z } from 'zod'
 import { buildProjectExport } from '../export.ts'
 import { type ApplyOptions, applyOperations } from '../kernel/apply.ts'
+import { EVALUATOR_VERSION, evaluate } from '../kernel/evaluate.ts'
 import { decisionFacets } from '../kernel/facets.ts'
 import { assessFreshness } from '../kernel/freshness.ts'
 import { elementLabel, traceImpact } from '../kernel/impact.ts'
@@ -335,6 +346,183 @@ export class KalythServices {
       })
       .sort((a, b) => (a.evidence < b.evidence ? -1 : 1))
     return ok({ projectId: project.id, revision, pins })
+  }
+
+  /** Evaluates one pinned item for a scenario, element and nature, read-only (ADR 0028 §4 to §6). */
+  assess(caller: unknown, input: unknown): Result<AssessmentResult> {
+    const r = this.#readable(caller, AssessInput, input)
+    if (!r.ok) return r
+    const { project, revision, input: q } = r.value
+    const e = evaluate(this.store, project.id, revision, q)
+    if (!e.ok) return fail('invalid', e.message, { issues: [{ code: e.code, message: e.message }] })
+    return ok({ verdict: e.verdict, explanation: e.explanation, inputs: e.inputs })
+  }
+
+  /**
+   * Files a proposal of a new Assessment (ADR 0029 §1). It supersedes the current assessments of
+   * the same item, scenario, element and nature, and asks one open Question for each missing
+   * value (ADR 0028 §3a). A person commits it; nothing is assessed automatically.
+   */
+  proposeAssessment(caller: unknown, input: unknown): Result<ProposeChangeOutput> {
+    const r = this.#readable(caller, AssessInput, input)
+    if (!r.ok) return r
+    const { project, revision, input: q } = r.value
+    const e = evaluate(this.store, project.id, revision, q)
+    if (!e.ok) return fail('invalid', e.message, { issues: [{ code: e.code, message: e.message }] })
+    const view = this.store.view(project.id, revision)
+    const same = (a: ObjectVersion) =>
+      a.attributes.item === q.item &&
+      a.attributes.scenario === q.scenario &&
+      a.attributes.element === q.element &&
+      a.attributes.nature === q.nature
+    const earlier = view
+      .listObjects({ types: ['core.Assessment'] })
+      .filter(
+        (a) => same(a) && view.listRelations({ types: ['supersedes'], to: a.id }).length === 0,
+      )
+    const open = view.listObjects({ types: ['core.Question'], attributeEquals: { status: 'open' } })
+    const ops: OperationInput[] = [
+      {
+        op: 'createObject',
+        ref: '$assessment',
+        type: 'core.Assessment',
+        stance: 'toBe',
+        attributes: {
+          item: q.item,
+          scenario: q.scenario,
+          ...(q.element ? { element: q.element } : {}),
+          nature: q.nature,
+          verdict: e.verdict,
+          explanation: e.explanation as unknown as JsonValue,
+          inputs: e.inputs as unknown as JsonValue,
+          producedBy: { kind: 'evaluator', evaluatorVersion: e.inputs.evaluatorVersion },
+        },
+        claim: {
+          basis: 'inferred',
+          confidence: {
+            level: 'high',
+            rationale:
+              'A deterministic evaluation of declared conditions; it says nothing beyond them.',
+          },
+          supports: [{ allOf: [q.item] }],
+          derivedFrom: e.inputs.parameters.map((p) => p.id),
+        },
+      },
+      ...earlier.map(
+        (a): OperationInput => ({
+          op: 'createRelation',
+          type: 'supersedes',
+          from: '$assessment',
+          to: a.id,
+          stance: 'toBe',
+          claim: { basis: 'stated' },
+        }),
+      ),
+    ]
+    e.explanation.missing.forEach((m, i) => {
+      const where = m.element ?? 'the whole system'
+      const unit = m.dimension ? ` (${m.dimension})` : ''
+      const text =
+        'What is the ' +
+        m.nature +
+        ' value of "' +
+        m.conceptName +
+        '" for ' +
+        where +
+        ' in scenario ' +
+        m.scenario +
+        unit +
+        '?'
+      if (open.some((x) => x.attributes.text === text)) return
+      ops.push(
+        {
+          op: 'createObject',
+          ref: `$missing${i}`,
+          type: 'core.Question',
+          stance: 'toBe',
+          attributes: { text, inquiryRole: 'decision-sensitive' },
+          claim: { basis: 'stated' },
+        },
+        {
+          op: 'createRelation',
+          type: 'concerns',
+          from: `$missing${i}`,
+          to: m.scenario,
+          stance: 'toBe',
+          claim: { basis: 'stated' },
+        },
+      )
+    })
+    return this.proposeChange(caller, {
+      projectId: project.id,
+      baseRevision: revision,
+      ops,
+      rationale: `Assess ${e.explanation.item.name} (${q.nature}): ${e.verdict}`,
+    })
+  }
+
+  /**
+   * Freshness of every assessment, computed on read (ADR 0029 §3). It is stale when a newer
+   * assessment supersedes it, when the evaluator changed, when an item it read no longer has the
+   * same hash at the library revision the project uses, or when evaluating again now reads
+   * different parameters, scenarios or elements. Nothing is recomputed in place.
+   */
+  getAssessmentStatus(caller: unknown, input: unknown): Result<AssessmentStatusResult> {
+    const r = this.#readable(caller, ProjectRef, input)
+    if (!r.ok) return r
+    const { project, revision } = r.value
+    const view = this.store.view(project.id, revision)
+    const assessments = view.listObjects({ types: ['core.Assessment'] }).map((a) => {
+      const reasons: string[] = []
+      const inputs = a.attributes.inputs as unknown as DependencySet
+      for (const s of view.listRelations({ types: ['supersedes'], to: a.id }))
+        reasons.push(`superseded by ${s.from}`)
+      if (inputs.evaluatorVersion !== EVALUATOR_VERSION) reasons.push('evaluator changed')
+      for (const k of inputs.knowledge) {
+        const [use] = view.listObjects({
+          types: ['core.LibraryUse'],
+          attributeEquals: { library: k.library },
+        })
+        if (!use) {
+          reasons.push(`no LibraryUse of ${k.library}`)
+          continue
+        }
+        const at = Number(use.attributes.revision)
+        const now = versionAt(this.store, { ...k, revision: at })
+        if (!now.ok) reasons.push(`knowledge ${k.id}: ${now.reason} at revision ${at}`)
+        else if (now.sha256 !== k.versionSha256)
+          reasons.push(`knowledge ${k.id} changed at library revision ${at}`)
+      }
+      const again = evaluate(this.store, project.id, revision, assessed(a.attributes))
+      if (!again.ok) reasons.push(`cannot evaluate again: ${again.message}`)
+      else {
+        const before = new Map(
+          [...inputs.parameters, ...inputs.scenarios, ...inputs.elements].map((x) => [
+            x.id,
+            x.revision,
+          ]),
+        )
+        for (const x of [
+          ...again.inputs.parameters,
+          ...again.inputs.scenarios,
+          ...again.inputs.elements,
+        ]) {
+          const was = before.get(x.id)
+          if (was === undefined) reasons.push(`${x.id} is now read`)
+          else if (was !== x.revision) reasons.push(`${x.id} changed`)
+          before.delete(x.id)
+        }
+        for (const id of before.keys()) reasons.push(`${id} is no longer read or no longer active`)
+      }
+      return {
+        id: a.id,
+        verdict: a.attributes.verdict as AssessmentResult['verdict'],
+        status: reasons.length > 0 ? ('stale' as const) : ('current' as const),
+        reasons: [...new Set(reasons)],
+        ...(again.ok ? { verdictNow: again.verdict } : {}),
+      }
+    })
+    return ok({ projectId: project.id, revision, assessments })
   }
 
   getKnowledgeStatus(caller: unknown, input: unknown): Result<KnowledgeStatusResult> {
@@ -745,6 +933,7 @@ export class KalythServices {
         ...resolved.issues,
         ...(project.kind === 'library' ? libraryInputIssues(req.ops) : []),
         ...applied.issues,
+        ...this.#assessmentIssues(project.id, req.baseRevision, resolved.ops),
       ]
       const proposal: Proposal = {
         id: this.#ids('proposal'),
@@ -879,6 +1068,12 @@ export class KalythServices {
       const headView = this.store.view(project.id, head)
       const options = this.#applyOptions(project)
       const own = applyOperations(headView, proposal.ops, this.registry, revision, options)
+      own.issues.push(
+        ...this.#assessmentIssues(project.id, head, proposal.ops).map((i) => ({
+          ...i,
+          code: 'assessment.stale_at_head',
+        })),
+      )
       if (own.issues.length > 0) {
         decide('conflicting', { issues: own.issues })
         return fail('conflicting', 'the proposal violates an invariant at the current head', {
@@ -1027,7 +1222,52 @@ export class KalythServices {
         const copy = this.store.getContent(project.id, contentIdOf(sha))
         return typeof copy?.body === 'string' && sha256Hex(copy.body) === sha
       },
+      pinContent: (sha) => {
+        const copy = this.store.getContent(project.id, contentIdOf(sha))
+        return typeof copy?.body === 'string' && sha256Hex(copy.body) === sha
+          ? JSON.parse(copy.body)
+          : undefined
+      },
     }
+  }
+
+  /**
+   * An assessment states what the evaluator computes, so each one is computed again from the
+   * committed state when proposed, and at the head when committed (ADR 0028 I4, R1). One that
+   * differs is refused: a verdict is never typed in.
+   */
+  #assessmentIssues(
+    projectId: string,
+    revision: number,
+    ops: readonly ResolvedOperation[],
+  ): Issue[] {
+    const issues: Issue[] = []
+    ops.forEach((op, index) => {
+      if (op.op !== 'createObject' || op.type !== 'core.Assessment') return
+      const a = op.attributes as Record<string, unknown>
+      const computed = evaluate(this.store, projectId, revision, assessed(a))
+      const claimed = canonicalJson({
+        verdict: a.verdict,
+        explanation: a.explanation,
+        inputs: a.inputs,
+      })
+      if (!computed.ok)
+        issues.push({ code: 'assessment.not_reproducible', message: computed.message, op: index })
+      else if (
+        canonicalJson({
+          verdict: computed.verdict,
+          explanation: computed.explanation,
+          inputs: computed.inputs,
+        }) !== claimed
+      )
+        issues.push({
+          code: 'assessment.not_reproducible',
+          message:
+            'the evaluator gives a different verdict, explanation or inputs at this revision',
+          op: index,
+        })
+    })
+    return issues
   }
 
   /**
@@ -1134,6 +1374,16 @@ function pinFreshness(store: SqliteStore, pin: PinSource, against: number | null
   const now = versionAt(store, { ...pin, revision: against })
   if (now.ok) return now.sha256 === pin.versionSha256 ? 'unchanged' : 'changed'
   return now.reason === 'unknown-target' ? 'removed' : 'libraryNotPresent'
+}
+
+/** What an assessment's attributes say was assessed. */
+function assessed(a: Record<string, unknown>) {
+  return {
+    item: String(a.item),
+    scenario: String(a.scenario),
+    element: typeof a.element === 'string' ? a.element : undefined,
+    nature: (typeof a.nature === 'string' ? a.nature : 'expected') as ParameterNature,
+  }
 }
 
 /** Curation given at commit records no evidence, so it stores no excerpts. */

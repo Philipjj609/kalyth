@@ -236,6 +236,7 @@ export const corePack: ObjectTypeDef[] = [
       item: z.string(),
       scenario: z.string(),
       element: z.string().optional(),
+      nature: z.enum(['current', 'expected', 'target', 'limit']),
       verdict: Verdict,
       explanation: z.json(),
       inputs: z.json(),
