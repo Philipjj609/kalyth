@@ -165,6 +165,11 @@ export const Explanation = z.object({
       }),
     )
     .optional(),
+  /**
+   * Whether libraries disagree here. A settled conflict stays visible: the decision chose which
+   * guidance to follow; it did not prove the other wrong or remove the disagreement (K4 review).
+   */
+  conflict: z.object({ state: z.enum(['none', 'unsettled', 'settled']), note: z.string() }),
   /** The accepted decision that chose between conflicting guidance, when one did. */
   settledBy: z.object({ decision: ObjectId, alternative: ObjectId, item: EvidenceId }).optional(),
   /** Always present: what the verdict means, and does not mean (ADR 0028 I8). */

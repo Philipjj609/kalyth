@@ -323,6 +323,10 @@ describe('contradictory guidance (ADR 0027 §5, ADR 0028 §5)', () => {
     ])
     const r = unwrap(assess(ctx, P.$aShared as string, P.$launch as string))
     expect(r.verdict).toBe('conditionsMet')
+    // The decision chose which guidance to follow; the disagreement stays visible (K4 review).
+    expect(r.explanation.conflict.state).toBe('settled')
+    expect(r.explanation.conflict.note).toMatch(/does not make the other guidance wrong/)
+    expect(r.explanation.alternatives?.[0]?.verdict).toBe('conditionsNotMet')
     expect(r.explanation.settledBy).toMatchObject({
       decision: D.$d,
       alternative: D.$alt,

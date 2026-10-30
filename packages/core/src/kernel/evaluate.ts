@@ -20,7 +20,7 @@ import type { StateView } from './state.ts'
 import { type Interval, parseDecimal, type Rational, relateToTest, toBase } from './units.ts'
 
 /** Part of every assessment: a change to the evaluator or the units marks assessments stale. */
-export const EVALUATOR_VERSION = `kalyth-applicability/2 units/${UNIT_CATALOGUE_VERSION}`
+export const EVALUATOR_VERSION = `kalyth-applicability/3 units/${UNIT_CATALOGUE_VERSION}`
 
 export const VERDICT_MEANING =
   'conditionsMet means only that every condition the library declares for this item holds for the stated parameters, and that it declares at least one that must hold. It is not a recommendation: it does not say the item is appropriate, best, sufficient or safe, and undeclared considerations, the library’s coverage and the alternatives’ trade-offs remain for people to weigh. conditionsNotMet means a declared condition rules the item out, not that nothing like it could work. unknown means a value is missing, unknown, straddles a threshold or is contradictory, or that the item declares nothing that must hold. conflicting means libraries disagree and no decision has chosen between them.'
@@ -514,6 +514,17 @@ export function evaluate(
           })),
         }
       : {}),
+    conflict: !opposing
+      ? { state: 'none', note: 'no library consulted here disagrees' }
+      : settledBy
+        ? {
+            state: 'settled',
+            note: `the libraries disagree; decision ${settledBy.decision} chose which guidance this project follows. It does not make the other guidance wrong, and the disagreement stays recorded in alternatives`,
+          }
+        : {
+            state: 'unsettled',
+            note: 'the libraries disagree and no accepted decision has chosen between them',
+          },
     ...(settledBy ? { settledBy } : {}),
     meaning: VERDICT_MEANING,
   }

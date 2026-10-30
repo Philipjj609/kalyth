@@ -5,6 +5,7 @@ import {
   AssessInput,
   type AssessmentResult,
   type AssessmentStatusResult,
+  type AssessmentView,
   Caller,
   CommitProposalInput,
   type CommitSuccess,
@@ -17,10 +18,13 @@ import {
   EvidenceQuery,
   type EvidenceQueryResult,
   type EvidenceRecord,
+  type Explanation,
   ExportProjectInput,
   FreshnessQuery,
   type FreshnessResult,
   fail,
+  GetAssessmentInput,
+  GetKnowledgeInput,
   type Grant,
   HistoryQuery,
   type HistoryResult,
@@ -32,8 +36,16 @@ import {
   type IssuedAgentToken,
   type JsonValue,
   type KernelError,
+  KnowledgeSearchInput,
+  type KnowledgeSearchResult,
   KnowledgeStatusQuery,
   type KnowledgeStatusResult,
+  type KnowledgeView,
+  LibraryUsesInput,
+  type LibraryUsesResult,
+  ListAssessmentsInput,
+  type ListAssessmentsResult,
+  type Maturity,
   ObjectQuery,
   type ObjectQueryResult,
   type ObjectVersion,
@@ -56,6 +68,7 @@ import {
   ProposalListQuery,
   ProposeChangeInput,
   type ProposeChangeOutput,
+  type ReadAs,
   RejectProposalInput,
   RelationQuery,
   type RelationQueryResult,
@@ -65,6 +78,7 @@ import {
   type Scope,
   type Situation,
   SituationQuery,
+  type Verdict,
 } from '@kalyth/contracts'
 import type { z } from 'zod'
 import { buildProjectExport } from '../export.ts'
@@ -73,7 +87,12 @@ import { EVALUATOR_VERSION, evaluate } from '../kernel/evaluate.ts'
 import { decisionFacets } from '../kernel/facets.ts'
 import { assessFreshness } from '../kernel/freshness.ts'
 import { elementLabel, traceImpact } from '../kernel/impact.ts'
-import { isKnowledgeType, knowledgeStatus, libraryInputIssues } from '../kernel/library.ts'
+import {
+  disputeOf,
+  isKnowledgeType,
+  knowledgeStatus,
+  libraryInputIssues,
+} from '../kernel/library.ts'
 import {
   contentIdOf,
   EVIDENCE_MEDIA_TYPE,
@@ -346,6 +365,280 @@ export class KalythServices {
       })
       .sort((a, b) => (a.evidence < b.evidence ? -1 : 1))
     return ok({ projectId: project.id, revision, pins })
+  }
+
+  // ---------- K4: read-only knowledge and assessments for agents (ADR 0031) ----------
+
+  /** A library the caller may read, at a revision it has (default: head). */
+  #library(caller: unknown, library: string, revision?: number) {
+    const ctx = this.#context(caller)
+    if (!ctx.ok) return ctx
+    const lib = this.store.getProject(library)
+    if (lib?.kind !== 'library') return fail('not_found', `library ${library} does not exist`)
+    const denied = this.#authz.require(ctx.value.principal, lib.id, ['project.read'])
+    if (denied) return { ok: false as const, error: denied }
+    const at = revision ?? lib.headRevision
+    if (at > lib.headRevision)
+      return fail('invalid', `revision ${at} is ahead of head ${lib.headRevision}`)
+    return ok({ lib, at, principal: ctx.value.principal })
+  }
+
+  /**
+   * Searches knowledge by name, alias and text: in a library at its head, or, for a project, in
+   * every library it uses at the revision it uses. Libraries the caller cannot read are listed as
+   * not searched; nothing from them is returned.
+   */
+  searchKnowledge(caller: unknown, input: unknown): Result<KnowledgeSearchResult> {
+    const ctx = this.#context(caller)
+    if (!ctx.ok) return ctx
+    const parsed = parse(KnowledgeSearchInput, input)
+    if (!parsed.ok) return parsed
+    const q = parsed.value
+    const project = this.store.getProject(q.projectId)
+    if (!project) return fail('not_found', `project ${q.projectId} does not exist`)
+    const denied = this.#authz.require(ctx.value.principal, project.id, ['project.read'])
+    if (denied) return { ok: false, error: denied }
+    const targets =
+      project.kind === 'library'
+        ? [{ library: project.id, revision: project.headRevision }]
+        : this.store
+            .view(project.id, project.headRevision)
+            .listObjects({ types: ['core.LibraryUse'] })
+            .map((u) => ({
+              library: String(u.attributes.library),
+              revision: Number(u.attributes.revision),
+            }))
+    const needle = q.text.toLowerCase()
+    const libraries: KnowledgeSearchResult['libraries'] = []
+    const hits: KnowledgeSearchResult['hits'] = []
+    for (const target of targets) {
+      const lib = this.store.getProject(target.library)
+      if (!lib) {
+        libraries.push({ ...target, searched: false, reason: 'not present in this store' })
+        continue
+      }
+      if (this.#authz.require(ctx.value.principal, lib.id, ['project.read'])) {
+        libraries.push({ ...target, searched: false, reason: 'not readable by this caller' })
+        continue
+      }
+      libraries.push({ ...target, searched: true })
+      const view = this.store.view(lib.id, target.revision)
+      for (const o of view.listObjects({ ...(q.types ? { types: q.types } : {}) })) {
+        if (!isKnowledgeType(o.type)) continue
+        const a = o.attributes as Record<string, unknown>
+        const name = String(a.name ?? a.statement ?? o.id)
+        const aliases = Array.isArray(a.aliases) ? (a.aliases as string[]) : []
+        const text = Object.values(a)
+          .filter((v) => typeof v === 'string')
+          .join(' ')
+        const matchedOn = name.toLowerCase().includes(needle)
+          ? 'name'
+          : aliases.some((x) => x.toLowerCase().includes(needle))
+            ? 'alias'
+            : text.toLowerCase().includes(needle)
+              ? 'text'
+              : undefined
+        if (!matchedOn) continue
+        hits.push({
+          library: lib.id,
+          libraryName: lib.name,
+          revision: target.revision,
+          id: o.id,
+          type: o.type,
+          name,
+          maturity: (a.maturity as Maturity) ?? 'proposed',
+          disputed: disputeOf(view, o).status === 'disputed',
+          matchedOn,
+        })
+      }
+    }
+    const rank = { name: 0, alias: 1, text: 2 }
+    hits.sort((x, y) => rank[x.matchedOn] - rank[y.matchedOn] || (x.name < y.name ? -1 : 1))
+    return ok({
+      projectId: project.id,
+      libraries,
+      hits: hits.slice(0, q.limit),
+      truncated: hits.length > q.limit,
+    })
+  }
+
+  /**
+   * One knowledge item at a library revision: its canonical content and hash, maturity, dispute,
+   * support groups with review and verification, its sources' provenance, and its relations,
+   * bounded. A method is read the same way (get_method).
+   */
+  getKnowledge(caller: unknown, input: unknown): Result<KnowledgeView> {
+    const parsed = parse(GetKnowledgeInput, input)
+    if (!parsed.ok) return parsed
+    const q = parsed.value
+    const access = this.#library(caller, q.library, q.revision)
+    if (!access.ok) return access
+    const { lib, at } = access.value
+    const view = this.store.view(lib.id, at)
+    const target = q.id.startsWith('obj_') ? 'object' : 'relation'
+    const record = target === 'object' ? view.getObject(q.id) : view.getRelation(q.id)
+    if (record?.lifecycle !== 'active')
+      return fail('not_found', `${q.id} is not an active ${target} of ${lib.id} at revision ${at}`)
+    const version = versionAt(this.store, { library: lib.id, target, id: q.id, revision: at })
+    if (!version.ok) return fail('invalid', version.detail)
+    const evidenceIds = [...new Set(record.claim.supports.flatMap((g) => g.allOf))].slice(0, 50)
+    const sources = evidenceIds.flatMap((id) => {
+      const e = view.getEvidence(id)
+      if (!e) return []
+      const s = e.source
+      return [
+        {
+          evidence: id,
+          kind: s.kind,
+          ...(s.kind === 'document' || s.kind === 'external' ? { uri: s.uri } : {}),
+          ...(s.kind === 'document' && s.locator ? { locator: s.locator } : {}),
+          ...((s.kind === 'document' || s.kind === 'external') && s.meta ? { meta: s.meta } : {}),
+          ...(s.kind === 'statement' ? { statedBy: s.statedBy } : {}),
+        },
+      ]
+    })
+    const nameOf = (id: string) => {
+      const o = view.getObject(id)
+      return {
+        id,
+        type: o?.type ?? 'unknown',
+        name: String(o?.attributes.name ?? o?.attributes.statement ?? o?.attributes.text ?? id),
+      }
+    }
+    const all =
+      target === 'object'
+        ? [
+            ...view
+              .listRelations({ from: q.id })
+              .map((r) => ({ r, direction: 'out' as const, other: r.to })),
+            ...view
+              .listRelations({ to: q.id })
+              .map((r) => ({ r, direction: 'in' as const, other: r.from })),
+          ]
+        : []
+    const LIMIT = 100
+    const relations = all.slice(0, LIMIT).map(({ r, direction, other }) => ({
+      id: r.id,
+      type: r.type,
+      direction,
+      other: nameOf(other),
+      properties: r.properties,
+    }))
+    const status = target === 'object' ? knowledgeStatus(view, record as ObjectVersion) : undefined
+    const maturity = status?.maturity
+    return ok({
+      library: lib.id,
+      libraryName: lib.name,
+      revision: at,
+      headRevision: lib.headRevision,
+      id: q.id,
+      target,
+      type: record.type,
+      versionSha256: version.sha256,
+      content: JSON.parse(version.text),
+      ...(status
+        ? { maturity: status.maturity, dispute: status.dispute, support: status.groups }
+        : {}),
+      sources,
+      relations,
+      relationsOmitted: Math.max(0, all.length - LIMIT),
+      readAs: {
+        recommendation: false,
+        current: at === lib.headRevision,
+        supported: status ? status.supported : true,
+        resolved: true,
+        note: [
+          maturity
+            ? `maturity ${maturity}${maturity === 'established' ? ' (reviewed, not proven)' : ''}`
+            : 'a relation: as mature as its own reviews',
+          status?.dispute.status === 'disputed' ? 'disputed' : undefined,
+          at === lib.headRevision ? undefined : `library head is revision ${lib.headRevision}`,
+        ]
+          .filter(Boolean)
+          .join('; '),
+      },
+    })
+  }
+
+  /** A method (ADR 0029 §4): read as knowledge, refused for any other type. */
+  getMethod(caller: unknown, input: unknown): Result<KnowledgeView> {
+    const r = this.getKnowledge(caller, input)
+    if (r.ok && r.value.type !== 'knowledge.Method')
+      return fail('invalid', `${r.value.id} is a ${r.value.type}, not a method`)
+    return r
+  }
+
+  /** The libraries a project uses, and how far each has moved on since (ADR 0027 §4). */
+  listLibraryUses(caller: unknown, input: unknown): Result<LibraryUsesResult> {
+    const r = this.#readable(caller, LibraryUsesInput, input)
+    if (!r.ok) return r
+    const { project, revision } = r.value
+    const uses = this.store
+      .view(project.id, revision)
+      .listObjects({ types: ['core.LibraryUse'] })
+      .map((u) => {
+        const library = String(u.attributes.library)
+        const lib = this.store.getProject(library)
+        const used = Number(u.attributes.revision)
+        return {
+          id: u.id,
+          library,
+          label: String(u.attributes.label),
+          role: String(u.attributes.role),
+          revision: used,
+          present: Boolean(lib),
+          ...(lib
+            ? {
+                libraryName: lib.name,
+                headRevision: lib.headRevision,
+                behind: lib.headRevision - used,
+              }
+            : {}),
+        }
+      })
+    return ok({ projectId: project.id, revision, uses })
+  }
+
+  /** assess, with how to read the result (K4): always computed now, never a recommendation. */
+  assessApplicability(
+    caller: unknown,
+    input: unknown,
+  ): Result<AssessmentResult & { readAs: ReadAs }> {
+    const r = this.assess(caller, input)
+    if (!r.ok) return r
+    return ok({ ...r.value, readAs: readAsOf(r.value.explanation, true) })
+  }
+
+  /** Every assessment of a project, with its freshness and how to read it (ADR 0029 §3). */
+  listAssessments(caller: unknown, input: unknown): Result<ListAssessmentsResult> {
+    const r = this.#readable(caller, ListAssessmentsInput, input)
+    if (!r.ok) return r
+    const { project, revision } = r.value
+    const status = this.getAssessmentStatus(caller, { projectId: project.id, revision })
+    if (!status.ok) return status
+    const fresh = new Map(status.value.assessments.map((a) => [a.id, a]))
+    const view = this.store.view(project.id, revision)
+    const assessments = view
+      .listObjects({ types: ['core.Assessment'] })
+      .map((a) => summaryOf(a, fresh.get(a.id)))
+    return ok({ projectId: project.id, revision, assessments })
+  }
+
+  /** One assessment, with its full explanation, inputs and freshness. */
+  getAssessment(caller: unknown, input: unknown): Result<AssessmentView> {
+    const r = this.#readable(caller, GetAssessmentInput, input)
+    if (!r.ok) return r
+    const { project, revision, input: q } = r.value
+    const a = this.store.view(project.id, revision).getObject(q.id)
+    if (a?.type !== 'core.Assessment') return fail('not_found', `${q.id} is not an assessment`)
+    const status = this.getAssessmentStatus(caller, { projectId: project.id, revision })
+    if (!status.ok) return status
+    const fresh = status.value.assessments.find((x) => x.id === a.id)
+    return ok({
+      ...summaryOf(a, fresh),
+      explanation: a.attributes.explanation as unknown as Explanation,
+      inputs: a.attributes.inputs,
+    })
   }
 
   /** Evaluates one pinned item for a scenario, element and nature, read-only (ADR 0028 §4 to §6). */
@@ -1403,6 +1696,57 @@ function pinFreshness(store: SqliteStore, pin: PinSource, against: number | null
   const now = versionAt(store, { ...pin, revision: against })
   if (now.ok) return now.sha256 === pin.versionSha256 ? 'unchanged' : 'changed'
   return now.reason === 'unknown-target' ? 'removed' : 'libraryNotPresent'
+}
+
+/** How an agent should read an explanation (K4): flags first, prose second. */
+function readAsOf(e: Explanation, current: boolean): ReadAs {
+  const unresolved = e.steps.some(
+    (s) => s.reason === 'no-correspondence' || s.reason === 'incompatible',
+  )
+  const parts = [
+    `${e.verdict} for ${e.nature} values: declared conditions only, not a recommendation`,
+    e.specification === 'underspecified' ? 'the item declares nothing that must hold' : undefined,
+    e.missing.length > 0 ? `${e.missing.length} value(s) missing` : undefined,
+    e.conflict?.state === 'unsettled' ? 'libraries disagree, unsettled' : undefined,
+    e.conflict?.state === 'settled'
+      ? 'libraries disagree; a decision chose which to follow'
+      : undefined,
+    e.knowledge.disputed ? 'the knowledge is disputed' : undefined,
+    `knowledge maturity ${e.knowledge.maturity}`,
+    `scenario ${e.scenario.status}`,
+  ]
+  return {
+    recommendation: false,
+    current,
+    supported: e.specification === 'sufficient',
+    resolved: !unresolved,
+    note: parts.filter(Boolean).join('; '),
+  }
+}
+
+function summaryOf(
+  a: ObjectVersion,
+  fresh: AssessmentStatusResult['assessments'][number] | undefined,
+) {
+  const e = a.attributes.explanation as unknown as Explanation
+  const freshness = fresh ?? {
+    id: a.id,
+    verdict: a.attributes.verdict as Verdict,
+    status: 'stale' as const,
+    reasons: ['freshness unknown'],
+  }
+  return {
+    id: a.id,
+    item: { library: e.item.library, id: e.item.id, name: e.item.name },
+    scenario: String(a.attributes.scenario),
+    ...(typeof a.attributes.element === 'string' ? { element: a.attributes.element } : {}),
+    nature: (a.attributes.nature as ParameterNature) ?? 'expected',
+    verdict: a.attributes.verdict as Verdict,
+    specification: e.specification ?? 'sufficient',
+    conflict: e.conflict?.state ?? 'none',
+    freshness,
+    readAs: readAsOf(e, freshness.status === 'current'),
+  }
 }
 
 /** What an assessment's attributes say was assessed. */

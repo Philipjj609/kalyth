@@ -24,6 +24,7 @@
     "project:import": "node apps/server/src/cli/import.ts",
     "dev:web": "pnpm --filter @kalyth/web dev",
     "dev:seed": "node apps/server/src/dev/seed.ts",
+    "knowledge:example": "node apps/server/src/dev/knowledge-example-main.ts",
     "budget": "node apps/server/src/cli/budget.ts",
     "spike": "node apps/server/src/cli/spike.ts",
     "spike:replay": "node apps/server/src/dev/spike-replay.ts",

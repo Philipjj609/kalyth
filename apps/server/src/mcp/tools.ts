@@ -31,6 +31,7 @@ import type { KalythServices } from '@kalyth/core'
 import type { TaskCoordinator } from '@kalyth/tasks'
 import type { StandardSchemaWithJSON } from '@modelcontextprotocol/server'
 import { z } from 'zod'
+import { KNOWLEDGE_OPERATIONS } from '../knowledge-api.ts'
 
 /**
  * MCP tool catalogue, version 1 (ADR 0007). Every tool calls a service method and nothing else,
@@ -261,6 +262,10 @@ export const TOOLS: readonly ToolSpec[] = [
     readOnly: true,
     run: (d, c, i) => d.services.listProposals(c, i),
   },
+  // K4: read-only knowledge and assessments, from the table HTTP uses too (ADR 0031).
+  ...KNOWLEDGE_OPERATIONS.map(
+    (op): ToolSpec => ({ ...op, readOnly: true, run: (d, c, i) => op.run(d.services, c, i) }),
+  ),
 ]
 
 /** Schema issues returned for one call at most; the message counts the rest. */

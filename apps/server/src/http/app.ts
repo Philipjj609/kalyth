@@ -11,6 +11,7 @@ import { type KalythServices, SCHEMA_VERSION } from '@kalyth/core'
 import type { Navigator } from '@kalyth/navigator'
 import { TaskCoordinator } from '@kalyth/tasks'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
+import { KNOWLEDGE_OPERATIONS } from '../knowledge-api.ts'
 import { registerMcpEndpoint } from './mcp-http.ts'
 
 export interface HttpAuth {
@@ -313,6 +314,13 @@ export function registerApiRoutes(
       }),
     ),
   )
+
+  // K4: read-only knowledge and assessments, one route per shared operation (ADR 0031). The
+  // inputs are structured, so they travel as a JSON body; nothing these routes call writes.
+  for (const op of KNOWLEDGE_OPERATIONS)
+    app.post(`/api/v1/knowledge/${op.name}`, async (req, reply) =>
+      send(reply, op.run(workspaceOf(req).services, workspaceOf(req).caller, body(req))),
+    )
 
   app.get('/api/v1/projects/:projectId/decisions', async (req, reply) => {
     const status = one(query(req).status)
