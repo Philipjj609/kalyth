@@ -1,0 +1,203 @@
+{
+  "about": "The expected result of the K6a method 'Choose a state synchronisation model' on the multi-game example (ADR 0033), written from the seed before the engine was built. Names stand for ids. The engine's test must reproduce it exactly; K6b must not lose any candidate, question or ruled-out verdict it lists.",
+  "input": {
+    "method": "Choose a state synchronisation model",
+    "elements": ["RTS", "Arena shooter"],
+    "scenarios": ["Launch", "Expansion"],
+    "natures": ["expected"],
+    "question": "How should the games keep their players' state consistent?"
+  },
+  "selection": {
+    "candidates": [
+      { "item": "Authoritative server", "sources": ["explicit", "graph"], "hops": 1 },
+      {
+        "item": "Deterministic lockstep",
+        "sources": ["explicit", "parameter", "graph"],
+        "hops": 1
+      },
+      { "item": "Snapshot interpolation", "sources": ["explicit", "graph"], "hops": 1 },
+      { "item": "Dead reckoning", "sources": ["parameter"] },
+      {
+        "item": "Client-side prediction with server reconciliation",
+        "sources": ["graph"],
+        "hops": 1
+      },
+      { "item": "Entity interpolation", "sources": ["graph"], "hops": 1 },
+      { "item": "Lag compensation", "sources": ["graph"], "hops": 1 }
+    ],
+    "cut": [],
+    "ideas": [],
+    "excluded": []
+  },
+  "assessments": [
+    {
+      "item": "Deterministic lockstep",
+      "scenario": "Launch",
+      "element": "RTS",
+      "verdict": "conditionsMet",
+      "specification": "sufficient"
+    },
+    {
+      "item": "Deterministic lockstep",
+      "scenario": "Launch",
+      "element": "Arena shooter",
+      "verdict": "conditionsMet",
+      "specification": "sufficient"
+    },
+    {
+      "item": "Deterministic lockstep",
+      "scenario": "Expansion",
+      "element": "RTS",
+      "verdict": "conditionsMet",
+      "specification": "sufficient"
+    },
+    {
+      "item": "Deterministic lockstep",
+      "scenario": "Expansion",
+      "element": "Arena shooter",
+      "verdict": "conditionsNotMet",
+      "specification": "sufficient"
+    },
+    {
+      "item": "Dead reckoning",
+      "scenario": "Launch",
+      "element": "RTS",
+      "verdict": "unknown",
+      "specification": "underspecified"
+    },
+    {
+      "item": "Dead reckoning",
+      "scenario": "Launch",
+      "element": "Arena shooter",
+      "verdict": "unknown",
+      "specification": "underspecified"
+    },
+    {
+      "item": "Dead reckoning",
+      "scenario": "Expansion",
+      "element": "RTS",
+      "verdict": "unknown",
+      "specification": "underspecified"
+    },
+    {
+      "item": "Dead reckoning",
+      "scenario": "Expansion",
+      "element": "Arena shooter",
+      "verdict": "conditionsNotMet",
+      "specification": "underspecified"
+    },
+    {
+      "item": "Authoritative server",
+      "verdict": "unknown",
+      "specification": "underspecified",
+      "everyContext": true
+    },
+    {
+      "item": "Snapshot interpolation",
+      "verdict": "unknown",
+      "specification": "underspecified",
+      "everyContext": true
+    },
+    {
+      "item": "Entity interpolation",
+      "verdict": "unknown",
+      "specification": "underspecified",
+      "everyContext": true
+    },
+    {
+      "item": "Client-side prediction with server reconciliation",
+      "verdict": "unknown",
+      "specification": "underspecified",
+      "everyContext": true
+    },
+    {
+      "item": "Lag compensation",
+      "verdict": "unknown",
+      "specification": "sufficient",
+      "everyContext": true
+    }
+  ],
+  "assessmentCount": 28,
+  "questions": {
+    "missing": [
+      {
+        "concept": "Predictable entity motion",
+        "scenario": "Launch",
+        "element": "RTS",
+        "nature": "expected"
+      },
+      {
+        "concept": "Predictable entity motion",
+        "scenario": "Launch",
+        "element": "Arena shooter",
+        "nature": "expected"
+      },
+      {
+        "concept": "Predictable entity motion",
+        "scenario": "Expansion",
+        "element": "RTS",
+        "nature": "expected"
+      }
+    ],
+    "underspecified": [
+      "Authoritative server",
+      "Client-side prediction with server reconciliation",
+      "Dead reckoning",
+      "Entity interpolation",
+      "Snapshot interpolation"
+    ],
+    "gaps": [{ "scenario": "Expansion", "element": "Arena shooter", "nature": "expected" }]
+  },
+  "alternatives": [
+    {
+      "item": "Authoritative server",
+      "covers": 4,
+      "ruledOut": 0,
+      "refinedBy": ["Client-side prediction with server reconciliation"],
+      "constraints": [
+        "Do not trust the client: assume players will try to cheat, and decide the game state where they cannot change it."
+      ],
+      "worsens": ["Input responsiveness"],
+      "underspecified": true
+    },
+    {
+      "item": "Dead reckoning",
+      "covers": 3,
+      "ruledOut": 1,
+      "ruledOutIn": [{ "scenario": "Expansion", "element": "Arena shooter" }],
+      "worsens": [],
+      "underspecified": true
+    },
+    {
+      "item": "Deterministic lockstep",
+      "covers": 3,
+      "ruledOut": 1,
+      "ruledOutIn": [{ "scenario": "Expansion", "element": "Arena shooter" }],
+      "worsens": ["Input responsiveness"],
+      "underspecified": false
+    },
+    {
+      "item": "Entity interpolation",
+      "covers": 4,
+      "ruledOut": 0,
+      "worsens": ["Timeliness of remote entities"],
+      "underspecified": true
+    },
+    {
+      "item": "Lag compensation",
+      "covers": 4,
+      "ruledOut": 0,
+      "worsens": ["Fairness to the targeted player"],
+      "underspecified": false
+    },
+    {
+      "item": "Snapshot interpolation",
+      "covers": 4,
+      "ruledOut": 0,
+      "worsens": ["Bandwidth economy"],
+      "underspecified": true
+    }
+  ],
+  "checks": { "mandatoryFailures": 0, "advisoryFailures": 0 },
+  "cost": { "modelCalls": 0, "microUsd": 0 }
+}

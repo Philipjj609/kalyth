@@ -1236,6 +1236,114 @@
           }
         ]
       }
+    },
+    {
+      "op": "createObject",
+      "ref": "$chooseSync",
+      "type": "knowledge.Method",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Choose a state synchronisation model",
+        "purpose": "Compare ways to keep the game state of several players consistent, for the games and scenarios a project states, and say which declared conditions hold and what is unknown.",
+        "appliesTo": {
+          "elementTypes": ["software.Container", "software.Component", "software.System"],
+          "needsScenarios": true
+        },
+        "needs": [],
+        "steps": [
+          {
+            "id": "select",
+            "title": "Select the synchronisation patterns and what competes with them",
+            "uses": [],
+            "reads": [],
+            "mode": "deterministic",
+            "produces": []
+          },
+          {
+            "id": "assess",
+            "title": "Assess their declared conditions, and ask for missing values",
+            "uses": [],
+            "reads": [],
+            "mode": "deterministic",
+            "produces": ["assessment", "question"]
+          },
+          {
+            "id": "compare",
+            "title": "Compare them as alternatives with their trade-offs",
+            "uses": [],
+            "reads": [],
+            "mode": "deterministic",
+            "produces": ["alternative"]
+          }
+        ],
+        "checks": [
+          "alternatives-cite-assessments",
+          "no-reliance-on-ruled-out",
+          "disputed-flagged",
+          "hypotheses-labelled",
+          "worsens-disclosed",
+          "unknowns-asked"
+        ]
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$fwLockstep", "$fwClientServer"]
+          },
+          {
+            "allOf": ["$fsBackground"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "uses",
+      "from": "$chooseSync",
+      "to": "$lockstep",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$fwLockstep"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "uses",
+      "from": "$chooseSync",
+      "to": "$authServer",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$fwClientServer"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "uses",
+      "from": "$chooseSync",
+      "to": "$snapshotInterp",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$fsBackground"]
+          }
+        ]
+      }
     }
   ]
 }

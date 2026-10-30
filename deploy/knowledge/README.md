@@ -2,9 +2,10 @@
 
 `real-time-networking.json` is the first Kalyth knowledge library (K1 of
 [the knowledge-fabric design](../../docs/design/knowledge-fabric.md)). It holds the operations of
-one proposal, to file in a project of kind `library`: 16 cited passages, 22 objects (10 concepts,
-1 principle, 7 patterns, 2 conditions, 2 open questions) and 24 relations about networking
-real-time multiplayer games.
+one proposal, to file in a project of kind `library`: 16 cited passages, 23 objects (10 concepts,
+1 principle, 7 patterns, 2 conditions, 1 method, 2 open questions) and 27 relations about
+networking real-time multiplayer games. The method, "Choose a state synchronisation model", is
+the first one K6a runs (ADR 0033).
 
 ## Where it comes from
 

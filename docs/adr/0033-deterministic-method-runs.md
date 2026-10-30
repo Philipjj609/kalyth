@@ -64,10 +64,12 @@ MethodRunInput {
 
 - Starting a run needs `project.read` and `proposal.create` on the project, since its output is a
   proposal. People and agents may start runs; the origin is recorded.
-- Selection beyond the project's pins (the `parameter`, `elementType`, `graph` and `lexical`
-  sources) reads the library, so it needs `project.read` on the library. Without it, for example an
-  agent with only the pinned-snapshot delegation of ADR 0032, the run selects from the project's
-  pins only and records "library not readable: selection limited to pinned items".
+- A run reads each library it uses to select and to evaluate (the evaluator reads conditions at the
+  pinned revision, K3), so it needs `project.read` on **every** library the project uses. Without
+  it the run is refused before it starts (`unauthorized`, `method.library_read_required`, naming
+  the libraries). There is no snapshot-only evaluation: the pinned-snapshot delegation of ADR 0032
+  lets an agent read pinned versions, never run a method, and nothing here widens it (amendment
+  A2).
 - Pinning newly selected items in the output needs `project.read` on the library (ADR 0030 §3).
 - Committing the output and accepting an alternative stay with people: `proposal.commit`, and
   `decision.decide` with origin human (D4), through the check gate of §8.
@@ -122,27 +124,35 @@ never prose:
 ```
 core.Alternative v2 { …v1, basis?: {
   pins: EvidenceId[],             // the knowledge relied on
-  assessments: ObjectId[],        // one per covered scenario, element and nature
-  covers: ObjectId[],             // scenarios where its verdict is conditionsMet or unknown
-  ruledOutIn: ObjectId[],         // scenarios where it is conditionsNotMet
+  covers: ObjectId[],             // assessments whose verdict is conditionsMet or unknown
+  ruledOut: ObjectId[],           // assessments whose verdict is conditionsNotMet
   disclosed: { disputed: EvidenceId[], hypotheses: EvidenceId[], worsens: string[],
                underspecified: EvidenceId[] },
   unbacked: boolean               // always false in K6a
 } }
 ```
 
+**Coverage is per assessment** (amendment A1). An assessment fixes the exact context: item,
+scenario, element (or the whole system) and nature. So `covers` and `ruledOut` list assessment ids,
+never scenarios, and a pattern can cover the RTS and be ruled out for the shooter in one scenario.
+The kernel refuses a basis that could mislead (`alternative.basis_inconsistent`): every listed
+assessment must exist, be active, assess one of `pins`, and have a verdict that matches its list;
+no context `(item, scenario, element, nature)` may appear in both lists; and every pin must have at
+least one listed assessment.
+
 Its `summary` is the pattern's solution and `tradeoffs` lists every `affects` relation as
 "improves / worsens / mixed: quality — note", quoted from the pinned content with its attribution.
 Its claim is `imported`, supported by the pins, and `derivedFrom` its assessments. The run also
-records a **comparison**: per alternative, its verdict in each scenario and nature, its trade-offs
-by quality, and the principles that constrain it. Views and agents read the comparison from the
+records a **comparison**: per alternative, its verdict in each exact context (scenario, element,
+nature), its trade-offs by quality, and the principles that constrain it. Views and agents read the comparison from the
 run; the proposal holds the structured records.
 
-An alternative ruled out in every chosen scenario is listed in the comparison, not proposed.
+An alternative ruled out in every assessed context is listed in the comparison, not proposed.
 
 ### 7. Find gaps
 
-If, in some scenario, no candidate has its conditions met, the run adds one open Question: "No
+If, in some exact context (scenario, element, nature), no candidate has its conditions met, the
+run adds one open Question for that context: "No
 pinned knowledge has its declared conditions met for <elements> in <scenario> (<nature> values).
 Is there an approach outside the libraries in use?". In K6a no hypothesis is drafted and no library
 proposal is filed; that is K6b, with the cross-store requirements.
@@ -154,8 +164,8 @@ proposal's operations and the project state, reading `basis`:
 
 | Check | Severity | Fails when |
 |---|---|---|
-| `alternatives-cite-assessments` | mandatory | a relied-on pin lacks an assessment for a covered scenario, element and nature |
-| `no-reliance-on-ruled-out` | mandatory | a covered scenario has a `conditionsNotMet` assessment for a relied-on pin |
+| `alternatives-cite-assessments` | mandatory | the alternative relies on a pin with no assessment of it in `covers` or `ruledOut`, or `covers` is empty |
+| `no-reliance-on-ruled-out` | mandatory | a context it covers has a `conditionsNotMet` assessment of any relied-on pin, whether listed or not |
 | `disputed-flagged` | mandatory | a relied-on item is disputed and not in `disclosed.disputed` |
 | `hypotheses-labelled` | mandatory | a relied-on item is a hypothesis and the alternative is not `unbacked` |
 | `worsens-disclosed` | advisory | a `worsens` trade-off of a relied-on pattern is not in `disclosed.worsens` |
@@ -196,7 +206,7 @@ MethodRun { id: run_…, projectId, startedBy, origin, startedAt, finishedAt,
                       projectRevision, engineVersion, checkCatalogueVersion },
             status: "running" | "proposed" | "failed",
             selection: { candidates: { pin | item, sources: { source, path?, score? }[] }[],
-                         cut: …same…[], ideas: …[], excluded: …[], limitedToPins: boolean },
+                         cut: …same…[], ideas: …[], excluded: …[] },
             uncertainties: { kind, concept?, scenario, element?, nature, detail }[],
             comparison: …,  checks: { check, version, target, passed, detail }[],
             proposal?: ProposalId, failure?: { code, message },
@@ -220,7 +230,7 @@ the run's outputs with ids and times masked, twice.
 | The method has a `model` step | `failed`, `method.model_steps_not_enabled` |
 | No scenario or no nature given, or one not active | refused before the run starts (`invalid`) |
 | A library the project uses is absent | its items are not selected; listed as "library not present"; the run continues if any candidate remains, else `failed`, `method.no_candidates` |
-| Selection is limited to pins (no library read) | the run continues, `limitedToPins: true`, said in the proposal's rationale |
+| The caller cannot read a library the project uses | refused before the run starts: `unauthorized`, `method.library_read_required`, naming the libraries; no run is recorded |
 | More assessments than `maxAssessments` | `failed`, `method.too_many_assessments`, naming the product |
 | A pin cannot be resolved when assessing | that candidate is listed with the reason, not assessed, not proposed |
 | The proposal is invalid (for example the decision is no longer open) | `failed`, with the proposal's issues; no proposal is left pending |
@@ -264,24 +274,26 @@ both advisory ones.
   authoritative server) and lag compensation (`requires` it) through `graph`. The principle "Do not
   trust the client" is shown as a constraint, since authoritative server realises it; no source
   makes it a candidate.
-- Questions: Predictable entity motion (expected) for the RTS, in both scenarios, and for the
-  shooter in Launch; and "Which conditions must hold for …?" for each candidate pattern that declares
-  none: authoritative server, client-side prediction, lag compensation, entity interpolation and
-  snapshot interpolation.
-- Assessments: lockstep met for the RTS in both scenarios and for the shooter in Launch (through
-  Launch's system-wide value), not met for the shooter in Expansion; dead reckoning not met for the
-  shooter in Expansion, unknown elsewhere; the five patterns without conditions unknown,
-  underspecified.
-- Alternatives: lockstep, covering Launch for both games and Expansion for the RTS, ruled out for
-  the shooter in Expansion; dead reckoning, ruled out for the shooter in Expansion and unknown
-  elsewhere; the five underspecified patterns, unknown everywhere, each with
-  `disclosed.underspecified`. Every relied-on pattern's `worsens` trade-offs are disclosed.
-- Gaps: for the shooter in Expansion no candidate has its conditions met, so one gap Question is
-  asked; elsewhere lockstep is met.
+- Questions: Predictable entity motion (expected) for the RTS in both scenarios and for the
+  shooter in Launch (three); "Which conditions must hold for …?" for each candidate that declares
+  nothing that must hold: authoritative server, client-side prediction, entity interpolation,
+  snapshot interpolation and dead reckoning (whose only condition is an exclusion), five. Lag
+  compensation declares `requires`, so it is not underspecified; its verdict is unknown because
+  the authoritative server's is.
+- Assessments: 7 candidates × 2 scenarios × 2 elements × 1 nature = 28. Lockstep met for the RTS in
+  both scenarios and for the shooter in Launch (through Launch's system-wide value), not met for
+  the shooter in Expansion; dead reckoning not met for the shooter in Expansion, unknown elsewhere;
+  every other candidate unknown.
+- Alternatives (six; client-side prediction refines authoritative server, so it is shown under it):
+  lockstep, covering three contexts and ruled out for the shooter in Expansion; dead reckoning,
+  covering three (unknown) and ruled out for the shooter in Expansion; authoritative server,
+  snapshot interpolation, entity interpolation and lag compensation, covering four unknown
+  contexts each. Underspecified and `worsens` items are disclosed.
+- Gaps: one, for the shooter in Expansion (expected values); elsewhere lockstep is met.
 - Checks: all pass. Cost: zero model calls.
 
-The exact fixture is written in the first K6a commit, from the seed at that revision, and reviewed
-before the engine is built.
+The exact expectation is frozen in `deploy/knowledge/fixtures/multi-game-method-run.json`, written
+from the seed before the engine is built.
 
 ## Generalisation
 
@@ -319,11 +331,17 @@ the same phases. One acceptance test runs the engine on a small non-networking l
 3. A method with a model step fails with `method.model_steps_not_enabled`; a run's cost is zero.
 4. Each mandatory check fails on a crafted proposal and passes on the corrected one; advisory
    failures never block (ADR 0029 test 7).
+5a. Coverage keeps exact contexts: in one scenario, a pattern met for the RTS and not met for the
+    shooter has the first assessment in `covers` and the second in `ruledOut`. A basis that lists a
+    `conditionsNotMet` assessment in `covers`, lists one context in both, cites an assessment of an
+    item it does not rely on, or leaves a pin without an assessment, is refused with
+    `alternative.basis_inconsistent`.
 5. A failed mandatory check refuses the commit and the acceptance of the alternative; a person's
    exception with a reason allows it and appears in history; an agent's is refused (ADR 0029
    test 11).
-6. Permissions: an agent with project read and propose can run; with only the ADR 0032 delegation
-   the run is limited to pins and says so; a stranger is refused; nobody's run commits.
+6. Permissions: an agent with project read and propose, and read on the libraries, can run; an
+   agent with only the ADR 0032 delegation is refused with `method.library_read_required`, and so is
+   one missing read on any used library; a stranger is refused; nobody's run commits.
 7. Failures of §10 each produce their status and reason, and leave no pending proposal when failed.
 8. After answering a Question and re-running, the new run's assessments supersede the earlier ones,
    and the earlier run shows its proposal as committed or stale.
@@ -338,3 +356,19 @@ the same phases. One acceptance test runs the engine on a small non-networking l
 Model drafting, hypothesis filing, cross-store proposals (K6b); councils or orchestration of several
 methods; the portable-skill generator; an explorer view and CLI for runs (later slices, same
 contracts); pausing runs.
+
+## Amendment of 2026-10-30, after review
+
+Philip approved the architecture, Alternative v2 and CheckException, with two amendments, made
+above:
+
+- **A1. Exact coverage.** `covers` and `ruledOut` list assessment ids, so each entry keeps its
+  scenario, element and nature. The kernel refuses an inconsistent basis, and the two mandatory
+  checks about coverage read assessments, never scenario lists. Gap Questions are per exact
+  context. Test 5a.
+- **A2. No implicit widening for delegated agents.** A run needs read access to every library the
+  project uses, and is refused otherwise. There is no snapshot-only evaluation path; the ADR 0032
+  delegation stays a read of pinned versions. Test 6.
+
+Neither changes an invariant. The worked example's expectation is frozen in
+`deploy/knowledge/fixtures/multi-game-method-run.json`, written before the engine.

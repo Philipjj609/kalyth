@@ -53,15 +53,16 @@ describe('seed library: real-time networking (K1)', () => {
       'knowledge.Pattern': 7,
       'knowledge.Condition': 2,
       'core.Question': 2,
+      'knowledge.Method': 1,
     })
-    expect(Object.values(overview.relationCounts).reduce((a, b) => a + b, 0)).toBe(24)
+    expect(Object.values(overview.relationCounts).reduce((a, b) => a + b, 0)).toBe(27)
   })
 
   it('claims nothing it has not earned: proposed, unreviewed, unverified, paraphrased, licence unknown', () => {
     const { ctx, lib, proposed } = load()
     unwrap(ctx.services.commitProposal(ctx.owner, { proposalId: proposed.proposalId }))
     const { items } = unwrap(ctx.services.getKnowledgeStatus(ctx.owner, { projectId: lib.id }))
-    expect(items).toHaveLength(20)
+    expect(items).toHaveLength(21)
     for (const item of items) {
       expect(item.maturity).toBe('proposed')
       expect(item.dispute.status).toBe('none')
