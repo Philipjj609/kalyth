@@ -1,0 +1,1217 @@
+{
+  "name": "Real-time networking",
+  "description": "Patterns and principles for networking real-time multiplayer games, each cited to the section of a public article it comes from.",
+  "rationale": "First proposal of the library, prepared by a research agent (Claude). Every item is a paraphrase with a section locator, not a quote. Licences are recorded as unknown, since an agent may not confirm them; nothing is reviewed or verified yet. A curator reviews each support group, verifies each source and confirms its licence.",
+  "ops": [
+    {
+      "op": "recordEvidence",
+      "ref": "$g1Cheat",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://www.gabrielgambetta.com/client-server-game-architecture.html",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Fast-Paced Multiplayer (Part I): Client-Server Game Architecture",
+            "authors": ["Gabriel Gambetta"],
+            "locator": "section \"The problem of cheating\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$g1Auth",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://www.gabrielgambetta.com/client-server-game-architecture.html",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Fast-Paced Multiplayer (Part I): Client-Server Game Architecture",
+            "authors": ["Gabriel Gambetta"],
+            "locator": "section \"Authoritative servers and dumb clients\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$g1Net",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://www.gabrielgambetta.com/client-server-game-architecture.html",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Fast-Paced Multiplayer (Part I): Client-Server Game Architecture",
+            "authors": ["Gabriel Gambetta"],
+            "locator": "section \"Dealing with networks\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$g2Predict",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://www.gabrielgambetta.com/client-side-prediction-server-reconciliation.html",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Fast-Paced Multiplayer (Part II): Client-Side Prediction and Server Reconciliation",
+            "authors": ["Gabriel Gambetta"],
+            "locator": "section \"Client-side prediction\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$g2Reconcile",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://www.gabrielgambetta.com/client-side-prediction-server-reconciliation.html",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Fast-Paced Multiplayer (Part II): Client-Side Prediction and Server Reconciliation",
+            "authors": ["Gabriel Gambetta"],
+            "locator": "section \"Server reconciliation\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$g3Interp",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://www.gabrielgambetta.com/entity-interpolation.html",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Fast-Paced Multiplayer (Part III): Entity Interpolation",
+            "authors": ["Gabriel Gambetta"],
+            "locator": "section \"Entity interpolation\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$g3Dead",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://www.gabrielgambetta.com/entity-interpolation.html",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Fast-Paced Multiplayer (Part III): Entity Interpolation",
+            "authors": ["Gabriel Gambetta"],
+            "locator": "section \"Dead reckoning\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$g4Lag",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://www.gabrielgambetta.com/lag-compensation.html",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Fast-Paced Multiplayer (Part IV): Lag Compensation",
+            "authors": ["Gabriel Gambetta"],
+            "locator": "section \"Lag Compensation\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$aoeSim",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://www.gamedeveloper.com/programming/1500-archers-on-a-28-8-network-programming-in-age-of-empires-and-beyond",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "1500 Archers on a 28.8: Network Programming in Age of Empires and Beyond",
+            "authors": ["Mark Terrano", "Paul Bettner"],
+            "publisher": "Game Developer",
+            "published": "2001-03-22",
+            "locator": "section \"Simultaneous Simulations\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$aoeBenefits",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://www.gamedeveloper.com/programming/1500-archers-on-a-28-8-network-programming-in-age-of-empires-and-beyond",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "1500 Archers on a 28.8: Network Programming in Age of Empires and Beyond",
+            "authors": ["Mark Terrano", "Paul Bettner"],
+            "publisher": "Game Developer",
+            "published": "2001-03-22",
+            "locator": "section \"Hidden Benefits\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$flDet",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://gafferongames.com/post/deterministic_lockstep/",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Deterministic Lockstep",
+            "authors": ["Glenn Fiedler"],
+            "publisher": "Gaffer On Games",
+            "published": "2014-11-29",
+            "locator": "section \"Determinism\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$fwLockstep",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://gafferongames.com/post/what_every_programmer_needs_to_know_about_game_networking/",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "What Every Programmer Needs To Know About Game Networking",
+            "authors": ["Glenn Fiedler"],
+            "publisher": "Gaffer On Games",
+            "published": "2010-02-24",
+            "locator": "section \"Peer-to-Peer Lockstep\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$fwClientServer",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://gafferongames.com/post/what_every_programmer_needs_to_know_about_game_networking/",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "What Every Programmer Needs To Know About Game Networking",
+            "authors": ["Glenn Fiedler"],
+            "publisher": "Gaffer On Games",
+            "published": "2010-02-24",
+            "locator": "section \"Client/Server\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$fsBackground",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://gafferongames.com/post/snapshot_interpolation/",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Snapshot Interpolation",
+            "authors": ["Glenn Fiedler"],
+            "publisher": "Gaffer On Games",
+            "published": "2014-11-30",
+            "locator": "section \"Background\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$fsSnapshots",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://gafferongames.com/post/snapshot_interpolation/",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Snapshot Interpolation",
+            "authors": ["Glenn Fiedler"],
+            "publisher": "Gaffer On Games",
+            "published": "2014-11-30",
+            "locator": "section \"Snapshots\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "recordEvidence",
+      "ref": "$fsInterp",
+      "evidence": {
+        "source": {
+          "kind": "external",
+          "uri": "https://gafferongames.com/post/snapshot_interpolation/",
+          "retrievedAt": "2026-10-30T07:00:00.000Z",
+          "meta": {
+            "title": "Snapshot Interpolation",
+            "authors": ["Glenn Fiedler"],
+            "publisher": "Gaffer On Games",
+            "published": "2014-11-30",
+            "locator": "section \"Linear Interpolation\"",
+            "licence": "unknown",
+            "quotePolicy": "none"
+          }
+        },
+        "collectedBy": {
+          "tool": "claude-research-agent",
+          "toolVersion": "claude-opus-5-5"
+        }
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$rtt",
+      "type": "knowledge.Concept",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Round-trip time",
+        "definition": "The time for a message from a client to reach the server and for the reply to come back.",
+        "kind": "quantity",
+        "aliases": ["latency", "ping"],
+        "dimension": "time"
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g1Net"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$cheat",
+      "type": "knowledge.Concept",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Cheat resistance",
+        "definition": "How hard it is for a modified client to gain an advantage the rules do not allow.",
+        "kind": "quality"
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g1Cheat"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$responsive",
+      "type": "knowledge.Concept",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Input responsiveness",
+        "definition": "The delay between a player's input and the player seeing its effect.",
+        "kind": "quality"
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g1Net"]
+          },
+          {
+            "allOf": ["$g2Predict"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$bandwidth",
+      "type": "knowledge.Concept",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Bandwidth economy",
+        "definition": "How little network bandwidth a networking model needs for the same game.",
+        "kind": "quality"
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$fsBackground"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$smooth",
+      "type": "knowledge.Concept",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Smoothness of remote entities",
+        "definition": "Whether other players and objects appear to move continuously rather than jump between updates.",
+        "kind": "quality"
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g3Interp"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$timely",
+      "type": "knowledge.Concept",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Timeliness of remote entities",
+        "definition": "How current the displayed state of other players is, compared with the server.",
+        "kind": "quality"
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g3Interp"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$shooterHit",
+      "type": "knowledge.Concept",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Hit registration from the shooter’s view",
+        "definition": "Whether a shot that hits on the shooter’s screen also hits on the server.",
+        "kind": "quality"
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g4Lag"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$targetFair",
+      "type": "knowledge.Concept",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Fairness to the targeted player",
+        "definition": "Whether the player being shot can rely on what their own screen showed, such as having reached cover.",
+        "kind": "quality"
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g4Lag"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$deterministic",
+      "type": "knowledge.Concept",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Deterministic simulation",
+        "definition": "Given the same initial state and the same inputs, the simulation produces exactly the same result on every machine.",
+        "kind": "property",
+        "dimension": "boolean"
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$flDet"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$predictable",
+      "type": "knowledge.Concept",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Predictable entity motion",
+        "definition": "Whether entities keep their current motion long enough to be extrapolated, as a fast car does and a player in a shooter does not.",
+        "kind": "property",
+        "dimension": "boolean"
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g3Dead"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$neverTrust",
+      "type": "knowledge.Principle",
+      "stance": "asIs",
+      "attributes": {
+        "statement": "Do not trust the client: assume players will try to cheat, and decide the game state where they cannot change it.",
+        "rationale": "A client runs on the player’s machine, so its code and messages can be modified to report a state the rules do not allow.",
+        "scope": "Multiplayer games where one player’s cheating affects other players.",
+        "exceptions": []
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g1Cheat"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$authServer",
+      "type": "knowledge.Pattern",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Authoritative server",
+        "aliases": ["dumb clients", "client/server"],
+        "problem": "Players can modify their clients to cheat when clients decide the game state.",
+        "solution": "Run the game on a server you control. Clients send inputs and display the state the server sends back.",
+        "structure": "Clients send inputs to the server; the server applies them to the one true game state and sends the state to every client.",
+        "consequences": "Cheating through the client becomes much harder. Without further techniques, each input takes effect only after a round trip, which players perceive as lag."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g1Auth"]
+          },
+          {
+            "allOf": ["$fwClientServer"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$prediction",
+      "type": "knowledge.Pattern",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Client-side prediction with server reconciliation",
+        "aliases": ["client-side prediction"],
+        "problem": "With an authoritative server alone, a player sees the effect of their own input only after a round trip.",
+        "solution": "The client applies its own inputs at once, predicting the server’s result. It numbers its inputs, keeps those the server has not yet acknowledged, and re-applies them on top of each authoritative state it receives.",
+        "structure": "Client: numbered input queue, local simulation of its own entity. Server: authoritative simulation that reports the last input it processed.",
+        "consequences": "Own movement feels immediate. The game must be predictable enough that predictions usually match the server; when they do not, the client corrects to the server’s state."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g2Predict", "$g2Reconcile"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$entityInterp",
+      "type": "knowledge.Pattern",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Entity interpolation",
+        "aliases": [],
+        "problem": "Server updates about other entities arrive at intervals, so drawing them as they arrive makes them jump.",
+        "solution": "Show other entities slightly in the past, interpolating between the two most recent states received from the server.",
+        "structure": "The client buffers recent server states for each remote entity and renders it between two of them.",
+        "consequences": "Remote entities move smoothly, but are shown somewhat behind their current state on the server."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g3Interp"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$deadReckoning",
+      "type": "knowledge.Pattern",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Dead reckoning",
+        "aliases": ["extrapolation"],
+        "problem": "Server updates about other entities arrive at intervals, and something must be shown in between.",
+        "solution": "Extrapolate each remote entity from its last known state, for example its position and velocity, until the next update arrives.",
+        "structure": "The client predicts remote entities forward from their last update and corrects them when a new one arrives.",
+        "consequences": "Works well for entities whose motion is predictable, such as fast cars; for entities that change direction abruptly, the extrapolation is often wrong and must be corrected."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g3Dead"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$lagCompensation",
+      "type": "knowledge.Pattern",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Lag compensation",
+        "aliases": ["server-side rewind"],
+        "problem": "With interpolation and latency, a shooter aims at where a target appeared on their screen, which is not where the target is on the server.",
+        "solution": "The server keeps a short history of entity states and evaluates a shot against the world as the shooter saw it when firing.",
+        "structure": "Server: recent history of positions; on a shot, it reconstructs the shooter’s view at that moment and resolves the hit there.",
+        "consequences": "Shots that hit on the shooter’s screen hit on the server. A target can be hit a moment after reaching cover on their own screen."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g4Lag"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$lockstep",
+      "type": "knowledge.Pattern",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Deterministic lockstep",
+        "aliases": ["peer-to-peer lockstep", "simultaneous simulation"],
+        "problem": "Sending the state of many units over a slow connection costs too much bandwidth.",
+        "solution": "Every machine runs the same simulation from the same start; only the players’ commands are exchanged, and each turn is simulated once every machine has its commands.",
+        "structure": "Each peer sends its commands for a future turn to all others; every peer simulates turn by turn in the same order.",
+        "consequences": "Bandwidth depends on the commands, not on the number of units. Each player waits for the slowest or most lagged player, and any divergence between machines breaks the game."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$aoeSim"]
+          },
+          {
+            "allOf": ["$fwLockstep"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$snapshotInterp",
+      "type": "knowledge.Pattern",
+      "stance": "asIs",
+      "attributes": {
+        "name": "Snapshot interpolation",
+        "aliases": [],
+        "problem": "Deterministic lockstep needs a deterministic simulation, which is hard to achieve, for example with floating point across platforms.",
+        "solution": "The server sends snapshots of the visual state of the world; the client buffers them briefly and interpolates between them.",
+        "structure": "Server: periodic snapshots of the world. Client: an interpolation buffer and rendering between snapshots.",
+        "consequences": "No determinism is needed and the client stays smooth; the cost is much higher bandwidth than sending inputs."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$fsBackground", "$fsSnapshots"]
+          },
+          {
+            "allOf": ["$fsInterp"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$isDeterministic",
+      "type": "knowledge.Condition",
+      "stance": "asIs",
+      "attributes": {
+        "subject": "$deterministic",
+        "test": {
+          "op": "is",
+          "value": true
+        },
+        "text": "The simulation is deterministic on every machine that takes part."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$flDet"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$unpredictable",
+      "type": "knowledge.Condition",
+      "stance": "asIs",
+      "attributes": {
+        "subject": "$predictable",
+        "test": {
+          "op": "is",
+          "value": false
+        },
+        "text": "Entities change direction abruptly, so their motion cannot be extrapolated."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g3Dead"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createObject",
+      "ref": "$exceptions",
+      "type": "core.Question",
+      "stance": "asIs",
+      "attributes": {
+        "text": "Where does \"do not trust the client\" not apply? The cited source states the principle without exceptions.",
+        "inquiryRole": "exploratory"
+      },
+      "claim": {
+        "basis": "stated"
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "addresses",
+      "from": "$neverTrust",
+      "to": "$cheat",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g1Cheat"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "realizesPrinciple",
+      "from": "$authServer",
+      "to": "$neverTrust",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g1Auth"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "concerns",
+      "from": "$exceptions",
+      "to": "$neverTrust",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "stated"
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$authServer",
+      "to": "$cheat",
+      "stance": "asIs",
+      "properties": {
+        "effect": "improves",
+        "note": "The server, not the client, decides the game state."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g1Auth"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$authServer",
+      "to": "$responsive",
+      "stance": "asIs",
+      "properties": {
+        "effect": "worsens",
+        "note": "Each input takes effect only after a round trip to the server."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g1Net"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "refines",
+      "from": "$prediction",
+      "to": "$authServer",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g2Predict"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$prediction",
+      "to": "$responsive",
+      "stance": "asIs",
+      "properties": {
+        "effect": "improves",
+        "note": "Own inputs are applied at once instead of after a round trip."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g2Predict"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$entityInterp",
+      "to": "$smooth",
+      "stance": "asIs",
+      "properties": {
+        "effect": "improves",
+        "note": "Remote entities move between received states instead of jumping."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g3Interp"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$entityInterp",
+      "to": "$timely",
+      "stance": "asIs",
+      "properties": {
+        "effect": "worsens",
+        "note": "Remote entities are shown somewhat in the past."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g3Interp"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "competesWith",
+      "from": "$deadReckoning",
+      "to": "$entityInterp",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g3Dead", "$g3Interp"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$deadReckoning",
+      "to": "$smooth",
+      "stance": "asIs",
+      "properties": {
+        "effect": "mixed",
+        "note": "Smooth while motion is predictable; visible corrections when it is not."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g3Dead"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "unsuitableWhen",
+      "from": "$deadReckoning",
+      "to": "$unpredictable",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g3Dead"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "requires",
+      "from": "$lagCompensation",
+      "to": "$authServer",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g4Lag"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$lagCompensation",
+      "to": "$shooterHit",
+      "stance": "asIs",
+      "properties": {
+        "effect": "improves",
+        "note": "Shots are resolved against what the shooter saw."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g4Lag"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$lagCompensation",
+      "to": "$targetFair",
+      "stance": "asIs",
+      "properties": {
+        "effect": "worsens",
+        "note": "A target can be hit shortly after reaching cover on their own screen."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$g4Lag"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "appliesWhen",
+      "from": "$lockstep",
+      "to": "$isDeterministic",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$flDet"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$lockstep",
+      "to": "$bandwidth",
+      "stance": "asIs",
+      "properties": {
+        "effect": "improves",
+        "note": "Only commands travel, however many units there are."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$aoeSim"]
+          },
+          {
+            "allOf": ["$fsBackground"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$lockstep",
+      "to": "$responsive",
+      "stance": "asIs",
+      "properties": {
+        "effect": "worsens",
+        "note": "Each player waits for the commands of the most lagged player."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$fwLockstep"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$lockstep",
+      "to": "$cheat",
+      "stance": "asIs",
+      "properties": {
+        "effect": "mixed",
+        "note": "A client that simulates differently goes out of sync, which makes many cheats fail; revealing hidden information locally remains possible."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$aoeBenefits"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "competesWith",
+      "from": "$lockstep",
+      "to": "$authServer",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$fwLockstep", "$fwClientServer"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "competesWith",
+      "from": "$snapshotInterp",
+      "to": "$lockstep",
+      "stance": "asIs",
+      "properties": {},
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$fsBackground"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$snapshotInterp",
+      "to": "$smooth",
+      "stance": "asIs",
+      "properties": {
+        "effect": "improves",
+        "note": "The client interpolates between buffered snapshots."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$fsInterp"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "createRelation",
+      "type": "affects",
+      "from": "$snapshotInterp",
+      "to": "$bandwidth",
+      "stance": "asIs",
+      "properties": {
+        "effect": "worsens",
+        "note": "Snapshots of the world cost much more bandwidth than inputs."
+      },
+      "claim": {
+        "basis": "imported",
+        "supports": [
+          {
+            "allOf": ["$fsSnapshots"]
+          }
+        ]
+      }
+    }
+  ]
+}
