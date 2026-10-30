@@ -37,3 +37,4 @@ cite those entries where a decision came from review.
 | [0029](0029-assessments-freshness-and-methods.md) | Assessments, their freshness, and methods that use knowledge: dependency sets, checks, hypotheses, the explorer and agent access | Proposed, for review (future branch) |
 | [0030](0030-knowledge-operation-contracts.md) | Operation contracts for knowledge libraries and pins (K1 and K2), resolving contradictions with the existing kernel | Proposed, for review (future branch) |
 | [0031](0031-read-access-to-knowledge.md) | Read-only MCP and HTTP access to knowledge and assessments (K4) | Proposed, for review (future branch) |
+| [0032](0032-pinned-snapshot-delegation.md) | Pinned-snapshot read delegation for agent tokens | Proposed, for review (future branch) |

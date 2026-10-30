@@ -12,7 +12,10 @@ async function example() {
   h = await harness()
   const owner = { principalId: h.owner.id, origin: 'human' as const }
   const agent = { principalId: h.agent.id, origin: 'agent' as const }
-  return buildKnowledgeExample(h.services, owner, agent)
+  const x = buildKnowledgeExample(h.services, owner, agent)
+  // The MCP agent reads pinned snapshots only through an explicit delegation (ADR 0032).
+  h.services.grant(h.agent.id, ['knowledge.pinned.read'], x.project.id)
+  return x
 }
 
 /** One call of every K4 operation, with the example's ids. */
@@ -24,6 +27,7 @@ function calls(x: Awaited<ReturnType<typeof example>>): [string, Record<string, 
     ['get_method', { library: library.id, id: L.$lockstep }],
     ['list_library_uses', { projectId: project.id }],
     ['get_pin_status', { projectId: project.id }],
+    ['get_pinned_knowledge', { projectId: project.id }],
     [
       'assess_applicability',
       {
@@ -49,6 +53,7 @@ describe('K4 read access: one contract for MCP and HTTP (ADR 0031)', () => {
       'get_method',
       'list_library_uses',
       'get_pin_status',
+      'get_pinned_knowledge',
       'assess_applicability',
       'list_assessments',
       'get_assessment',
@@ -121,7 +126,9 @@ describe('K4 read access: one contract for MCP and HTTP (ADR 0031)', () => {
 
   it('tells an agent how to read each result: current, supported, resolved, never a recommendation', async () => {
     const x = await example()
-    const assessed = (await h.mcp('assess_applicability', calls(x)[5]?.[1])).body
+    const assessed = (
+      await h.mcp('assess_applicability', calls(x).find(([n]) => n === 'assess_applicability')?.[1])
+    ).body
     expect(assessed.readAs).toMatchObject({
       recommendation: false,
       current: true,
@@ -140,7 +147,10 @@ describe('K4 read access: one contract for MCP and HTTP (ADR 0031)', () => {
       conflict: { state: 'none' },
     })
     const auth = (
-      await h.mcp('assess_applicability', { ...calls(x)[5]?.[1], item: x.P.$authServer })
+      await h.mcp('assess_applicability', {
+        ...calls(x).find(([n]) => n === 'assess_applicability')?.[1],
+        item: x.P.$authServer,
+      })
     ).body
     expect(auth).toMatchObject({
       verdict: 'unknown',

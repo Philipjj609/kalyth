@@ -27,6 +27,11 @@ export const Scope = z.enum([
   'task.coordinate',
   /** Set maturity, review support, verify sources and confirm licences in a library (ADR 0030). */
   'knowledge.curate',
+  /**
+   * Read the knowledge snapshots a project embeds for its pins, from the project's own copies,
+   * never from the library (ADR 0032). Granted on one project only.
+   */
+  'knowledge.pinned.read',
 ])
 export type Scope = z.infer<typeof Scope>
 

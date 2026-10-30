@@ -54,6 +54,8 @@ import {
   ok,
   type ParameterNature,
   type PinFreshness,
+  PinnedKnowledgeInput,
+  type PinnedKnowledgeResult,
   PinStatusQuery,
   type PinStatusResult,
   type Principal,
@@ -75,7 +77,7 @@ import {
   type ResolvedOperation,
   type Result,
   RevokeAgentTokenInput,
-  type Scope,
+  Scope,
   type Situation,
   SituationQuery,
   type Verdict,
@@ -1103,13 +1105,17 @@ export class KalythServices {
     return ok(
       this.store.writeTransaction(() => {
         const principal = this.createPrincipal('agent', `Agent token: ${req.label}`)
-        this.grant(principal.id, AGENT_TOKEN_SCOPES, project.id, who.value.id, expiresAt)
+        const scopes: Scope[] = [
+          ...AGENT_TOKEN_SCOPES,
+          ...(req.pinnedKnowledge ? (['knowledge.pinned.read'] as const) : []),
+        ]
+        this.grant(principal.id, scopes, project.id, who.value.id, expiresAt)
         const summary: AgentTokenSummary = {
           id: this.#ids('agentToken'),
           projectId: project.id,
           principalId: principal.id,
           label: req.label,
-          scopes: [...AGENT_TOKEN_SCOPES],
+          scopes,
           createdBy: who.value.id,
           createdAt: now,
           expiresAt,
@@ -1131,7 +1137,7 @@ export class KalythServices {
     return ok({
       tokens: this.store
         .agentTokens(parsed.value.projectId)
-        .map((t) => ({ ...t, scopes: [...AGENT_TOKEN_SCOPES] })),
+        .map((t) => ({ ...t, scopes: this.#tokenScopes(t.principalId, t.projectId) })),
     })
   }
 
@@ -1146,7 +1152,75 @@ export class KalythServices {
     if (denied) return { ok: false, error: denied }
     this.store.revokeAgentToken(token.id, this.#clock())
     const after = this.store.agentToken(token.id) ?? token
-    return ok({ ...after, scopes: [...AGENT_TOKEN_SCOPES] })
+    return ok({ ...after, scopes: this.#tokenScopes(after.principalId, after.projectId) })
+  }
+
+  /** The scopes an agent token's principal was granted on its project. */
+  #tokenScopes(principalId: string, projectId: string): Scope[] {
+    const held = new Set(
+      this.store
+        .grantsFor(principalId)
+        .filter((g) => g.projectId === projectId)
+        .flatMap((g) => g.scopes),
+    )
+    return Scope.options.filter((s) => held.has(s))
+  }
+
+  /**
+   * The knowledge snapshots a project pins, from its own embedded copies (ADR 0032). It needs
+   * project.read and knowledge.pinned.read on the project, and reads no library: a copy that is
+   * missing is reported as not embedded, never fetched from the library.
+   */
+  getPinnedKnowledge(caller: unknown, input: unknown): Result<PinnedKnowledgeResult> {
+    const r = this.#readable(caller, PinnedKnowledgeInput, input)
+    if (!r.ok) return r
+    const { project, revision, input: q } = r.value
+    const ctx = this.#context(caller)
+    if (!ctx.ok) return ctx
+    const denied = this.#authz.require(ctx.value.principal, project.id, ['knowledge.pinned.read'])
+    if (denied) return { ok: false, error: denied }
+    const embedded = (sha: string) => {
+      const copy = this.store.getContent(project.id, contentIdOf(sha))
+      if (typeof copy?.body !== 'string') return { state: 'notEmbedded' as const }
+      if (sha256Hex(copy.body) !== sha) return { state: 'hashMismatch' as const }
+      return { state: 'embedded' as const, content: JSON.parse(copy.body) as unknown }
+    }
+    const pins = [...this.store.evidenceMapAt(project.id, revision).values()]
+      .filter((e) => e.source.kind === 'knowledge' && (!q.evidence || e.id === q.evidence))
+      .map((e) => {
+        const pin = e.source as PinSource
+        const sha = pin.versionSha256 ?? ''
+        const copy = embedded(sha)
+        const cited =
+          copy.state === 'embedded'
+            ? (
+                (
+                  copy.content as {
+                    claim?: {
+                      supports?: { allOf?: { evidence: string; evidenceSha256: string }[] }[]
+                    }
+                  }
+                ).claim?.supports ?? []
+              ).flatMap((g) => g.allOf ?? [])
+            : []
+        const cites = [...new Map(cited.map((c) => [c.evidence, c])).values()].map((c) => {
+          const source = embedded(c.evidenceSha256)
+          return { ...c, ...(source.state === 'embedded' ? { source: source.content } : {}) }
+        })
+        return {
+          evidence: e.id,
+          library: pin.library,
+          target: pin.target,
+          id: pin.id,
+          revision: pin.revision,
+          versionSha256: sha,
+          state: copy.state,
+          ...(copy.state === 'embedded' ? { content: copy.content } : {}),
+          cites,
+        }
+      })
+      .sort((a, b) => (a.evidence < b.evidence ? -1 : 1))
+    return ok({ projectId: project.id, revision, pins })
   }
 
   /**

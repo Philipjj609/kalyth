@@ -61,6 +61,7 @@ describe('MCP interface', () => {
       'get_knowledge',
       'get_method',
       'get_pin_status',
+      'get_pinned_knowledge',
       'get_project_overview',
       'get_proposal',
       'get_situation',

@@ -6,6 +6,7 @@ import {
   KnowledgeSearchInput,
   LibraryUsesInput,
   ListAssessmentsInput,
+  PinnedKnowledgeInput,
   PinStatusQuery,
   type Result,
 } from '@kalyth/contracts'
@@ -66,6 +67,14 @@ export const KNOWLEDGE_OPERATIONS: readonly KnowledgeOperation[] = [
       'Every knowledge pin of a project: how it resolves (embedded copy, library, or unresolved with the reason) and its freshness against the library revision used, or a previewed one.',
     input: PinStatusQuery,
     run: (s, c, i) => s.getPinStatus(c, i),
+  },
+  {
+    name: 'get_pinned_knowledge',
+    title: 'Pinned knowledge',
+    description:
+      'The exact knowledge versions a project pins, with the evidence records they cite, from the project’s own embedded copies. Needs knowledge.pinned.read on the project (ADR 0032); never reads the library, so it shows no later revision and nothing the project did not pin.',
+    input: PinnedKnowledgeInput,
+    run: (s, c, i) => s.getPinnedKnowledge(c, i),
   },
   {
     name: 'assess_applicability',

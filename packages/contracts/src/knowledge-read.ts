@@ -160,6 +160,41 @@ export const ListAssessmentsResult = z.object({
 export type ListAssessmentsResult = z.infer<typeof ListAssessmentsResult>
 
 export const GetAssessmentInput = z.object({ projectId: ProjectId, id: ObjectId, revision })
+
+export const PinnedKnowledgeInput = z.object({
+  projectId: ProjectId,
+  /** One pin; default: every pin of the project. */
+  evidence: z
+    .string()
+    .regex(/^evd_[0-9a-f]{32}$/)
+    .optional(),
+  revision,
+})
+
+/**
+ * A pinned version as the project embeds it (ADR 0032): the exact canonical content and the
+ * evidence records it cites, from the project's own copies. Never read from the library, so it
+ * never shows a later revision or anything the project did not pin.
+ */
+export const PinnedKnowledge = z.object({
+  evidence: z.string(),
+  library: ProjectId,
+  target: z.enum(['object', 'relation']),
+  id: z.string(),
+  revision: z.int().min(0),
+  versionSha256: z.string(),
+  state: z.enum(['embedded', 'notEmbedded', 'hashMismatch']),
+  content: z.unknown().optional(),
+  cites: z.array(
+    z.object({ evidence: z.string(), evidenceSha256: z.string(), source: z.unknown().optional() }),
+  ),
+})
+export const PinnedKnowledgeResult = z.object({
+  projectId: ProjectId,
+  revision: z.int().min(0),
+  pins: z.array(PinnedKnowledge),
+})
+export type PinnedKnowledgeResult = z.infer<typeof PinnedKnowledgeResult>
 export const AssessmentView = AssessmentSummary.extend({
   explanation: Explanation,
   inputs: z.unknown(),

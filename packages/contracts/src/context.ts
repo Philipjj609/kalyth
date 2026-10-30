@@ -291,6 +291,11 @@ export const IssueAgentTokenInput = z.object({
   projectId: ProjectId,
   label: z.string().trim().min(1).max(120),
   expiresInDays: z.int().min(1).max(30).default(7),
+  /**
+   * Also let the agent read the knowledge snapshots this project pins (ADR 0032). Off unless a
+   * person asks for it; it expires and is revoked with the token.
+   */
+  pinnedKnowledge: z.boolean().default(false),
 })
 export type IssueAgentTokenInput = z.input<typeof IssueAgentTokenInput>
 
